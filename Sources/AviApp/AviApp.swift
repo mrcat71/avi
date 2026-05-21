@@ -13,6 +13,10 @@ struct AviApp: App {
         WindowGroup {
             RootView()
         }
+
+        Settings {
+            SettingsRoot()
+        }
         .commands {
             CommandMenu("Repository") {
                 Button("Open Repository...") {

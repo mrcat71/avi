@@ -313,6 +313,11 @@ public struct CLIGitProvider: GitProviding {
         return message.isEmpty ? nil : message
     }
 
+    public func stagedDiff(in repository: URL) async throws -> String {
+        let result = try await run(["diff", "--cached", "--no-color", "--no-ext-diff"], in: repository)
+        return result.stdoutString
+    }
+
     @discardableResult
     private func run(
         _ arguments: [String],

@@ -33,6 +33,11 @@ public final class RepositoryStore: Identifiable {
     public var commitSummary: String = ""
     public var commitBody: String = ""
     public var amend: Bool = false
+    public var expandedFolders: Set<String> = []
+    public var isGeneratingCommitMessage: Bool = false
+    public var aiError: String?
+    public private(set) var aiLastGenerated: String?
+    private var aiTask: Task<Void, Never>?
 
     public var commitMessage: String {
         let trimmedSummary = commitSummary.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -96,12 +101,48 @@ public final class RepositoryStore: Identifiable {
             remotes = []
             remoteOutput = nil
             clearHistorySelection()
+            expandedFolders = loadExpandedFolders(for: resolved)
             startWatching(resolved)
             RecentRepositories.add(resolved)
             await refresh()
         } catch {
             errorMessage = "Not a git repository: \(url.path)"
         }
+    }
+
+    public func toggleFolderExpanded(_ path: String) {
+        if expandedFolders.contains(path) {
+            expandedFolders.remove(path)
+        } else {
+            expandedFolders.insert(path)
+        }
+        if let root {
+            saveExpandedFolders(for: root)
+        }
+    }
+
+    public func setFolderExpanded(_ path: String, expanded: Bool) {
+        if expanded {
+            expandedFolders.insert(path)
+        } else {
+            expandedFolders.remove(path)
+        }
+        if let root {
+            saveExpandedFolders(for: root)
+        }
+    }
+
+    private func expandedFoldersKey(for root: URL) -> String {
+        "avi.expandedFolders.\(root.standardizedFileURL.path)"
+    }
+
+    private func loadExpandedFolders(for root: URL) -> Set<String> {
+        let raw = UserDefaults.standard.stringArray(forKey: expandedFoldersKey(for: root)) ?? []
+        return Set(raw)
+    }
+
+    private func saveExpandedFolders(for root: URL) {
+        UserDefaults.standard.set(Array(expandedFolders), forKey: expandedFoldersKey(for: root))
     }
 
     public func refresh() async {
@@ -367,6 +408,85 @@ public final class RepositoryStore: Identifiable {
 
     public func dismissError() {
         errorMessage = nil
+    }
+
+    // MARK: - AI commit message
+
+    public func generateCommitMessage(config: AIConfig) {
+        guard let root else { return }
+        aiTask?.cancel()
+        aiError = nil
+        isGeneratingCommitMessage = true
+        aiTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isGeneratingCommitMessage = false }
+            do {
+                let diff = try await self.git.stagedDiff(in: root)
+                if Task.isCancelled { return }
+                guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.aiError = "Nothing staged. Stage changes before generating."
+                    return
+                }
+                guard !config.model.isEmpty else {
+                    self.aiError = "Set a model in Settings → AI Commit Messages."
+                    return
+                }
+                let stagedPaths = self.stagedEntries.map(\.path)
+                let context = PromptContext(
+                    stagedDiff: diff,
+                    branch: self.branch?.name ?? "",
+                    files: stagedPaths,
+                    repo: root.lastPathComponent,
+                    model: config.model,
+                    lowLimit: config.subjectSoftLimit,
+                    highLimit: config.subjectHardLimit,
+                    guideLine: config.bodyWrap
+                )
+                let prompt = PromptRenderer.render(template: config.promptTemplate, context: context)
+                let engine = AIEngineFactory.make(config: config)
+                let text = try await engine.generate(
+                    prompt: prompt,
+                    model: config.model,
+                    temperature: config.temperature,
+                    maxTokens: config.maxTokens
+                )
+                if Task.isCancelled { return }
+                self.aiLastGenerated = text
+                let (subject, body) = self.splitGeneratedMessage(text)
+                self.commitSummary = subject
+                self.commitBody = body
+            } catch {
+                if !(error is CancellationError) {
+                    self.aiError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    public func cancelCommitMessageGeneration() {
+        aiTask?.cancel()
+        isGeneratingCommitMessage = false
+    }
+
+    public func dismissAIError() {
+        aiError = nil
+    }
+
+    public func clearAIGenerated() {
+        aiLastGenerated = nil
+        commitSummary = ""
+        commitBody = ""
+    }
+
+    private func splitGeneratedMessage(_ text: String) -> (String, String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = trimmed.split(separator: "\n", omittingEmptySubsequences: false)
+        let firstLine = lines.first.map(String.init) ?? trimmed
+        if let firstBlankIndex = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }), firstBlankIndex > 0 {
+            let body = lines.suffix(from: firstBlankIndex + 1).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            return (firstLine.trimmingCharacters(in: .whitespacesAndNewlines), body)
+        }
+        return (firstLine.trimmingCharacters(in: .whitespacesAndNewlines), "")
     }
 
     // MARK: - File actions (AppKit wrappers, no GitKit)

@@ -74,4 +74,5 @@ public final class FakeGitProvider: GitProviding {
     public func commit(message: String, in repository: URL) async throws {}
     public func amend(message: String?, in repository: URL) async throws {}
     public func lastCommitMessage(in repository: URL) async throws -> String? { lastCommit }
+    public func stagedDiff(in repository: URL) async throws -> String { "" }
 }

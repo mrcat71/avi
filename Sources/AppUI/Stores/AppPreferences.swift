@@ -1,52 +1,48 @@
 import Foundation
 
-/// Lightweight UserDefaults wrapper for cross-session UI state. Only persists
-/// preferences that survive a relaunch (selected primary view, sidebar width).
-/// Branch/tag/remote selections reset to the default landing view on launch.
+/// Thin facade over `ConfigStore` for the small UI prefs that lived in
+/// UserDefaults before iter 4. Density and friends now live in the TOML config;
+/// these accessors are kept so existing call sites read the same names.
+@MainActor
 enum AppPreferences {
-    private enum Key {
-        static let lastSelectedView = "avi.lastSelectedView"
-        static let sidebarWidth = "avi.sidebarWidth"
-        static let density = "avi.density"
-    }
-
     static let defaultSidebarWidth: Double = 286
     static let minSidebarWidth: Double = 220
     static let maxSidebarWidth: Double = 380
 
+    /// Last selected primary view persisted across launches.
     static var lastSelectedView: PersistedView? {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: Key.lastSelectedView) else { return nil }
+            guard let raw = UserDefaults.standard.string(forKey: "avi.lastSelectedView") else { return nil }
             return PersistedView(rawValue: raw)
         }
         set {
             if let value = newValue {
-                UserDefaults.standard.set(value.rawValue, forKey: Key.lastSelectedView)
+                UserDefaults.standard.set(value.rawValue, forKey: "avi.lastSelectedView")
             } else {
-                UserDefaults.standard.removeObject(forKey: Key.lastSelectedView)
+                UserDefaults.standard.removeObject(forKey: "avi.lastSelectedView")
             }
         }
     }
 
     static var sidebarWidth: Double {
         get {
-            let stored = UserDefaults.standard.double(forKey: Key.sidebarWidth)
+            let stored = UserDefaults.standard.double(forKey: "avi.sidebarWidth")
             guard stored > 0 else { return defaultSidebarWidth }
             return min(max(stored, minSidebarWidth), maxSidebarWidth)
         }
         set {
             let clamped = min(max(newValue, minSidebarWidth), maxSidebarWidth)
-            UserDefaults.standard.set(clamped, forKey: Key.sidebarWidth)
+            UserDefaults.standard.set(clamped, forKey: "avi.sidebarWidth")
         }
     }
 
     static var density: Density {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: Key.density) else { return .comfortable }
+            let raw = ConfigStore.shared.config.appearance.density
             return Density(rawValue: raw) ?? .comfortable
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: Key.density)
+            ConfigStore.shared.update { $0.appearance.density = newValue.rawValue }
         }
     }
 }

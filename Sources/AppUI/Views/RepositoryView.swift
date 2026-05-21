@@ -338,6 +338,17 @@ private struct RepositoryActionToolbarView: View {
             }
             .disabled(store.isLoading)
 
+            if let providerURL = providerWebURL {
+                toolbarDivider
+                ToolbarPillButton(
+                    title: providerName,
+                    systemImage: "safari",
+                    helpText: "Open repository on \(providerName) in browser"
+                ) {
+                    NSWorkspace.shared.open(providerURL)
+                }
+            }
+
             Spacer()
 
             SyncStatusPill(store: store)
@@ -403,6 +414,32 @@ private struct RepositoryActionToolbarView: View {
             return "Push \(branch.ahead) commit\(branch.ahead == 1 ? "" : "s") from \(name) to \(upstream)"
         }
         return "\(name) is in sync with \(upstream)"
+    }
+
+    private var providerHint: ProviderHint {
+        guard let remote = store.remotes.first(where: { $0.name == "origin" }) ?? store.remotes.first else {
+            return .unknown
+        }
+        return RemoteURLParser.hint(from: remote)
+    }
+
+    private var providerName: String {
+        switch providerHint {
+        case .github: return "GitHub"
+        case .gitlab: return "GitLab"
+        case .unknown: return ""
+        }
+    }
+
+    private var providerWebURL: URL? {
+        switch providerHint {
+        case .github(let owner, let repo):
+            return GitHubAPI.repoWebURL(owner: owner, repo: repo)
+        case .gitlab(let host, let projectPath):
+            return GitLabAPI.projectWebURL(host: host, projectPath: projectPath)
+        case .unknown:
+            return nil
+        }
     }
 }
 

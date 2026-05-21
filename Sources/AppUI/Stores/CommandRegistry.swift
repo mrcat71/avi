@@ -29,6 +29,9 @@ enum CommandRegistry {
         result.append(AppCommand(id: "view.allCommits", title: "Go to All Commits", subtitle: nil, group: "View", symbol: "clock.arrow.circlepath") {
             setSelection(.allCommits)
         })
+        result.append(AppCommand(id: "view.settings", title: "Open Settings…", subtitle: "Cmd-,", group: "View", symbol: "gear") {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        })
 
         // File / repository
         result.append(AppCommand(id: "repo.refresh", title: "Refresh", subtitle: "Reload status, refs, and history", group: "Repository", symbol: "arrow.clockwise") {

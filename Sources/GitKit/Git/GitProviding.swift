@@ -113,6 +113,9 @@ public protocol GitProviding: Sendable {
 
     /// Subject+body of the last commit, or nil if there are no commits yet.
     func lastCommitMessage(in repository: URL) async throws -> String?
+
+    /// Raw unified diff of staged changes (used as AI input).
+    func stagedDiff(in repository: URL) async throws -> String
 }
 
 public extension GitProviding {

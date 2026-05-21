@@ -6,12 +6,18 @@ struct ChangeListView: View {
     let store: RepositoryStore
     var switchToAllCommits: (() -> Void)? = nil
 
+    @Bindable private var config = ConfigStore.shared
+
     var body: some View {
         VStack(spacing: 0) {
             sectionToolbar
             Divider()
             content
         }
+    }
+
+    private var isTreeMode: Bool {
+        config.config.appearance.fileListMode == "tree"
     }
 
     private var sectionToolbar: some View {
@@ -26,6 +32,19 @@ struct ChangeListView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
+            Button {
+                let next = isTreeMode ? "flat" : "tree"
+                config.update { $0.appearance.fileListMode = next }
+            } label: {
+                Image(systemName: isTreeMode ? "list.bullet" : "rectangle.stack")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isTreeMode ? "Switch to flat list" : "Switch to tree view")
+            .accessibilityLabel(isTreeMode ? "Switch to flat list" : "Switch to tree view")
         }
         .padding(.horizontal, 12)
         .frame(height: 28)
@@ -35,51 +54,126 @@ struct ChangeListView: View {
     private var content: some View {
         if store.entries.isEmpty {
             CleanTreeCard(store: store, switchToAllCommits: switchToAllCommits)
+        } else if isTreeMode {
+            treeList
         } else {
-            List(selection: selection) {
-                if !store.stagedEntries.isEmpty {
-                    Section {
-                        ForEach(store.stagedEntries) { file in
-                            ChangeRow(file: file, staged: true, store: store)
-                                .tag(file.path)
-                        }
-                    } header: {
-                        StagingSectionHeader(
-                            title: "Staged",
-                            count: store.stagedEntries.count,
-                            actionIcon: "minus.rectangle",
-                            actionHelp: "Unstage all",
-                            actionEnabled: store.canUnstageAll
-                        ) {
-                            Task { await store.unstageAll() }
-                        }
-                    }
-                }
+            flatList
+        }
+    }
+
+    private var flatList: some View {
+        List(selection: selection) {
+            if !store.stagedEntries.isEmpty {
                 Section {
-                    if store.unstagedEntries.isEmpty {
-                        Text("Nothing to stage")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                            .padding(.vertical, 2)
-                    } else {
-                        ForEach(store.unstagedEntries) { file in
-                            ChangeRow(file: file, staged: false, store: store)
-                                .tag(file.path)
-                        }
+                    ForEach(store.stagedEntries) { file in
+                        ChangeRow(file: file, staged: true, store: store)
+                            .tag(file.path)
                     }
                 } header: {
                     StagingSectionHeader(
-                        title: "Changes",
-                        count: store.unstagedEntries.count,
-                        actionIcon: "plus.rectangle.on.rectangle",
-                        actionHelp: "Stage all",
-                        actionEnabled: store.canStageAll
+                        title: "Staged",
+                        count: store.stagedEntries.count,
+                        actionIcon: "minus.rectangle",
+                        actionHelp: "Unstage all",
+                        actionEnabled: store.canUnstageAll
                     ) {
-                        Task { await store.stageAll() }
+                        Task { await store.unstageAll() }
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
+            Section {
+                if store.unstagedEntries.isEmpty {
+                    Text("Nothing to stage")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 2)
+                } else {
+                    ForEach(store.unstagedEntries) { file in
+                        ChangeRow(file: file, staged: false, store: store)
+                            .tag(file.path)
+                    }
+                }
+            } header: {
+                StagingSectionHeader(
+                    title: "Changes",
+                    count: store.unstagedEntries.count,
+                    actionIcon: "plus.rectangle.on.rectangle",
+                    actionHelp: "Stage all",
+                    actionEnabled: store.canStageAll
+                ) {
+                    Task { await store.stageAll() }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    private var treeList: some View {
+        List(selection: selection) {
+            if !store.stagedEntries.isEmpty {
+                Section {
+                    treeRows(for: store.stagedEntries, staged: true)
+                } header: {
+                    StagingSectionHeader(
+                        title: "Staged",
+                        count: store.stagedEntries.count,
+                        actionIcon: "minus.rectangle",
+                        actionHelp: "Unstage all",
+                        actionEnabled: store.canUnstageAll
+                    ) {
+                        Task { await store.unstageAll() }
+                    }
+                }
+            }
+            Section {
+                if store.unstagedEntries.isEmpty {
+                    Text("Nothing to stage")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 2)
+                } else {
+                    treeRows(for: store.unstagedEntries, staged: false)
+                }
+            } header: {
+                StagingSectionHeader(
+                    title: "Changes",
+                    count: store.unstagedEntries.count,
+                    actionIcon: "plus.rectangle.on.rectangle",
+                    actionHelp: "Stage all",
+                    actionEnabled: store.canStageAll
+                ) {
+                    Task { await store.stageAll() }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    @ViewBuilder
+    private func treeRows(for entries: [FileStatus], staged: Bool) -> some View {
+        let tree = FileTreeBuilder.build(entries: entries)
+        // Auto-expand root level by adding root folder ids when none are tracked yet for this repo.
+        // (Folders not yet in `expandedFolders` collapse by default; we keep that behavior.)
+        let flat = FileTreeBuilder.flatten(tree, expanded: store.expandedFolders)
+        ForEach(flat) { node in
+            switch node.payload {
+            case .folder(let name, _):
+                FolderTreeRow(
+                    name: name,
+                    path: node.id,
+                    depth: node.depth,
+                    changedCount: node.changedCount,
+                    stagedCount: node.stagedCount,
+                    isExpanded: store.expandedFolders.contains(node.id),
+                    onToggle: { store.toggleFolderExpanded(node.id) }
+                )
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+            case .file(let file):
+                ChangeRow(file: file, staged: staged, store: store)
+                    .tag(file.path)
+                    .padding(.leading, CGFloat(node.depth + 1) * 12)
+            }
         }
     }
 
@@ -298,5 +392,58 @@ private struct ChangeRow: View {
         case .updatedButUnmerged: ("exclamationmark.triangle", .yellow)
         case .unmodified, .ignored: ("circle", .gray)
         }
+    }
+}
+
+private struct FolderTreeRow: View {
+    let name: String
+    let path: String
+    let depth: Int
+    let changedCount: Int
+    let stagedCount: Int
+    let isExpanded: Bool
+    let onToggle: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 5) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                Image(systemName: isExpanded ? "folder.fill" : "folder")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Text(name)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                Text("\(changedCount)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                if stagedCount > 0 {
+                    Text("(\(stagedCount) staged)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.green)
+                }
+                Spacer()
+            }
+            .padding(.leading, CGFloat(depth) * 12 + 8)
+            .padding(.trailing, 8)
+            .frame(height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isHovering ? Color.primary.opacity(0.05) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(path)
+        .accessibilityLabel("\(name) folder, \(changedCount) changed file\(changedCount == 1 ? "" : "s")")
     }
 }

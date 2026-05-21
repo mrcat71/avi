@@ -3,12 +3,18 @@ import SwiftUI
 struct CommitPanelView: View {
     let store: RepositoryStore
 
+    @Bindable private var config = ConfigStore.shared
+
     private let summaryWarn = 50
     private let summaryMax = 72
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
+
+            if let err = store.aiError {
+                aiErrorBanner(err)
+            }
 
             summaryField
             bodyField
@@ -27,6 +33,34 @@ struct CommitPanelView: View {
         .task(id: store.amend) {
             await store.prepareAmendIfNeeded()
         }
+    }
+
+    private func aiErrorBanner(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.system(size: 11))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            Spacer()
+            Button {
+                store.dismissAIError()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss AI error")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.orange.opacity(0.12))
+        )
     }
 
     private var isFormDisabled: Bool {
@@ -67,11 +101,55 @@ struct CommitPanelView: View {
                 .textCase(.uppercase)
                 .tracking(0.5)
             Spacer()
+            if config.config.ai.enabled {
+                generateButton
+            }
             Text(commitHint)
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
+    }
+
+    @ViewBuilder
+    private var generateButton: some View {
+        if store.isGeneratingCommitMessage {
+            Button {
+                store.cancelCommitMessageGeneration()
+            } label: {
+                HStack(spacing: 4) {
+                    ProgressView().controlSize(.mini)
+                    Text("Cancel")
+                        .font(.system(size: 11, weight: .medium))
+                }
+            }
+            .buttonStyle(.plain)
+        } else {
+            Button {
+                store.generateCommitMessage(config: config.config.ai)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 10, weight: .medium))
+                    Text(store.aiLastGenerated == nil ? "Generate" : "Regenerate")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 6)
+                .frame(height: 20)
+                .foregroundStyle(Color.accentColor)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(store.entries.isEmpty)
+            .help(generateHelp)
+            .accessibilityLabel("Generate commit message with AI")
+        }
+    }
+
+    private var generateHelp: String {
+        if !config.config.ai.enabled { return "AI generation is disabled. Enable it in Settings → AI Commit Messages." }
+        if store.stagedEntries.isEmpty { return "Stage files first. Generation reads the staged diff." }
+        return "Generate a commit message from staged changes via \(config.config.ai.backend == "openai" ? "OpenAI API" : "custom command")."
     }
 
     private var summaryField: some View {
