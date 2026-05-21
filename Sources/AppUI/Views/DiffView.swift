@@ -8,12 +8,42 @@ struct DiffDetailView: View {
         if let file = store.selectedFile {
             FileDiffView(title: file.path, diff: store.diff)
         } else {
-            ContentUnavailableView(
-                "No File Selected",
-                systemImage: "doc.text",
-                description: Text("Select a changed file to see its diff.")
-            )
+            EmptyDiffState(store: store)
         }
+    }
+}
+
+private struct EmptyDiffState: View {
+    let store: RepositoryStore
+
+    var body: some View {
+        AviEmptyState(
+            icon: store.entries.isEmpty ? "checkmark.seal" : "doc.text",
+            title: headline,
+            message: subhead,
+            iconTint: store.entries.isEmpty ? DS.Palette.success : DS.Palette.textTertiary
+        ) {
+            if store.canStageAll {
+                AviButton("Stage all changes", icon: "plus.rectangle.on.rectangle", variant: .secondary, size: .small) {
+                    Task { await store.stageAll() }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            AviButton("Refresh", icon: "arrow.clockwise", variant: .secondary, size: .small) {
+                Task { await store.refresh() }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var headline: String {
+        store.entries.isEmpty ? "Working tree clean" : "No file selected"
+    }
+
+    private var subhead: String {
+        store.entries.isEmpty
+            ? "Nothing to stage or commit right now."
+            : "Pick a changed file on the left to see its diff."
     }
 }
 
@@ -24,11 +54,13 @@ struct FileDiffView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Divider()
             content
         }
@@ -75,16 +107,18 @@ private struct DiffLineRow: View {
             lineNumber(line.newLineNumber)
             Text(marker + line.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 8)
+                .padding(.leading, 6)
         }
-        .font(.system(.body, design: .monospaced))
+        .font(.system(size: 12, design: .monospaced))
         .background(background)
     }
 
     private func lineNumber(_ value: Int?) -> some View {
         Text(value.map(String.init) ?? "")
-            .foregroundStyle(.secondary)
-            .frame(width: 44, alignment: .trailing)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(.tertiary)
+            .frame(width: 38, alignment: .trailing)
+            .padding(.horizontal, 2)
     }
 
     private var marker: String {
@@ -98,8 +132,8 @@ private struct DiffLineRow: View {
 
     private var background: Color {
         switch line.kind {
-        case .addition: .green.opacity(0.15)
-        case .deletion: .red.opacity(0.15)
+        case .addition: .green.opacity(0.12)
+        case .deletion: .red.opacity(0.12)
         default: .clear
         }
     }

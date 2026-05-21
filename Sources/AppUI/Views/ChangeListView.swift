@@ -1,56 +1,81 @@
+import AppKit
 import GitKit
 import SwiftUI
 
 struct ChangeListView: View {
     let store: RepositoryStore
+    var switchToAllCommits: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text(changeSummary)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer()
-                Button {
-                    Task { await store.stageAll() }
-                } label: {
-                    Image(systemName: "plus.square.on.square")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!store.canStageAll)
-                .help("Stage All")
-
-                Button {
-                    Task { await store.unstageAll() }
-                } label: {
-                    Image(systemName: "minus.square")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!store.canUnstageAll)
-                .help("Unstage All")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-
+            sectionToolbar
             Divider()
+            content
+        }
+    }
 
+    private var sectionToolbar: some View {
+        HStack(spacing: 6) {
+            Text("Changes")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+            Spacer()
+            Text(summary)
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 28)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if store.entries.isEmpty {
+            CleanTreeCard(store: store, switchToAllCommits: switchToAllCommits)
+        } else {
             List(selection: selection) {
                 if !store.stagedEntries.isEmpty {
-                    Section("Staged") {
+                    Section {
                         ForEach(store.stagedEntries) { file in
                             ChangeRow(file: file, staged: true, store: store)
+                                .tag(file.path)
+                        }
+                    } header: {
+                        StagingSectionHeader(
+                            title: "Staged",
+                            count: store.stagedEntries.count,
+                            actionIcon: "minus.rectangle",
+                            actionHelp: "Unstage all",
+                            actionEnabled: store.canUnstageAll
+                        ) {
+                            Task { await store.unstageAll() }
                         }
                     }
                 }
-                Section("Changes") {
+                Section {
                     if store.unstagedEntries.isEmpty {
-                        Text("No changes")
-                            .foregroundStyle(.secondary)
+                        Text("Nothing to stage")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .padding(.vertical, 2)
                     } else {
                         ForEach(store.unstagedEntries) { file in
                             ChangeRow(file: file, staged: false, store: store)
+                                .tag(file.path)
                         }
+                    }
+                } header: {
+                    StagingSectionHeader(
+                        title: "Changes",
+                        count: store.unstagedEntries.count,
+                        actionIcon: "plus.rectangle.on.rectangle",
+                        actionHelp: "Stage all",
+                        actionEnabled: store.canStageAll
+                    ) {
+                        Task { await store.stageAll() }
                     }
                 }
             }
@@ -68,11 +93,97 @@ struct ChangeListView: View {
         )
     }
 
-    private var changeSummary: String {
+    private var summary: String {
         let staged = store.stagedEntries.count
         let unstaged = store.unstagedEntries.count
         if staged == 0 && unstaged == 0 { return "Clean" }
-        return "\(staged) staged, \(unstaged) changed"
+        if staged == 0 { return "\(unstaged) changed" }
+        if unstaged == 0 { return "\(staged) staged" }
+        return "\(staged) staged · \(unstaged) changed"
+    }
+}
+
+private struct StagingSectionHeader: View {
+    let title: String
+    let count: Int
+    let actionIcon: String
+    let actionHelp: String
+    let actionEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+            Text("\(count)")
+                .font(.system(size: 10, weight: .medium))
+                .padding(.horizontal, 5)
+                .frame(minHeight: 14)
+                .background(
+                    Capsule().fill(Color.primary.opacity(0.10))
+                )
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button(action: action) {
+                Image(systemName: actionIcon)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!actionEnabled)
+            .opacity(actionEnabled ? 1 : 0.35)
+            .help(actionHelp)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct CleanTreeCard: View {
+    let store: RepositoryStore
+    var switchToAllCommits: (() -> Void)? = nil
+
+    var body: some View {
+        AviEmptyState(
+            icon: "checkmark.seal",
+            title: "Working tree clean",
+            message: subhead,
+            iconTint: DS.Palette.success
+        ) {
+            if let switchToAllCommits {
+                AviButton("View History", icon: "clock.arrow.circlepath", variant: .secondary, size: .small, action: switchToAllCommits)
+                    .frame(maxWidth: .infinity)
+            }
+            AviButton("Create Branch", icon: "arrow.triangle.branch", variant: .secondary, size: .small) {
+                NotificationCenter.default.post(name: .aviCreateBranch, object: nil)
+            }
+            .frame(maxWidth: .infinity)
+            if store.branch?.upstream != nil {
+                AviButton("Pull", icon: "arrow.down.to.line", variant: .secondary, size: .small) {
+                    Task { await store.pull() }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            AviButton("Open Folder", icon: "folder", variant: .secondary, size: .small) {
+                guard let root = store.root else { return }
+                NSWorkspace.shared.open(root)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var subhead: String {
+        guard let branch = store.branch?.name else {
+            return "No staged or unstaged changes."
+        }
+        if let upstream = store.branch?.upstream {
+            return "On \(branch). Tracking \(upstream)."
+        }
+        return "On \(branch)."
     }
 }
 
@@ -83,29 +194,33 @@ private struct ChangeRow: View {
     @State private var confirmingDiscard = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Image(systemName: badge.symbol)
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(badge.color)
-                .frame(width: 14)
+                .frame(width: 12)
             Text(displayName)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
             if staged {
-                actionButton("minus.circle", help: "Unstage") {
+                inlineAction("minus.circle", help: "Unstage") {
                     Task { await store.unstage(file) }
                 }
             } else {
-                actionButton("plus.circle", help: "Stage") {
+                inlineAction("plus.circle", help: "Stage") {
                     Task { await store.stage(file) }
                 }
-                actionButton("arrow.uturn.backward.circle", help: "Discard") {
+                inlineAction("arrow.uturn.backward.circle", help: "Discard") {
                     confirmingDiscard = true
                 }
             }
         }
-        .font(.system(size: 13))
-        .padding(.vertical, 2)
+        .font(.system(size: 12))
+        .padding(.vertical, 1)
+        .contextMenu {
+            fileContextMenu
+        }
         .confirmationDialog(
             "Discard changes to \(file.path)?",
             isPresented: $confirmingDiscard,
@@ -120,11 +235,49 @@ private struct ChangeRow: View {
         }
     }
 
-    private func actionButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+    @ViewBuilder
+    private var fileContextMenu: some View {
+        if staged {
+            Button("Unstage") {
+                Task { await store.unstage(file) }
+            }
+        } else {
+            Button("Stage") {
+                Task { await store.stage(file) }
+            }
+            Button("Discard…", role: .destructive) {
+                confirmingDiscard = true
+            }
+        }
+
+        Divider()
+
+        Button("Open File") {
+            store.openFile(file)
+        }
+        Button("Reveal in Finder") {
+            store.revealInFinder(file)
+        }
+
+        Menu("Copy Path") {
+            Button("Relative") {
+                store.copyRelativePath(file)
+            }
+            Button("Absolute") {
+                store.copyAbsolutePath(file)
+            }
+        }
+    }
+
+    private func inlineAction(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .help(help)
     }
 

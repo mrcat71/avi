@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GitKit
 
@@ -21,14 +22,24 @@ public final class RepositoryStore: Identifiable {
     public private(set) var refs: RepositoryRefs = .empty
     public private(set) var remotes: [GitRemote] = []
     public private(set) var remoteOutput: String?
+    public private(set) var lastFetched: Date?
     public private(set) var isLoading = false
     public private(set) var isHistoryLoading = false
     public private(set) var isRefsLoading = false
     public private(set) var isRemoteOperationRunning = false
     public private(set) var errorMessage: String?
+    public var historyFilter: HistoryFilter = .default
 
-    public var commitMessage: String = ""
+    public var commitSummary: String = ""
+    public var commitBody: String = ""
     public var amend: Bool = false
+
+    public var commitMessage: String {
+        let trimmedSummary = commitSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBody = commitBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedBody.isEmpty { return trimmedSummary }
+        return trimmedSummary + "\n\n" + trimmedBody
+    }
 
     private let git: GitProviding
     private var watcher: RepositoryWatcher?
@@ -61,8 +72,8 @@ public final class RepositoryStore: Identifiable {
     }
 
     public var canCommit: Bool {
-        let hasMessage = !commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return hasMessage && ((amend && canAmend) || !stagedEntries.isEmpty)
+        let hasSummary = !commitSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasSummary && ((amend && canAmend) || !stagedEntries.isEmpty)
     }
 
     public var canStageAll: Bool {
@@ -114,6 +125,7 @@ public final class RepositoryStore: Identifiable {
                 diff = nil
             }
             await refreshRemotes()
+            refreshLastFetched()
             if !status.branch.isUnborn {
                 await refreshRefs()
                 await refreshHistory()
@@ -123,6 +135,16 @@ public final class RepositoryStore: Identifiable {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func refreshLastFetched() {
+        guard let root else {
+            lastFetched = nil
+            return
+        }
+        let fetchHead = root.appendingPathComponent(".git").appendingPathComponent("FETCH_HEAD")
+        let attributes = try? FileManager.default.attributesOfItem(atPath: fetchHead.path)
+        lastFetched = attributes?[.modificationDate] as? Date
     }
 
     public func select(_ file: FileStatus?) async {
@@ -178,9 +200,33 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
+    public func createBranch(named name: String, startPoint: String?, checkout: Bool) async {
+        await perform {
+            try await $0.createBranch(named: name, startPoint: startPoint, checkout: checkout, in: $1)
+        }
+    }
+
     public func deleteBranch(named name: String) async {
         await perform {
             try await $0.deleteBranch(named: name, in: $1)
+        }
+    }
+
+    public func renameBranch(from oldName: String, to newName: String) async {
+        await perform {
+            try await $0.renameBranch(from: oldName, to: newName, in: $1)
+        }
+    }
+
+    public func setUpstream(branch: String, upstream: String) async {
+        await perform {
+            try await $0.setUpstream(branch: branch, upstream: upstream, in: $1)
+        }
+    }
+
+    public func unsetUpstream(branch: String) async {
+        await perform {
+            try await $0.unsetUpstream(branch: branch, in: $1)
         }
     }
 
@@ -205,10 +251,27 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
+    public func pull(branch: String?) async {
+        await performRemoteOperation {
+            try await $0.pull(branch: branch, in: $1)
+        }
+    }
+
     public func push() async {
         await performRemoteOperation {
             try await $0.push(in: $1)
         }
+    }
+
+    public func push(branch: String?) async {
+        await performRemoteOperation {
+            try await $0.push(branch: branch, in: $1)
+        }
+    }
+
+    public func setHistoryFilter(_ filter: HistoryFilter) async {
+        historyFilter = filter
+        await refreshHistory()
     }
 
     public func refreshHistory(limit: Int = 200) async {
@@ -217,8 +280,8 @@ public final class RepositoryStore: Identifiable {
         defer { isHistoryLoading = false }
 
         do {
-            let commits = try await git.history(in: root, limit: limit)
-            historyRows = CommitGraph.assignRows(for: commits)
+            let commits = try await git.history(in: root, limit: limit, filter: historyFilter)
+            historyRows = CommitGraph.assignRows(for: commits, refs: refs)
 
             if let selectedCommitOID,
                let row = historyRows.first(where: { $0.commit.oid == selectedCommitOID }) {
@@ -270,14 +333,15 @@ public final class RepositoryStore: Identifiable {
 
     public func commit() async {
         guard let root, canCommit else { return }
-        let message = commitMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = commitMessage
         do {
             if amend {
                 try await git.amend(message: message, in: root)
             } else {
                 try await git.commit(message: message, in: root)
             }
-            commitMessage = ""
+            commitSummary = ""
+            commitBody = ""
             amend = false
             await refresh()
         } catch {
@@ -285,14 +349,54 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
-    /// When amend is enabled and no message has been typed, prefill the last commit message.
+    /// When amend is enabled and no message has been typed, prefill from the last commit message,
+    /// splitting summary (first line) from body (everything after the first blank line).
     public func prepareAmendIfNeeded() async {
-        guard amend, commitMessage.isEmpty, let root else { return }
-        commitMessage = (try? await git.lastCommitMessage(in: root)) ?? ""
+        guard amend, commitSummary.isEmpty, commitBody.isEmpty, let root else { return }
+        guard let last = try? await git.lastCommitMessage(in: root), !last.isEmpty else { return }
+
+        let lines = last.split(separator: "\n", omittingEmptySubsequences: false)
+        if let firstBlank = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            commitSummary = lines.prefix(firstBlank).joined(separator: "\n")
+            commitBody = lines.suffix(from: firstBlank + 1).joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            commitSummary = last
+            commitBody = ""
+        }
     }
 
     public func dismissError() {
         errorMessage = nil
+    }
+
+    // MARK: - File actions (AppKit wrappers, no GitKit)
+
+    public func absoluteURL(for file: FileStatus) -> URL? {
+        guard let root else { return nil }
+        return root.appendingPathComponent(file.path)
+    }
+
+    public func openFile(_ file: FileStatus) {
+        guard let url = absoluteURL(for: file) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    public func revealInFinder(_ file: FileStatus) {
+        guard let url = absoluteURL(for: file), let root else { return }
+        NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: root.path)
+    }
+
+    public func copyAbsolutePath(_ file: FileStatus) {
+        guard let url = absoluteURL(for: file) else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url.path, forType: .string)
+    }
+
+    public func copyRelativePath(_ file: FileStatus) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(file.path, forType: .string)
     }
 
     private func loadDiff(for file: FileStatus) async {

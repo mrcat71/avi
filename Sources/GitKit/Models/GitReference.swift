@@ -1,3 +1,5 @@
+import Foundation
+
 public enum GitReferenceKind: String, Sendable, Equatable {
     case localBranch
     case remoteBranch
@@ -14,6 +16,11 @@ public struct GitReference: Sendable, Equatable, Identifiable {
     public let upstream: String?
     public let isCurrent: Bool
     public let subject: String?
+    public let ahead: Int?
+    public let behind: Int?
+    public let isUpstreamGone: Bool
+    public let taggerDate: Date?
+    public let annotatedMessage: String?
 
     public init(
         name: String,
@@ -22,7 +29,12 @@ public struct GitReference: Sendable, Equatable, Identifiable {
         kind: GitReferenceKind,
         upstream: String? = nil,
         isCurrent: Bool = false,
-        subject: String? = nil
+        subject: String? = nil,
+        ahead: Int? = nil,
+        behind: Int? = nil,
+        isUpstreamGone: Bool = false,
+        taggerDate: Date? = nil,
+        annotatedMessage: String? = nil
     ) {
         self.name = name
         self.fullName = fullName
@@ -31,6 +43,11 @@ public struct GitReference: Sendable, Equatable, Identifiable {
         self.upstream = upstream
         self.isCurrent = isCurrent
         self.subject = subject
+        self.ahead = ahead
+        self.behind = behind
+        self.isUpstreamGone = isUpstreamGone
+        self.taggerDate = taggerDate
+        self.annotatedMessage = annotatedMessage
     }
 }
 

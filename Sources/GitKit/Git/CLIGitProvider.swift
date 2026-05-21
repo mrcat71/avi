@@ -38,18 +38,31 @@ public struct CLIGitProvider: GitProviding {
         return DiffParser.parse(result.stdoutString)
     }
 
-    public func history(in repository: URL, limit: Int = 200) async throws -> [CommitSummary] {
+    public func history(in repository: URL, limit: Int, filter: HistoryFilter) async throws -> [CommitSummary] {
         let prettyFormat = "%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x00"
+        var arguments: [String] = [
+            "log",
+            "--topo-order",
+            "--date=iso-strict",
+            "--pretty=format:\(prettyFormat)",
+            "-n",
+            String(limit),
+        ]
+        if filter.hideMerges {
+            arguments.append("--no-merges")
+        }
+        switch filter.scope {
+        case .currentBranch:
+            break
+        case .allBranches:
+            arguments.append("--all")
+        case .ref(let name):
+            arguments.append(name)
+        }
+
         let result = try await ProcessRunner.run(
             executable: gitURL,
-            arguments: [
-                "log",
-                "--topo-order",
-                "--date=iso-strict",
-                "--pretty=format:\(prettyFormat)",
-                "-n",
-                String(limit),
-            ],
+            arguments: arguments,
             workingDirectory: repository,
             environment: gitEnvironment()
         )
@@ -57,11 +70,12 @@ public struct CLIGitProvider: GitProviding {
         if result.exitCode != 0 {
             let stderr = result.stderrString
             if stderr.contains("does not have any commits yet")
-                || stderr.contains("your current branch") {
+                || stderr.contains("your current branch")
+                || stderr.contains("unknown revision") {
                 return []
             }
             throw GitError.commandFailed(
-                command: "git log --topo-order --date=iso-strict -n \(limit)",
+                command: (["git"] + arguments).joined(separator: " "),
                 exitCode: result.exitCode,
                 stderr: stderr
             )
@@ -71,7 +85,7 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func refs(in repository: URL) async throws -> RepositoryRefs {
-        let format = "%(refname)%1f%(objectname)%1f%(upstream:short)%1f%(HEAD)%1f%(subject)%00"
+        let format = "%(refname)%1f%(objectname)%1f%(upstream:short)%1f%(upstream:track)%1f%(HEAD)%1f%(subject)%1f%(taggerdate:iso-strict)%1f%(contents:subject)%00"
         let result = try await run([
             "for-each-ref",
             "--format=\(format)",
@@ -140,6 +154,23 @@ public struct CLIGitProvider: GitProviding {
         try await run(arguments, in: repository)
     }
 
+    public func renameBranch(from oldName: String, to newName: String, in repository: URL) async throws {
+        let cleanedNew = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedNew.isEmpty else {
+            throw GitError.invalidInput("Branch name cannot be empty.")
+        }
+        try await run(["check-ref-format", "--branch", cleanedNew], in: repository)
+        try await run(["branch", "-m", oldName, cleanedNew], in: repository)
+    }
+
+    public func setUpstream(branch: String, upstream: String, in repository: URL) async throws {
+        try await run(["branch", "--set-upstream-to=\(upstream)", branch], in: repository)
+    }
+
+    public func unsetUpstream(branch: String, in repository: URL) async throws {
+        try await run(["branch", "--unset-upstream", branch], in: repository)
+    }
+
     public func deleteBranch(named name: String, in repository: URL) async throws {
         try await run(["branch", "-d", "--", name], in: repository)
     }
@@ -156,12 +187,64 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func pull(in repository: URL) async throws -> GitRemoteOperationResult {
+        try await pull(branch: nil, in: repository)
+    }
+
+    public func pull(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult {
+        let currentStatus = try await status(in: repository)
+        let targetBranch = branch ?? currentStatus.branch.name
+
+        if let targetBranch, targetBranch != currentStatus.branch.name {
+            // Pull a non-current branch by fast-forwarding it from its upstream.
+            let refs = try await refs(in: repository)
+            guard let ref = refs.localBranches.first(where: { $0.name == targetBranch }) else {
+                throw GitError.invalidInput("Branch '\(targetBranch)' not found.")
+            }
+            guard let upstream = ref.upstream else {
+                throw GitError.invalidInput("Branch '\(targetBranch)' has no upstream configured.")
+            }
+            let parts = upstream.split(separator: "/", maxSplits: 1)
+            guard parts.count == 2 else {
+                throw GitError.invalidInput("Could not parse upstream '\(upstream)'.")
+            }
+            let remoteName = String(parts[0])
+            let remoteBranch = String(parts[1])
+            // git fetch <remote> <remote-branch>:<local-branch> performs a fast-forward into the local ref.
+            let result = try await run(["fetch", remoteName, "\(remoteBranch):\(targetBranch)"], in: repository)
+            return remoteResult(result)
+        }
+
         let result = try await run(["pull", "--ff-only"], in: repository)
         return remoteResult(result)
     }
 
     public func push(in repository: URL) async throws -> GitRemoteOperationResult {
+        try await push(branch: nil, in: repository)
+    }
+
+    public func push(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult {
         let currentStatus = try await status(in: repository)
+
+        if let branch, branch != currentStatus.branch.name {
+            // Push a non-current branch using its configured upstream.
+            let refs = try await refs(in: repository)
+            guard let ref = refs.localBranches.first(where: { $0.name == branch }) else {
+                throw GitError.invalidInput("Branch '\(branch)' not found.")
+            }
+            guard let upstream = ref.upstream else {
+                throw GitError.invalidInput("Branch '\(branch)' has no upstream. Set upstream first.")
+            }
+            let parts = upstream.split(separator: "/", maxSplits: 1)
+            guard parts.count == 2 else {
+                throw GitError.invalidInput("Could not parse upstream '\(upstream)'.")
+            }
+            let remoteName = String(parts[0])
+            let remoteBranch = String(parts[1])
+            let result = try await run(["push", remoteName, "\(branch):\(remoteBranch)"], in: repository)
+            return remoteResult(result)
+        }
+
+        // Push the current branch (legacy behavior with auto-upstream).
         guard let branchName = currentStatus.branch.name else {
             throw GitError.invalidInput("Cannot push from detached HEAD.")
         }

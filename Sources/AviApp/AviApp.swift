@@ -61,6 +61,37 @@ struct AviApp: App {
                 }
                 .keyboardShortcut("p", modifiers: [.command, .option])
             }
+
+            CommandMenu("View") {
+                Button("Command Palette") {
+                    NotificationCenter.default.post(name: .aviOpenCommandPalette, object: nil)
+                }
+                .keyboardShortcut("k", modifiers: [.command])
+
+                Button("Command Palette (alt)") {
+                    NotificationCenter.default.post(name: .aviOpenCommandPalette, object: nil)
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Go to Local Changes") {
+                    NotificationCenter.default.post(name: .aviGoToLocalChanges, object: nil)
+                }
+                .keyboardShortcut("1", modifiers: [.command])
+
+                Button("Go to All Commits") {
+                    NotificationCenter.default.post(name: .aviGoToAllCommits, object: nil)
+                }
+                .keyboardShortcut("2", modifiers: [.command])
+
+                Divider()
+
+                Button("Toggle History Scope") {
+                    NotificationCenter.default.post(name: .aviToggleHistoryScope, object: nil)
+                }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+            }
         }
     }
 }
