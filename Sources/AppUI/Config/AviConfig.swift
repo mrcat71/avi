@@ -2,7 +2,7 @@ import Foundation
 
 /// On-disk configuration schema. Lives at `~/Library/Application Support/Avi/config.toml`.
 /// Codable conformance bridges to/from `[String: Any]` (used by `MiniTOML`).
-public struct AviConfig: Codable, Equatable {
+public struct AviConfig: Codable, Equatable, Sendable {
     public var version: Int
     public var general: GeneralConfig
     public var appearance: AppearanceConfig
@@ -33,16 +33,26 @@ public struct AviConfig: Codable, Equatable {
     }
 }
 
-public struct GeneralConfig: Codable, Equatable {
-    public var telemetryEnabled: Bool
-    public var checkForUpdates: Bool
-    public init(telemetryEnabled: Bool = false, checkForUpdates: Bool = false) {
-        self.telemetryEnabled = telemetryEnabled
-        self.checkForUpdates = checkForUpdates
+public struct GeneralConfig: Codable, Equatable, Sendable {
+    // Telemetry and update-check toggles were removed in iter 5 because the
+    // app doesn't implement those features. Old config files containing those
+    // keys still decode cleanly because we ignore unknown keys.
+    public init() {}
+
+    public init(from decoder: Decoder) throws {
+        // Tolerant decoder: silently drop any legacy keys.
+        _ = try? decoder.container(keyedBy: AnyCodingKey.self)
+    }
+
+    private struct AnyCodingKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
     }
 }
 
-public struct AppearanceConfig: Codable, Equatable {
+public struct AppearanceConfig: Codable, Equatable, Sendable {
     public var theme: String        // system | light | dark
     public var density: String      // compact | comfortable
     public var fontSize: Int
@@ -67,7 +77,7 @@ public struct AppearanceConfig: Codable, Equatable {
     }
 }
 
-public struct GitConfig: Codable, Equatable {
+public struct GitConfig: Codable, Equatable, Sendable {
     public var defaultAuthorName: String
     public var defaultAuthorEmail: String
     public var signCommits: Bool
@@ -98,14 +108,14 @@ public struct GitConfig: Codable, Equatable {
     }
 }
 
-public struct IntegrationsConfig: Codable, Equatable {
+public struct IntegrationsConfig: Codable, Equatable, Sendable {
     public var accounts: [ProviderAccount]
     public init(accounts: [ProviderAccount] = []) {
         self.accounts = accounts
     }
 }
 
-public struct ProviderAccount: Codable, Equatable, Identifiable {
+public struct ProviderAccount: Codable, Equatable, Identifiable, Sendable {
     public var id: String           // uuid string
     public var kind: String         // "github" | "gitlab"
     public var instanceURL: String  // empty = github.com or gitlab.com
@@ -133,7 +143,7 @@ public struct ProviderAccount: Codable, Equatable, Identifiable {
     }
 }
 
-public struct AIConfig: Codable, Equatable {
+public struct AIConfig: Codable, Equatable, Sendable {
     public var enabled: Bool
     public var backend: String        // command | openai
     public var model: String
@@ -147,6 +157,7 @@ public struct AIConfig: Codable, Equatable {
     public var commandTemplate: String
     public var openAIBaseURL: String
     public var openAIKeychainItem: String
+    public var timeoutSeconds: Int
 
     public init(
         enabled: Bool = false,
@@ -161,7 +172,8 @@ public struct AIConfig: Codable, Equatable {
         bodyWrap: Int = 72,
         commandTemplate: String = "codex exec --model ${model}",
         openAIBaseURL: String = "https://api.openai.com/v1",
-        openAIKeychainItem: String = "avi.openai.apiKey"
+        openAIKeychainItem: String = "avi.openai.apiKey",
+        timeoutSeconds: Int = 120
     ) {
         self.enabled = enabled
         self.backend = backend
@@ -176,6 +188,7 @@ public struct AIConfig: Codable, Equatable {
         self.commandTemplate = commandTemplate
         self.openAIBaseURL = openAIBaseURL
         self.openAIKeychainItem = openAIKeychainItem
+        self.timeoutSeconds = timeoutSeconds
     }
 
     public static let defaultPromptTemplate = """
@@ -189,9 +202,29 @@ public struct AIConfig: Codable, Equatable {
     - Use Conventional Commits style:
       <type>(<scope>): <summary>
     """
+
+    // Tolerant decoder: any field can be missing in an older config file.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = AIConfig()
+        self.enabled = (try? c.decode(Bool.self, forKey: .enabled)) ?? defaults.enabled
+        self.backend = (try? c.decode(String.self, forKey: .backend)) ?? defaults.backend
+        self.model = (try? c.decode(String.self, forKey: .model)) ?? defaults.model
+        self.temperature = (try? c.decode(Double.self, forKey: .temperature)) ?? defaults.temperature
+        self.maxTokens = (try? c.decode(Int.self, forKey: .maxTokens)) ?? defaults.maxTokens
+        self.promptTemplate = (try? c.decode(String.self, forKey: .promptTemplate)) ?? defaults.promptTemplate
+        self.conventionalCommits = (try? c.decode(Bool.self, forKey: .conventionalCommits)) ?? defaults.conventionalCommits
+        self.subjectSoftLimit = (try? c.decode(Int.self, forKey: .subjectSoftLimit)) ?? defaults.subjectSoftLimit
+        self.subjectHardLimit = (try? c.decode(Int.self, forKey: .subjectHardLimit)) ?? defaults.subjectHardLimit
+        self.bodyWrap = (try? c.decode(Int.self, forKey: .bodyWrap)) ?? defaults.bodyWrap
+        self.commandTemplate = (try? c.decode(String.self, forKey: .commandTemplate)) ?? defaults.commandTemplate
+        self.openAIBaseURL = (try? c.decode(String.self, forKey: .openAIBaseURL)) ?? defaults.openAIBaseURL
+        self.openAIKeychainItem = (try? c.decode(String.self, forKey: .openAIKeychainItem)) ?? defaults.openAIKeychainItem
+        self.timeoutSeconds = (try? c.decode(Int.self, forKey: .timeoutSeconds)) ?? defaults.timeoutSeconds
+    }
 }
 
-public struct ExternalToolsConfig: Codable, Equatable {
+public struct ExternalToolsConfig: Codable, Equatable, Sendable {
     public var gitPath: String
     public var ghPath: String
     public var glabPath: String
@@ -225,7 +258,7 @@ public struct ExternalToolsConfig: Codable, Equatable {
     }
 }
 
-public struct AdvancedConfig: Codable, Equatable {
+public struct AdvancedConfig: Codable, Equatable, Sendable {
     public var historyLimit: Int
     public var verboseLogging: Bool
 

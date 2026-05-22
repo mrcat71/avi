@@ -3,9 +3,65 @@ import SwiftUI
 struct AISettingsView: View {
     @Bindable var store = ConfigStore.shared
     @State private var openAIKey: String = ""
+    @State private var validation: AIValidationReport?
+    @State private var isChecking = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            SettingsGroup("Validation") {
+                SettingsFormRow("Status", description: "Checked before generation. Re-runs on demand.") {
+                    HStack(spacing: 8) {
+                        if isChecking {
+                            ProgressView().controlSize(.mini)
+                        } else if let v = validation {
+                            Image(systemName: v.isValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(v.isValid ? .green : .orange)
+                            Text(v.isValid ? "OK" : "\(v.messages.count) issue\(v.messages.count == 1 ? "" : "s")")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(v.isValid ? .green : .orange)
+                        } else {
+                            Text("Not checked yet")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Re-check", action: runValidation)
+                    }
+                }
+                if let v = validation {
+                    if let exe = v.resolvedExecutable {
+                        Divider().padding(.vertical, 4)
+                        SettingsFormRow("Resolved") {
+                            Text(exe)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    if let version = v.detectedVersion {
+                        Divider().padding(.vertical, 4)
+                        SettingsFormRow("Version") {
+                            Text(version)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    if !v.messages.isEmpty {
+                        Divider().padding(.vertical, 4)
+                        SettingsFormRow("Issues") {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(v.messages, id: \.self) { msg in
+                                    Text("• \(msg)")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             SettingsGroup("Generation") {
                 SettingsFormRow("Enable AI commit messages") {
                     Toggle("", isOn: bind(\.ai.enabled))
@@ -42,6 +98,13 @@ struct AISettingsView: View {
                 SettingsFormRow("Max tokens") {
                     Stepper(value: bind(\.ai.maxTokens), in: 100...4000, step: 100) {
                         Text("\(store.config.ai.maxTokens)")
+                            .font(.system(size: 12, design: .monospaced))
+                    }
+                }
+                Divider().padding(.vertical, 4)
+                SettingsFormRow("Timeout", description: "Kill the AI command if it doesn't finish.") {
+                    Stepper(value: bind(\.ai.timeoutSeconds), in: 30...600, step: 30) {
+                        Text("\(store.config.ai.timeoutSeconds) seconds")
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
@@ -157,5 +220,17 @@ struct AISettingsView: View {
             get: { store.config[keyPath: kp] },
             set: { v in store.update { $0[keyPath: kp] = v } }
         )
+    }
+
+    private func runValidation() {
+        isChecking = true
+        let snapshot = store.config.ai
+        Task {
+            let report = await AICLIValidator.validate(snapshot)
+            await MainActor.run {
+                validation = report
+                isChecking = false
+            }
+        }
     }
 }

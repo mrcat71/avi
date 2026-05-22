@@ -9,6 +9,11 @@ struct GitHubSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            ProviderInfoBanner(
+                provider: "GitHub",
+                features: "Open on GitHub, create pull requests, view PR status"
+            )
+
             SettingsGroup("Accounts") {
                 if githubAccounts.isEmpty {
                     SettingsFormRow("No GitHub account") {
@@ -36,11 +41,19 @@ struct GitHubSettingsView: View {
                     }
                 }
                 SettingsFormRow("Add account") {
-                    HStack(spacing: 8) {
-                        Button("Sign in with browser") { showingDeviceFlow = true }
-                        Button("Use Personal Access Token") {
-                            patValue = ""
-                            showingPATSheet = true
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Button("Sign in with browser") { showingDeviceFlow = true }
+                                .disabled(!isDeviceFlowConfigured)
+                            Button("Use Personal Access Token") {
+                                patValue = ""
+                                showingPATSheet = true
+                            }
+                        }
+                        if !isDeviceFlowConfigured {
+                            Text("Browser sign-in is planned. Use a Personal Access Token for now.")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.orange)
                         }
                     }
                 }
@@ -69,6 +82,10 @@ struct GitHubSettingsView: View {
 
     private var githubAccounts: [ProviderAccount] {
         store.config.integrations.accounts.filter { $0.kind == "github" }
+    }
+
+    private var isDeviceFlowConfigured: Bool {
+        !GitHubDeviceFlowConfig.clientID.isEmpty
     }
 
     private func statusColor(_ s: String) -> Color {

@@ -48,8 +48,19 @@ public struct SettingsRoot: View {
     public var body: some View {
         NavigationSplitView {
             List(SettingsSection.allCases, selection: $selection) { section in
-                Label(section.title, systemImage: section.systemImage)
-                    .tag(section)
+                HStack(spacing: 6) {
+                    Label(section.title, systemImage: section.systemImage)
+                    Spacer()
+                    if shouldShowPlannedChip(section) {
+                        Text("Planned")
+                            .font(.system(size: 9, weight: .semibold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.orange.opacity(0.18)))
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .tag(section)
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 200)
         } detail: {
@@ -60,6 +71,13 @@ public struct SettingsRoot: View {
             .navigationTitle(selection.title)
         }
         .frame(minWidth: 760, minHeight: 520)
+    }
+
+    private func shouldShowPlannedChip(_ section: SettingsSection) -> Bool {
+        switch section {
+        case .github: return GitHubDeviceFlowConfig.clientID.isEmpty
+        default: return false
+        }
     }
 
     @ViewBuilder

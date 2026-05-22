@@ -4,6 +4,8 @@ struct ExternalToolsSettingsView: View {
     @Bindable var store = ConfigStore.shared
     @State private var detection: [DetectedTool] = []
     @State private var isDetecting = false
+    @State private var testing: Set<String> = []
+    @State private var testResults: [String: AICLIValidator.TestResult] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -59,11 +61,83 @@ struct ExternalToolsSettingsView: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
+                    Spacer()
+                    if tool.isAvailable {
+                        Button(action: { runTest(tool: tool) }) {
+                            if testing.contains(tool.id) {
+                                ProgressView().controlSize(.mini)
+                            } else {
+                                Text("Test")
+                            }
+                        }
+                        .disabled(testing.contains(tool.id))
+                    }
                 }
                 TextField("Override path…", text: overrideBinding(for: tool.id))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 11, design: .monospaced))
                     .frame(maxWidth: 420)
+
+                if let result = testResults[tool.id] {
+                    testResultView(result)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func testResultView(_ result: AICLIValidator.TestResult) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                if result.timedOut {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .foregroundStyle(.orange)
+                    Text("Timed out after \(result.durationMS / 1000)s")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.orange)
+                } else if let exit = result.exitCode, exit == 0 {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("exit 0 · \(result.durationMS) ms")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.green)
+                } else {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                    Text("exit \(result.exitCode.map(String.init) ?? "?") · \(result.durationMS) ms")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.red)
+                }
+            }
+            if !result.stdoutFirstLine.isEmpty {
+                Text("stdout: \(result.stdoutFirstLine)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if !result.stderrFirstLine.isEmpty {
+                Text("stderr: \(result.stderrFirstLine)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.red.opacity(0.85))
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.primary.opacity(0.04))
+        )
+    }
+
+    private func runTest(tool: DetectedTool) {
+        guard let path = tool.detectedPath else { return }
+        testing.insert(tool.id)
+        Task {
+            let result = await AICLIValidator.runTest(executable: path)
+            await MainActor.run {
+                testResults[tool.id] = result
+                testing.remove(tool.id)
             }
         }
     }

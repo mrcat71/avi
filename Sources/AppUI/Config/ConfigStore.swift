@@ -1,6 +1,20 @@
 import Foundation
 import Observation
 
+public enum ConfigStatus: Equatable, Sendable {
+    case loaded
+    case createdNew
+    case invalid(reason: String)
+    case pathNotWritable(reason: String)
+
+    public var isError: Bool {
+        switch self {
+        case .invalid, .pathNotWritable: return true
+        case .loaded, .createdNew: return false
+        }
+    }
+}
+
 /// Observable wrapper around the on-disk Avi config. UI reads `store.config`
 /// and writes via `update`. Changes from outside the app (file edited
 /// externally) are picked up by `ConfigWatcher` and reflected through `reload`.
@@ -10,7 +24,15 @@ public final class ConfigStore {
     public static let shared = ConfigStore()
 
     public private(set) var config: AviConfig
-    public private(set) var loadError: String?
+    public private(set) var status: ConfigStatus = .loaded
+
+    /// Legacy convenience; some sections still read this. Mirrors `status` errors.
+    public var loadError: String? {
+        switch status {
+        case .invalid(let reason), .pathNotWritable(let reason): return reason
+        default: return nil
+        }
+    }
 
     private var watcher: ConfigWatcher?
     private var saveTask: Task<Void, Never>?
@@ -18,20 +40,23 @@ public final class ConfigStore {
 
     private init() {
         var loaded = AviConfig()
-        var err: String? = nil
+        var initialStatus: ConfigStatus = .loaded
+
         if ConfigPath.exists {
             do {
                 loaded = try ConfigStore.readFromDisk()
+                initialStatus = .loaded
             } catch {
-                err = "Failed to read config: \(error)"
+                initialStatus = .invalid(reason: "\(error)")
             }
+        } else {
+            initialStatus = .createdNew
         }
         self.config = loaded
-        self.loadError = err
+        self.status = initialStatus
         self.startWatcher()
         if !ConfigPath.exists {
-            // Initial save creates the file with defaults.
-            saveImmediately()
+            saveImmediately()  // writes the default file; updates status if write fails
         }
     }
 
@@ -53,14 +78,20 @@ public final class ConfigStore {
     }
 
     public func reload() {
+        guard ConfigPath.exists else {
+            status = .createdNew
+            saveImmediately()
+            return
+        }
         do {
             let updated = try ConfigStore.readFromDisk()
             if updated != config {
                 config = updated
             }
-            loadError = nil
+            status = .loaded
         } catch {
-            loadError = "Failed to reload config: \(error)"
+            // Keep the previous in-memory config; surface the issue.
+            status = .invalid(reason: "\(error)")
         }
     }
 
@@ -100,9 +131,13 @@ public final class ConfigStore {
             let tmp = url.appendingPathExtension("tmp")
             try text.data(using: .utf8)?.write(to: tmp, options: .atomic)
             _ = try? FileManager.default.replaceItemAt(url, withItemAt: tmp)
-            loadError = nil
+            // Only flip from "createdNew" to "loaded" once the file exists and
+            // we've not surfaced an unrelated error.
+            if case .invalid = status {} else if case .pathNotWritable = status {} else {
+                status = .loaded
+            }
         } catch {
-            loadError = "Failed to save config: \(error)"
+            status = .pathNotWritable(reason: "\(error)")
         }
     }
 

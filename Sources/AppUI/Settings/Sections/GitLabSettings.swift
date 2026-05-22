@@ -7,6 +7,11 @@ struct GitLabSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            ProviderInfoBanner(
+                provider: "GitLab",
+                features: "Open on GitLab, create merge requests"
+            )
+
             SettingsGroup("Accounts") {
                 if gitlabAccounts.isEmpty {
                     SettingsFormRow("No GitLab account") {

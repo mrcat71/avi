@@ -9,16 +9,8 @@ struct AdvancedSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsGroup("Config File") {
-                SettingsFormRow("Actions") {
-                    HStack(spacing: 8) {
-                        Button("Open Config File") { ConfigPath.openFile() }
-                        Button("Open Folder") { ConfigPath.openFolder() }
-                        Button("Reload") { store.reload() }
-                    }
-                }
-                Divider().padding(.vertical, 4)
-                SettingsFormRow("Import / Export") {
+            SettingsGroup("Import / Export") {
+                SettingsFormRow("Config", description: "Move non-secret settings between machines.") {
                     HStack(spacing: 8) {
                         Button("Export…") { showingExporter = true }
                         Button("Import…") { showingImporter = true }

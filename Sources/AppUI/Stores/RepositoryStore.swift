@@ -35,8 +35,8 @@ public final class RepositoryStore: Identifiable {
     public var amend: Bool = false
     public var expandedFolders: Set<String> = []
     public var isGeneratingCommitMessage: Bool = false
-    public var aiError: String?
-    public private(set) var aiLastGenerated: String?
+    public var aiErrorDetail: AIErrorDetail?
+    public var aiPendingPreview: AIPendingPreview?
     private var aiTask: Task<Void, Never>?
 
     public var commitMessage: String {
@@ -415,20 +415,34 @@ public final class RepositoryStore: Identifiable {
     public func generateCommitMessage(config: AIConfig) {
         guard let root else { return }
         aiTask?.cancel()
-        aiError = nil
+        aiErrorDetail = nil
+        aiPendingPreview = nil
         isGeneratingCommitMessage = true
         aiTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.isGeneratingCommitMessage = false }
+
+            // Pre-flight validation so we never hang waiting on a broken setup.
+            let report = await AICLIValidator.validate(config)
+            if Task.isCancelled { return }
+            if !report.isValid {
+                self.aiErrorDetail = AIErrorDetail(
+                    title: "AI setup not ready",
+                    message: report.messages.joined(separator: "\n"),
+                    runResult: nil
+                )
+                return
+            }
+
             do {
                 let diff = try await self.git.stagedDiff(in: root)
                 if Task.isCancelled { return }
                 guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    self.aiError = "Nothing staged. Stage changes before generating."
-                    return
-                }
-                guard !config.model.isEmpty else {
-                    self.aiError = "Set a model in Settings → AI Commit Messages."
+                    self.aiErrorDetail = AIErrorDetail(
+                        title: "Nothing staged",
+                        message: "Stage files first or run the command with all changes.",
+                        runResult: nil
+                    )
                     return
                 }
                 let stagedPaths = self.stagedEntries.map(\.path)
@@ -451,13 +465,29 @@ public final class RepositoryStore: Identifiable {
                     maxTokens: config.maxTokens
                 )
                 if Task.isCancelled { return }
-                self.aiLastGenerated = text
                 let (subject, body) = self.splitGeneratedMessage(text)
-                self.commitSummary = subject
-                self.commitBody = body
+                let runResult = AIRunResult(
+                    provider: config.backend,
+                    resolvedExecutable: report.resolvedExecutable ?? "",
+                    argv: [],
+                    model: config.model,
+                    exitCode: 0,
+                    stdout: text,
+                    stderr: "",
+                    durationMS: 0,
+                    timedOut: false
+                )
+                self.aiPendingPreview = AIPendingPreview(subject: subject, body: body, result: runResult)
+            } catch let err as AIEngineError {
+                if case .cancelled = err { return }
+                self.aiErrorDetail = AIErrorDetail(
+                    title: errorTitle(for: err),
+                    message: err.errorDescription ?? "AI error",
+                    runResult: err.runResult
+                )
             } catch {
                 if !(error is CancellationError) {
-                    self.aiError = error.localizedDescription
+                    self.aiErrorDetail = AIErrorDetail(title: "AI error", message: error.localizedDescription, runResult: nil)
                 }
             }
         }
@@ -469,13 +499,42 @@ public final class RepositoryStore: Identifiable {
     }
 
     public func dismissAIError() {
-        aiError = nil
+        aiErrorDetail = nil
     }
 
-    public func clearAIGenerated() {
-        aiLastGenerated = nil
-        commitSummary = ""
-        commitBody = ""
+    public func acceptAIPreview(_ mode: AIAcceptMode) {
+        guard let preview = aiPendingPreview else { return }
+        switch mode {
+        case .replace:
+            commitSummary = preview.subject
+            commitBody = preview.body
+        case .appendAsBody:
+            let appended = preview.body.isEmpty ? preview.subject : preview.subject + "\n\n" + preview.body
+            commitBody = commitBody.isEmpty ? appended : commitBody + "\n\n" + appended
+        }
+        aiPendingPreview = nil
+    }
+
+    public func discardAIPreview() {
+        aiPendingPreview = nil
+    }
+
+    private func errorTitle(for err: AIEngineError) -> String {
+        switch err {
+        case .timedOut: return "AI generation timed out"
+        case .subprocessFailed: return "AI command failed"
+        case .binaryNotFound: return "Binary not found"
+        case .binaryNotExecutable: return "Binary not executable"
+        case .missingAPIKey: return "Missing API key"
+        case .noModelConfigured: return "No model"
+        case .invalidResponse: return "Invalid response"
+        case .cancelled: return "Cancelled"
+        }
+    }
+
+    public enum AIAcceptMode {
+        case replace
+        case appendAsBody
     }
 
     private func splitGeneratedMessage(_ text: String) -> (String, String) {
