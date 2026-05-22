@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build-test:
     name: build + test
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Check out
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -38,7 +38,7 @@ jobs:
 
   lint:
     name: lint
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Check out
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -49,7 +49,7 @@ jobs:
 
   bundle-smoke:
     name: bundle smoke
-    runs-on: macos-14
+    runs-on: macos-15
     needs: build-test
     steps:
       - name: Check out
