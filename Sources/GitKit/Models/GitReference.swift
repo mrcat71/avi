@@ -7,7 +7,9 @@ public enum GitReferenceKind: String, Sendable, Equatable {
 }
 
 public struct GitReference: Sendable, Equatable, Identifiable {
-    public var id: String { fullName }
+    public var id: String {
+        fullName
+    }
 
     public let name: String
     public let fullName: String

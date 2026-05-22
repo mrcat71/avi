@@ -64,6 +64,6 @@ extension AviSectionHeader where Trailing == EmptyView {
         self.title = title
         self.count = count
         self.isExpanded = isExpanded
-        self.trailing = EmptyView()
+        trailing = EmptyView()
     }
 }

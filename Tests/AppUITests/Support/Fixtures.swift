@@ -11,10 +11,10 @@ enum Fixtures {
             refs: RepositoryRefs(
                 localBranches: [
                     GitReference(name: branch, fullName: "refs/heads/\(branch)", oid: "aaa1", kind: .localBranch,
-                                 upstream: upstream, isCurrent: true),
+                                 upstream: upstream, isCurrent: true)
                 ],
                 remoteBranches: upstream.map { up in [
-                    GitReference(name: up, fullName: "refs/remotes/\(up)", oid: "aaa1", kind: .remoteBranch),
+                    GitReference(name: up, fullName: "refs/remotes/\(up)", oid: "aaa1", kind: .remoteBranch)
                 ] } ?? [],
                 tags: []
             ),
@@ -31,7 +31,7 @@ enum Fixtures {
                 FileStatus(path: "README.md", index: .unmodified, worktree: .modified),
                 FileStatus(path: "Sources/Foo.swift", index: .added, worktree: .modified),
                 FileStatus(path: "Sources/Bar.swift", index: .unmodified, worktree: .untracked),
-                FileStatus(path: "LICENSE", index: .modified, worktree: .unmodified),
+                FileStatus(path: "LICENSE", index: .modified, worktree: .unmodified)
             ]
         )
         return provider
@@ -50,17 +50,17 @@ enum Fixtures {
                     GitReference(name: "feature/auth", fullName: "refs/heads/feature/auth", oid: "f3", kind: .localBranch,
                                  upstream: "origin/feature/auth", ahead: 5),
                     GitReference(name: "hotfix", fullName: "refs/heads/hotfix", oid: "h1", kind: .localBranch,
-                                 upstream: nil),
+                                 upstream: nil)
                 ],
                 remoteBranches: [
                     GitReference(name: "origin/main", fullName: "refs/remotes/origin/main", oid: "m2", kind: .remoteBranch),
-                    GitReference(name: "origin/feature/auth", fullName: "refs/remotes/origin/feature/auth", oid: "f1", kind: .remoteBranch),
+                    GitReference(name: "origin/feature/auth", fullName: "refs/remotes/origin/feature/auth", oid: "f1", kind: .remoteBranch)
                 ],
                 tags: [
                     GitReference(name: "v0.1.0", fullName: "refs/tags/v0.1.0", oid: "m1", kind: .tag),
                     GitReference(name: "v1.0.0", fullName: "refs/tags/v1.0.0", oid: "m2", kind: .tag,
                                  taggerDate: Date(timeIntervalSince1970: 1_700_000_000),
-                                 annotatedMessage: "First major release"),
+                                 annotatedMessage: "First major release")
                 ]
             ),
             commits: [
@@ -69,14 +69,14 @@ enum Fixtures {
                 commit("f3", subject: "Add OAuth provider", parents: ["f2"]),
                 commit("f2", subject: "Wire login form", parents: ["f1"]),
                 commit("f1", subject: "Scaffold auth module", parents: ["m1"]),
-                commit("m1", subject: "Initial commit", parents: []),
+                commit("m1", subject: "Initial commit", parents: [])
             ],
             remotes: [GitRemote(name: "origin", fetchURL: "git@example.com:org/repo.git", pushURL: "git@example.com:org/repo.git")]
         )
     }
 
     private static func linearCommits(count: Int) -> [CommitSummary] {
-        (0..<count).reversed().map { i in
+        (0 ..< count).reversed().map { i in
             commit("c\(i)", subject: "commit \(i)", parents: i == 0 ? [] : ["c\(i - 1)"])
         }
     }

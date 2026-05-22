@@ -1,13 +1,13 @@
 import Foundation
-import Testing
 @testable import GitKit
+import Testing
 
-@Suite struct HistoryTests {
+struct HistoryTests {
     private func provider(_ repo: GitFixture) -> CLIGitProvider {
         CLIGitProvider(gitURL: repo.gitURL)
     }
 
-    @Test func historyReturnsNewestFirstWithParents() async throws {
+    @Test func `history returns newest first with parents`() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")
@@ -27,14 +27,14 @@ import Testing
         }
     }
 
-    @Test func historyIsEmptyOnUnbornBranch() async throws {
+    @Test func `history is empty on unborn branch`() async throws {
         try await withTempRepo { repo in
             let commits = try await provider(repo).history(in: repo.url, limit: 10)
             #expect(commits.isEmpty)
         }
     }
 
-    @Test func changedFilesIncludesRootCommitAdditions() async throws {
+    @Test func `changed files includes root commit additions`() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")
@@ -47,7 +47,7 @@ import Testing
         }
     }
 
-    @Test func commitDiffParsesChangedFilePatch() async throws {
+    @Test func `commit diff parses changed file patch`() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")

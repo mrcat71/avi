@@ -11,6 +11,7 @@ public struct AviConfig: Codable, Equatable, Sendable {
     public var ai: AIConfig
     public var externalTools: ExternalToolsConfig
     public var advanced: AdvancedConfig
+    public var clone: CloneConfig
 
     public init(
         version: Int = 1,
@@ -20,7 +21,8 @@ public struct AviConfig: Codable, Equatable, Sendable {
         integrations: IntegrationsConfig = .init(),
         ai: AIConfig = .init(),
         externalTools: ExternalToolsConfig = .init(),
-        advanced: AdvancedConfig = .init()
+        advanced: AdvancedConfig = .init(),
+        clone: CloneConfig = .init()
     ) {
         self.version = version
         self.general = general
@@ -30,13 +32,60 @@ public struct AviConfig: Codable, Equatable, Sendable {
         self.ai = ai
         self.externalTools = externalTools
         self.advanced = advanced
+        self.clone = clone
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = AviConfig()
+        version = (try? c.decode(Int.self, forKey: .version)) ?? defaults.version
+        general = (try? c.decode(GeneralConfig.self, forKey: .general)) ?? defaults.general
+        appearance = (try? c.decode(AppearanceConfig.self, forKey: .appearance)) ?? defaults.appearance
+        git = (try? c.decode(GitConfig.self, forKey: .git)) ?? defaults.git
+        integrations = (try? c.decode(IntegrationsConfig.self, forKey: .integrations)) ?? defaults.integrations
+        ai = (try? c.decode(AIConfig.self, forKey: .ai)) ?? defaults.ai
+        externalTools = (try? c.decode(ExternalToolsConfig.self, forKey: .externalTools)) ?? defaults.externalTools
+        advanced = (try? c.decode(AdvancedConfig.self, forKey: .advanced)) ?? defaults.advanced
+        clone = (try? c.decode(CloneConfig.self, forKey: .clone)) ?? defaults.clone
+    }
+}
+
+public struct CloneConfig: Codable, Equatable, Sendable {
+    public var defaultDirectory: String // "~/src" expanded at use site
+    public var openAfterClone: Bool
+    public var preferredProtocol: String // "https" | "ssh"
+    public var preferredCLI: String // "auto" | "gh-glab" | "git"
+    public var rememberDestinationPerProvider: Bool
+
+    public init(
+        defaultDirectory: String = "~/Developer",
+        openAfterClone: Bool = true,
+        preferredProtocol: String = "https",
+        preferredCLI: String = "auto",
+        rememberDestinationPerProvider: Bool = true
+    ) {
+        self.defaultDirectory = defaultDirectory
+        self.openAfterClone = openAfterClone
+        self.preferredProtocol = preferredProtocol
+        self.preferredCLI = preferredCLI
+        self.rememberDestinationPerProvider = rememberDestinationPerProvider
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = CloneConfig()
+        defaultDirectory = (try? c.decode(String.self, forKey: .defaultDirectory)) ?? defaults.defaultDirectory
+        openAfterClone = (try? c.decode(Bool.self, forKey: .openAfterClone)) ?? defaults.openAfterClone
+        preferredProtocol = (try? c.decode(String.self, forKey: .preferredProtocol)) ?? defaults.preferredProtocol
+        preferredCLI = (try? c.decode(String.self, forKey: .preferredCLI)) ?? defaults.preferredCLI
+        rememberDestinationPerProvider = (try? c.decode(Bool.self, forKey: .rememberDestinationPerProvider)) ?? defaults.rememberDestinationPerProvider
     }
 }
 
 public struct GeneralConfig: Codable, Equatable, Sendable {
-    // Telemetry and update-check toggles were removed in iter 5 because the
-    // app doesn't implement those features. Old config files containing those
-    // keys still decode cleanly because we ignore unknown keys.
+    /// Telemetry and update-check toggles were removed in iter 5 because the
+    /// app doesn't implement those features. Old config files containing those
+    /// keys still decode cleanly because we ignore unknown keys.
     public init() {}
 
     public init(from decoder: Decoder) throws {
@@ -46,15 +95,23 @@ public struct GeneralConfig: Codable, Equatable, Sendable {
 
     private struct AnyCodingKey: CodingKey {
         var stringValue: String
-        var intValue: Int? { nil }
-        init?(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { return nil }
+        var intValue: Int? {
+            nil
+        }
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue _: Int) {
+            return nil
+        }
     }
 }
 
 public struct AppearanceConfig: Codable, Equatable, Sendable {
-    public var theme: String        // system | light | dark
-    public var density: String      // compact | comfortable
+    public var theme: String // system | light | dark
+    public var density: String // compact | comfortable
     public var fontSize: Int
     public var diffFont: String
     public var fileListMode: String // tree | flat
@@ -81,7 +138,7 @@ public struct GitConfig: Codable, Equatable, Sendable {
     public var defaultAuthorName: String
     public var defaultAuthorEmail: String
     public var signCommits: Bool
-    public var fetchInterval: Int   // minutes; 0 = manual
+    public var fetchInterval: Int // minutes; 0 = manual
     public var autoRefresh: Bool
     public var pruneOnFetch: Bool
     public var externalEditor: String
@@ -116,13 +173,13 @@ public struct IntegrationsConfig: Codable, Equatable, Sendable {
 }
 
 public struct ProviderAccount: Codable, Equatable, Identifiable, Sendable {
-    public var id: String           // uuid string
-    public var kind: String         // "github" | "gitlab"
-    public var instanceURL: String  // empty = github.com or gitlab.com
+    public var id: String // uuid string
+    public var kind: String // "github" | "gitlab"
+    public var instanceURL: String // empty = github.com or gitlab.com
     public var username: String
     public var keychainItem: String // Keychain account reference
-    public var lastValidatedISO: String  // ISO-8601 timestamp, empty if never validated
-    public var status: String       // ok | invalid | unreachable | unknown
+    public var lastValidatedISO: String // ISO-8601 timestamp, empty if never validated
+    public var status: String // ok | invalid | unreachable | unknown
 
     public init(
         id: String = UUID().uuidString,
@@ -145,7 +202,7 @@ public struct ProviderAccount: Codable, Equatable, Identifiable, Sendable {
 
 public struct AIConfig: Codable, Equatable, Sendable {
     public var enabled: Bool
-    public var backend: String        // command | openai
+    public var backend: String // command | openai
     public var model: String
     public var temperature: Double
     public var maxTokens: Int
@@ -203,24 +260,24 @@ public struct AIConfig: Codable, Equatable, Sendable {
       <type>(<scope>): <summary>
     """
 
-    // Tolerant decoder: any field can be missing in an older config file.
+    /// Tolerant decoder: any field can be missing in an older config file.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = AIConfig()
-        self.enabled = (try? c.decode(Bool.self, forKey: .enabled)) ?? defaults.enabled
-        self.backend = (try? c.decode(String.self, forKey: .backend)) ?? defaults.backend
-        self.model = (try? c.decode(String.self, forKey: .model)) ?? defaults.model
-        self.temperature = (try? c.decode(Double.self, forKey: .temperature)) ?? defaults.temperature
-        self.maxTokens = (try? c.decode(Int.self, forKey: .maxTokens)) ?? defaults.maxTokens
-        self.promptTemplate = (try? c.decode(String.self, forKey: .promptTemplate)) ?? defaults.promptTemplate
-        self.conventionalCommits = (try? c.decode(Bool.self, forKey: .conventionalCommits)) ?? defaults.conventionalCommits
-        self.subjectSoftLimit = (try? c.decode(Int.self, forKey: .subjectSoftLimit)) ?? defaults.subjectSoftLimit
-        self.subjectHardLimit = (try? c.decode(Int.self, forKey: .subjectHardLimit)) ?? defaults.subjectHardLimit
-        self.bodyWrap = (try? c.decode(Int.self, forKey: .bodyWrap)) ?? defaults.bodyWrap
-        self.commandTemplate = (try? c.decode(String.self, forKey: .commandTemplate)) ?? defaults.commandTemplate
-        self.openAIBaseURL = (try? c.decode(String.self, forKey: .openAIBaseURL)) ?? defaults.openAIBaseURL
-        self.openAIKeychainItem = (try? c.decode(String.self, forKey: .openAIKeychainItem)) ?? defaults.openAIKeychainItem
-        self.timeoutSeconds = (try? c.decode(Int.self, forKey: .timeoutSeconds)) ?? defaults.timeoutSeconds
+        enabled = (try? c.decode(Bool.self, forKey: .enabled)) ?? defaults.enabled
+        backend = (try? c.decode(String.self, forKey: .backend)) ?? defaults.backend
+        model = (try? c.decode(String.self, forKey: .model)) ?? defaults.model
+        temperature = (try? c.decode(Double.self, forKey: .temperature)) ?? defaults.temperature
+        maxTokens = (try? c.decode(Int.self, forKey: .maxTokens)) ?? defaults.maxTokens
+        promptTemplate = (try? c.decode(String.self, forKey: .promptTemplate)) ?? defaults.promptTemplate
+        conventionalCommits = (try? c.decode(Bool.self, forKey: .conventionalCommits)) ?? defaults.conventionalCommits
+        subjectSoftLimit = (try? c.decode(Int.self, forKey: .subjectSoftLimit)) ?? defaults.subjectSoftLimit
+        subjectHardLimit = (try? c.decode(Int.self, forKey: .subjectHardLimit)) ?? defaults.subjectHardLimit
+        bodyWrap = (try? c.decode(Int.self, forKey: .bodyWrap)) ?? defaults.bodyWrap
+        commandTemplate = (try? c.decode(String.self, forKey: .commandTemplate)) ?? defaults.commandTemplate
+        openAIBaseURL = (try? c.decode(String.self, forKey: .openAIBaseURL)) ?? defaults.openAIBaseURL
+        openAIKeychainItem = (try? c.decode(String.self, forKey: .openAIKeychainItem)) ?? defaults.openAIKeychainItem
+        timeoutSeconds = (try? c.decode(Int.self, forKey: .timeoutSeconds)) ?? defaults.timeoutSeconds
     }
 }
 

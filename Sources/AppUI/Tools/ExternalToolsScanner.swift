@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 struct DetectedTool: Identifiable {
-    let id: String          // "git", "codex", "claude", ...
+    let id: String // "git", "codex", "claude", ...
     let displayName: String
     let detectedPath: String?
     let isAvailable: Bool
@@ -14,9 +14,9 @@ enum ExternalToolsScanner {
     struct ToolSpec {
         let id: String
         let displayName: String
-        let executableName: String   // empty for GUI apps
+        let executableName: String // empty for GUI apps
         let versionArgs: [String]
-        let bundleID: String?        // for GUI apps via mdfind
+        let bundleID: String? // for GUI apps via mdfind
     }
 
     static let specs: [ToolSpec] = [
@@ -28,7 +28,7 @@ enum ExternalToolsScanner {
         ToolSpec(id: "editor", displayName: "VS Code", executableName: "code", versionArgs: ["--version"], bundleID: "com.microsoft.VSCode"),
         ToolSpec(id: "terminal", displayName: "iTerm2", executableName: "", versionArgs: [], bundleID: "com.googlecode.iterm2"),
         ToolSpec(id: "diffTool", displayName: "Diff Tool", executableName: "", versionArgs: [], bundleID: nil),
-        ToolSpec(id: "mergeTool", displayName: "Merge Tool", executableName: "", versionArgs: [], bundleID: nil),
+        ToolSpec(id: "mergeTool", displayName: "Merge Tool", executableName: "", versionArgs: [], bundleID: nil)
     ]
 
     /// Run on a background queue.
@@ -71,7 +71,7 @@ enum ExternalToolsScanner {
         // Try `which` first.
         if let path = runProcess(executable: "/usr/bin/which", arguments: [name])?
             .trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty,
-           FileManager.default.isExecutableFile(atPath: path) {
+            FileManager.default.isExecutableFile(atPath: path) {
             return path
         }
 
@@ -79,7 +79,7 @@ enum ExternalToolsScanner {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let dirs = [
             "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin",
-            "\(home)/.local/bin", "\(home)/.cargo/bin", "\(home)/.nix-profile/bin",
+            "\(home)/.local/bin", "\(home)/.cargo/bin", "\(home)/.nix-profile/bin"
         ]
         for dir in dirs {
             let candidate = "\(dir)/\(name)"

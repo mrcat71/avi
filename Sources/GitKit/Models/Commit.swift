@@ -2,7 +2,9 @@ import Foundation
 
 /// One commit as shown in the history list.
 public struct CommitSummary: Sendable, Equatable, Identifiable {
-    public var id: String { oid }
+    public var id: String {
+        oid
+    }
 
     public let oid: String
     public let parentOIDs: [String]
@@ -56,7 +58,9 @@ public enum CommitFileChangeKind: String, Sendable, Equatable {
 
 /// One file changed by a commit.
 public struct CommitFileChange: Sendable, Equatable, Identifiable {
-    public var id: String { "\(kind.rawValue):\(oldPath ?? ""):\(path)" }
+    public var id: String {
+        "\(kind.rawValue):\(oldPath ?? ""):\(path)"
+    }
 
     public let path: String
     public let oldPath: String?

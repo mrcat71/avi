@@ -30,49 +30,80 @@ public final class FakeGitProvider: GitProviding {
         self.lastCommit = lastCommit
     }
 
-    public func repositoryRoot(for url: URL) async throws -> URL { url }
-    public func status(in repository: URL) async throws -> WorkingCopyStatus { status }
-    public func diff(path: String, source: DiffSource, in repository: URL) async throws -> FileDiff {
+    public func repositoryRoot(for url: URL) async throws -> URL {
+        url
+    }
+
+    public func status(in _: URL) async throws -> WorkingCopyStatus {
+        status
+    }
+
+    public func diff(path: String, source _: DiffSource, in _: URL) async throws -> FileDiff {
         fileDiffs[path] ?? FileDiff(hunks: [], isBinary: false)
     }
-    public func history(in repository: URL, limit: Int) async throws -> [CommitSummary] { commits }
-    public func history(in repository: URL, limit: Int, filter: HistoryFilter) async throws -> [CommitSummary] { commits }
-    public func refs(in repository: URL) async throws -> RepositoryRefs { refs }
-    public func remotes(in repository: URL) async throws -> [GitRemote] { remotes }
-    public func changedFiles(in commitOID: String, in repository: URL) async throws -> [CommitFileChange] {
+
+    public func history(in _: URL, limit _: Int) async throws -> [CommitSummary] {
+        commits
+    }
+
+    public func history(in _: URL, limit _: Int, filter _: HistoryFilter) async throws -> [CommitSummary] {
+        commits
+    }
+
+    public func refs(in _: URL) async throws -> RepositoryRefs {
+        refs
+    }
+
+    public func remotes(in _: URL) async throws -> [GitRemote] {
+        remotes
+    }
+
+    public func changedFiles(in commitOID: String, in _: URL) async throws -> [CommitFileChange] {
         commitFiles[commitOID] ?? []
     }
-    public func diff(commitOID: String, path: String, in repository: URL) async throws -> FileDiff {
+
+    public func diff(commitOID _: String, path: String, in _: URL) async throws -> FileDiff {
         fileDiffs[path] ?? FileDiff(hunks: [], isBinary: false)
     }
-    public func checkout(_ ref: GitReference, in repository: URL) async throws {}
-    public func createBranch(named name: String, startPoint: String?, checkout: Bool, in repository: URL) async throws {}
-    public func renameBranch(from oldName: String, to newName: String, in repository: URL) async throws {}
-    public func setUpstream(branch: String, upstream: String, in repository: URL) async throws {}
-    public func unsetUpstream(branch: String, in repository: URL) async throws {}
-    public func deleteBranch(named name: String, in repository: URL) async throws {}
-    public func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult {
+
+    public func checkout(_: GitReference, in _: URL) async throws {}
+    public func createBranch(named _: String, startPoint _: String?, checkout _: Bool, in _: URL) async throws {}
+    public func renameBranch(from _: String, to _: String, in _: URL) async throws {}
+    public func setUpstream(branch _: String, upstream _: String, in _: URL) async throws {}
+    public func unsetUpstream(branch _: String, in _: URL) async throws {}
+    public func deleteBranch(named _: String, in _: URL) async throws {}
+    public func fetch(remote _: String?, in _: URL) async throws -> GitRemoteOperationResult {
         GitRemoteOperationResult(output: "ok")
     }
-    public func pull(in repository: URL) async throws -> GitRemoteOperationResult {
+
+    public func pull(in _: URL) async throws -> GitRemoteOperationResult {
         GitRemoteOperationResult(output: "ok")
     }
-    public func pull(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult {
+
+    public func pull(branch _: String?, in _: URL) async throws -> GitRemoteOperationResult {
         GitRemoteOperationResult(output: "ok")
     }
-    public func push(in repository: URL) async throws -> GitRemoteOperationResult {
+
+    public func push(in _: URL) async throws -> GitRemoteOperationResult {
         GitRemoteOperationResult(output: "ok")
     }
-    public func push(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult {
+
+    public func push(branch _: String?, in _: URL) async throws -> GitRemoteOperationResult {
         GitRemoteOperationResult(output: "ok")
     }
-    public func stage(path: String, in repository: URL) async throws {}
-    public func stageAll(in repository: URL) async throws {}
-    public func unstage(path: String, in repository: URL) async throws {}
-    public func unstageAll(in repository: URL) async throws {}
-    public func discard(_ file: FileStatus, in repository: URL) async throws {}
-    public func commit(message: String, in repository: URL) async throws {}
-    public func amend(message: String?, in repository: URL) async throws {}
-    public func lastCommitMessage(in repository: URL) async throws -> String? { lastCommit }
-    public func stagedDiff(in repository: URL) async throws -> String { "" }
+
+    public func stage(path _: String, in _: URL) async throws {}
+    public func stageAll(in _: URL) async throws {}
+    public func unstage(path _: String, in _: URL) async throws {}
+    public func unstageAll(in _: URL) async throws {}
+    public func discard(_: FileStatus, in _: URL) async throws {}
+    public func commit(message _: String, in _: URL) async throws {}
+    public func amend(message _: String?, in _: URL) async throws {}
+    public func lastCommitMessage(in _: URL) async throws -> String? {
+        lastCommit
+    }
+
+    public func stagedDiff(in _: URL) async throws -> String {
+        ""
+    }
 }

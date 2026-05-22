@@ -6,8 +6,13 @@ public struct ProcessResult: Sendable {
     public let stderr: Data
     public let exitCode: Int32
 
-    public var stdoutString: String { String(decoding: stdout, as: UTF8.self) }
-    public var stderrString: String { String(decoding: stderr, as: UTF8.self) }
+    public var stdoutString: String {
+        String(decoding: stdout, as: UTF8.self)
+    }
+
+    public var stderrString: String {
+        String(decoding: stderr, as: UTF8.self)
+    }
 }
 
 /// Runs external processes with arguments passed as an argv array (never a shell

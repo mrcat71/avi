@@ -2,7 +2,9 @@ import Foundation
 
 /// A commit plus the lane information needed by the history graph gutter.
 public struct CommitGraphRow: Sendable, Equatable, Identifiable {
-    public var id: String { commit.id }
+    public var id: String {
+        commit.id
+    }
 
     public let commit: CommitSummary
     public let lane: Int
@@ -118,7 +120,7 @@ public enum CommitGraph {
             let involvedLanes = Set([lane] + parentLanes)
             var throughLanes: [Int] = []
             for (idx, slot) in slots.enumerated() {
-                if slot != nil && !involvedLanes.contains(idx) {
+                if slot != nil, !involvedLanes.contains(idx) {
                     throughLanes.append(idx)
                 }
             }

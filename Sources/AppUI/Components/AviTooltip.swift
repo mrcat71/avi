@@ -30,10 +30,10 @@ struct AviTooltipModifier<Tooltip: View>: ViewModifier {
 }
 
 extension View {
-    func aviTooltip<T: View>(
+    func aviTooltip(
         delay: Duration = .milliseconds(400),
         arrowEdge: Edge = .bottom,
-        @ViewBuilder content: @escaping () -> T
+        @ViewBuilder content: @escaping () -> some View
     ) -> some View {
         modifier(AviTooltipModifier(delay: delay, arrowEdge: arrowEdge, tooltip: content))
     }

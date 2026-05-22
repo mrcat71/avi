@@ -27,6 +27,11 @@ public struct BranchInfo: Sendable, Equatable {
         self.behind = behind
     }
 
-    public var isDetached: Bool { name == nil && oid != nil }
-    public var isUnborn: Bool { oid == nil }
+    public var isDetached: Bool {
+        name == nil && oid != nil
+    }
+
+    public var isUnborn: Bool {
+        oid == nil
+    }
 }

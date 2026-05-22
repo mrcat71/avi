@@ -27,7 +27,7 @@ enum MiniTOML {
         let tableKeys = allKeys.filter { table[$0] is [String: Any] }
         let arrayOfTableKeys = allKeys.filter { table[$0] is [[String: Any]] }
 
-        if !name.isEmpty && (!scalarKeys.isEmpty || (tableKeys.isEmpty && arrayOfTableKeys.isEmpty)) {
+        if !name.isEmpty, !scalarKeys.isEmpty || (tableKeys.isEmpty && arrayOfTableKeys.isEmpty) {
             out += "[\(name)]\n"
         }
 
@@ -36,7 +36,7 @@ enum MiniTOML {
             out += "\(encodeKey(key)) = \(encodeValue(value))\n"
         }
 
-        if !scalarKeys.isEmpty && (!tableKeys.isEmpty || !arrayOfTableKeys.isEmpty) {
+        if !scalarKeys.isEmpty, !tableKeys.isEmpty || !arrayOfTableKeys.isEmpty {
             out += "\n"
         }
 
@@ -125,7 +125,7 @@ enum MiniTOML {
 
         init(text: String) {
             self.text = text
-            self.index = text.startIndex
+            index = text.startIndex
         }
 
         mutating func parseDocument() throws -> [String: Any] {
@@ -141,7 +141,7 @@ enum MiniTOML {
                 let c = text[index]
                 if c == "[" {
                     advance()
-                    if index < text.endIndex && text[index] == "[" {
+                    if index < text.endIndex, text[index] == "[" {
                         advance()
                         let path = try parseDottedKey()
                         try expect("]")
@@ -251,7 +251,7 @@ enum MiniTOML {
             while index < text.endIndex, let scalar = text[index].unicodeScalars.first, bareCharSet.contains(scalar) {
                 advance()
             }
-            let key = String(text[start..<index])
+            let key = String(text[start ..< index])
             if key.isEmpty {
                 throw ParseError.unexpected("empty key", line: line)
             }
@@ -343,10 +343,10 @@ enum MiniTOML {
                 advance()
             }
             while index < text.endIndex, let scalar = text[index].unicodeScalars.first,
-                  (CharacterSet.decimalDigits.contains(scalar) || scalar == "_" || scalar == "." || scalar == "e" || scalar == "E" || scalar == "-" || scalar == "+") {
+                  CharacterSet.decimalDigits.contains(scalar) || scalar == "_" || scalar == "." || scalar == "e" || scalar == "E" || scalar == "-" || scalar == "+" {
                 advance()
             }
-            let raw = String(text[start..<index]).replacingOccurrences(of: "_", with: "")
+            let raw = String(text[start ..< index]).replacingOccurrences(of: "_", with: "")
             if raw.contains(".") || raw.lowercased().contains("e") {
                 if let d = Double(raw) { return d }
             }

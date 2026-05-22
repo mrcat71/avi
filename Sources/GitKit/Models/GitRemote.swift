@@ -1,7 +1,9 @@
 import Foundation
 
 public struct GitRemote: Sendable, Equatable, Identifiable {
-    public var id: String { name }
+    public var id: String {
+        name
+    }
 
     public let name: String
     public let fetchURL: String?

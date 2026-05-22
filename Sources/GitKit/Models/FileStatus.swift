@@ -15,7 +15,10 @@ public enum FileState: Sendable, Equatable {
 /// One changed path in the working copy. `index` is the staged side (X),
 /// `worktree` is the unstaged side (Y).
 public struct FileStatus: Sendable, Equatable, Identifiable {
-    public var id: String { path }
+    public var id: String {
+        path
+    }
+
     public let path: String
     public let originalPath: String?
     public let index: FileState
@@ -28,7 +31,9 @@ public struct FileStatus: Sendable, Equatable, Identifiable {
         self.worktree = worktree
     }
 
-    public var isUntracked: Bool { worktree == .untracked }
+    public var isUntracked: Bool {
+        worktree == .untracked
+    }
 
     /// True when there is something staged for the next commit.
     public var isStaged: Bool {

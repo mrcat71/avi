@@ -12,7 +12,7 @@ struct AviBadge: View {
         case ahead(Int)
         case behind(Int)
         case synced
-        case info        // generic neutral chip
+        case info // generic neutral chip
         case warning
     }
 
@@ -66,7 +66,9 @@ struct AviBadge: View {
         }
     }
 
-    private var paddingV: CGFloat { 1 }
+    private var paddingV: CGFloat {
+        1
+    }
 
     @ViewBuilder
     private var background: some View {

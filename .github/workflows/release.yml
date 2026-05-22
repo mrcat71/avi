@@ -1,0 +1,105 @@
+name: release
+
+# Triggered by pushing a vX.Y.Z tag. workflow_dispatch is available for
+# building artifacts without publishing (set dry_run = true).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build without creating a GitHub Release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: build + publish
+    runs-on: macos-14
+    steps:
+      - name: Check out
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4 # renovate will pin this to a SHA on first run
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', 'Package.swift') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev.${GITHUB_SHA::7}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Verify in-app version matches tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          IN_APP=$(grep -E 'static let version' Sources/GitKit/GitKit.swift | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ "$IN_APP" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "::error::tag v${{ steps.ver.outputs.version }} does not match GitKit.version $IN_APP"
+            exit 1
+          fi
+
+      - name: Reject duplicate release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
+            echo "::error::release v${{ steps.ver.outputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: Test
+        run: swift test
+
+      - name: Release build (arm64)
+        run: swift build -c release --arch arm64
+
+      - name: Package .app bundle
+        run: scripts/package-app.sh "${{ steps.ver.outputs.version }}"
+
+      - name: Generate checksums
+        run: shasum -a 256 "avi-${{ steps.ver.outputs.version }}-macos-arm64.zip" > SHA256SUMS
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.ver.outputs.version }}" \
+            --title "v${{ steps.ver.outputs.version }}" \
+            --generate-notes \
+            "avi-${{ steps.ver.outputs.version }}-macos-arm64.zip" \
+            SHA256SUMS
+
+      - name: Upload dispatch artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4 # renovate will pin this to a SHA on first run
+        with:
+          name: avi-${{ steps.ver.outputs.version }}-macos-arm64
+          path: |
+            avi-${{ steps.ver.outputs.version }}-macos-arm64.zip
+            SHA256SUMS
+          retention-days: 14

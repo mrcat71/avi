@@ -45,6 +45,6 @@ extension AviPanelHeader where Trailing == EmptyView {
     init(_ title: String, breadcrumb: [String] = []) {
         self.title = title
         self.breadcrumb = breadcrumb
-        self.trailing = EmptyView()
+        trailing = EmptyView()
     }
 }

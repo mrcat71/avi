@@ -1,9 +1,9 @@
 import Foundation
-import Testing
 @testable import GitKit
+import Testing
 
-@Suite struct CommitFileChangeParserTests {
-    @Test func parsesOrdinaryAndRenameRecords() throws {
+struct CommitFileChangeParserTests {
+    @Test func `parses ordinary and rename records`() throws {
         let raw = [
             "M",
             "modified.txt",
@@ -12,7 +12,7 @@ import Testing
             "R100",
             "old.txt",
             "new.txt",
-            "",
+            ""
         ].joined(separator: "\u{0}")
 
         let changes = try CommitFileChangeParser.parse(Data(raw.utf8))

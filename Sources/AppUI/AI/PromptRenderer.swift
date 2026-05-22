@@ -2,10 +2,10 @@ import Foundation
 
 /// Context the prompt template can reference via `${var}` placeholders.
 public struct PromptContext {
-    public let target: String           // alias for stagedDiff
+    public let target: String // alias for stagedDiff
     public let stagedDiff: String
     public let branch: String
-    public let files: String            // newline-separated
+    public let files: String // newline-separated
     public let repo: String
     public let model: String
     public let lowLimit: Int
@@ -22,7 +22,7 @@ public struct PromptContext {
         highLimit: Int,
         guideLine: Int
     ) {
-        self.target = stagedDiff
+        target = stagedDiff
         self.stagedDiff = stagedDiff
         self.branch = branch
         self.files = files.joined(separator: "\n")
@@ -48,7 +48,7 @@ enum PromptRenderer {
             "model": context.model,
             "lowLimit": "\(context.lowLimit)",
             "highLimit": "\(context.highLimit)",
-            "guideLine": "\(context.guideLine)",
+            "guideLine": "\(context.guideLine)"
         ]
         for (key, value) in table {
             output = output.replacingOccurrences(of: "${\(key)}", with: value)

@@ -112,7 +112,7 @@ public enum AICLIValidator {
         let start = Date()
         for args in candidates {
             let result = await runOnce(executable: executable, arguments: args, timeoutSeconds: 5)
-            if result.exitCode == 0 && !result.stdoutFirstLine.isEmpty {
+            if result.exitCode == 0, !result.stdoutFirstLine.isEmpty {
                 return TestResult(
                     exitCode: 0,
                     stdoutFirstLine: result.stdoutFirstLine,
@@ -146,11 +146,11 @@ public enum AICLIValidator {
 
     private static func probeVersion(executable: String) async -> String? {
         let r = await runTest(executable: executable)
-        if r.exitCode == 0 && !r.stdoutFirstLine.isEmpty { return r.stdoutFirstLine }
+        if r.exitCode == 0, !r.stdoutFirstLine.isEmpty { return r.stdoutFirstLine }
         return nil
     }
 
-    private struct OneRun: Sendable {
+    private struct OneRun {
         let exitCode: Int32?
         let stdoutFirstLine: String
         let stderrFirstLine: String
@@ -230,7 +230,7 @@ public enum AICLIValidator {
             "/opt/homebrew/bin/\(name)",
             "/usr/bin/\(name)",
             "\(home)/.local/bin/\(name)",
-            "\(home)/.cargo/bin/\(name)",
+            "\(home)/.cargo/bin/\(name)"
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }

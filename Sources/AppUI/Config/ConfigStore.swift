@@ -52,11 +52,11 @@ public final class ConfigStore {
         } else {
             initialStatus = .createdNew
         }
-        self.config = loaded
-        self.status = initialStatus
-        self.startWatcher()
+        config = loaded
+        status = initialStatus
+        startWatcher()
         if !ConfigPath.exists {
-            saveImmediately()  // writes the default file; updates status if write fails
+            saveImmediately() // writes the default file; updates status if write fails
         }
     }
 

@@ -1,25 +1,25 @@
 import Foundation
-import Testing
 @testable import GitKit
+import Testing
 
-@Suite struct CommitGraphTests {
-    @Test func linearHistoryStaysOnOneLane() {
+struct CommitGraphTests {
+    @Test func `linear history stays on one lane`() {
         let rows = CommitGraph.assignRows(for: [
             commit("c", parents: ["b"]),
             commit("b", parents: ["a"]),
-            commit("a"),
+            commit("a")
         ])
 
         #expect(rows.map(\.lane) == [0, 0, 0])
         #expect(rows.map(\.laneCount) == [1, 1, 1])
     }
 
-    @Test func mergeCommitCreatesAdditionalLane() {
+    @Test func `merge commit creates additional lane`() {
         let rows = CommitGraph.assignRows(for: [
             commit("d", parents: ["b", "c"]),
             commit("b", parents: ["a"]),
             commit("c", parents: ["a"]),
-            commit("a"),
+            commit("a")
         ])
 
         #expect(rows[0].lane == 0)
@@ -28,7 +28,7 @@ import Testing
         #expect(rows[2].lane == 1)
     }
 
-    @Test func longBranchHoldsSameLane() {
+    @Test func `long branch holds same lane`() {
         // main: m3 -> m2 -> m1
         // feature: f3 -> f2 -> f1 -> m1 (merge at m3)
         // History order:  m3 (merge), m2, f3, f2, f1, m1
@@ -38,7 +38,7 @@ import Testing
             commit("f3", parents: ["f2"]),
             commit("f2", parents: ["f1"]),
             commit("f1", parents: ["m1"]),
-            commit("m1"),
+            commit("m1")
         ])
 
         // m3 is on lane 0; feature lane allocated at index 1.
@@ -54,14 +54,14 @@ import Testing
         #expect(rows[5].lane == 0)
     }
 
-    @Test func lanesDoNotShiftWhenABranchTerminates() {
+    @Test func `lanes do not shift when A branch terminates`() {
         // Two parallel branches a and b. b terminates at its root.
         // After b's root, a should remain on lane 0 (no shift).
         let rows = CommitGraph.assignRows(for: [
             commit("a2", parents: ["a1"]),
-            commit("b1"),  // b's root, no parents
+            commit("b1"), // b's root, no parents
             commit("a1", parents: ["a0"]),
-            commit("a0"),
+            commit("a0")
         ])
 
         #expect(rows[0].lane == 0) // a2 lane 0
@@ -71,28 +71,28 @@ import Testing
         #expect(rows[3].lane == 0) // a0 lane 0
     }
 
-    @Test func parentLaneCountReflectsLaneIndexNotSize() {
+    @Test func `parent lane count reflects lane index not size`() {
         // After a branch ends, a new branch's lane is allocated to the lowest free slot.
         let rows = CommitGraph.assignRows(for: [
-            commit("x"),  // root, lane 0, lane freed
-            commit("y"),  // root, should reuse lane 0
+            commit("x"), // root, lane 0, lane freed
+            commit("y") // root, should reuse lane 0
         ])
 
         #expect(rows[0].lane == 0)
         #expect(rows[1].lane == 0)
     }
 
-    @Test func laneIdentitiesUseBranchTipNames() {
+    @Test func `lane identities use branch tip names`() {
         let refs = RepositoryRefs(
             localBranches: [
-                GitReference(name: "main", fullName: "refs/heads/main", oid: "m1", kind: .localBranch),
+                GitReference(name: "main", fullName: "refs/heads/main", oid: "m1", kind: .localBranch)
             ],
             remoteBranches: [],
             tags: []
         )
 
         let rows = CommitGraph.assignRows(for: [
-            commit("m1", parents: []),
+            commit("m1", parents: [])
         ], refs: refs)
 
         #expect(rows[0].laneIdentities[0] == "local:main")

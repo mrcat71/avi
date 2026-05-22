@@ -4,7 +4,7 @@ import SwiftUI
 
 struct ChangeListView: View {
     let store: RepositoryStore
-    var switchToAllCommits: (() -> Void)? = nil
+    var switchToAllCommits: (() -> Void)?
 
     @Bindable private var config = ConfigStore.shared
 
@@ -32,6 +32,35 @@ struct ChangeListView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
+            if isTreeMode {
+                Button {
+                    store.expandAllFolders()
+                } label: {
+                    Image(systemName: "chevron.down.square")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Expand all folders")
+                .accessibilityLabel("Expand all folders")
+                .disabled(store.entries.isEmpty)
+
+                Button {
+                    store.collapseAllFolders()
+                } label: {
+                    Image(systemName: "chevron.up.square")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Collapse all folders")
+                .accessibilityLabel("Collapse all folders")
+                .disabled(store.expandedFolders.isEmpty)
+            }
             Button {
                 let next = isTreeMode ? "flat" : "tree"
                 config.update { $0.appearance.fileListMode = next }
@@ -62,91 +91,143 @@ struct ChangeListView: View {
     }
 
     private var flatList: some View {
-        List(selection: selection) {
-            if !store.stagedEntries.isEmpty {
-                Section {
-                    ForEach(store.stagedEntries) { file in
-                        ChangeRow(file: file, staged: true, store: store)
-                            .tag(file.path)
-                    }
-                } header: {
-                    StagingSectionHeader(
-                        title: "Staged",
-                        count: store.stagedEntries.count,
-                        actionIcon: "minus.rectangle",
-                        actionHelp: "Unstage all",
-                        actionEnabled: store.canUnstageAll
-                    ) {
-                        Task { await store.unstageAll() }
-                    }
-                }
+        ScrollViewReader { proxy in
+            List(selection: selection) {
+                unstagedFlatSection
+                stagedFlatSection
             }
-            Section {
-                if store.unstagedEntries.isEmpty {
-                    Text("Nothing to stage")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.tertiary)
-                        .padding(.vertical, 2)
-                } else {
-                    ForEach(store.unstagedEntries) { file in
-                        ChangeRow(file: file, staged: false, store: store)
-                            .tag(file.path)
-                    }
-                }
-            } header: {
-                StagingSectionHeader(
-                    title: "Changes",
-                    count: store.unstagedEntries.count,
-                    actionIcon: "plus.rectangle.on.rectangle",
-                    actionHelp: "Stage all",
-                    actionEnabled: store.canStageAll
-                ) {
-                    Task { await store.stageAll() }
+            .scrollContentBackground(.hidden)
+            .animation(.easeInOut(duration: 0.18), value: stagingAnimationKey)
+            .onChange(of: store.selectedPath) { _, newValue in
+                guard let newValue else { return }
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    proxy.scrollTo(newValue, anchor: .center)
                 }
             }
         }
-        .scrollContentBackground(.hidden)
     }
 
     private var treeList: some View {
-        List(selection: selection) {
-            if !store.stagedEntries.isEmpty {
-                Section {
-                    treeRows(for: store.stagedEntries, staged: true)
-                } header: {
-                    StagingSectionHeader(
-                        title: "Staged",
-                        count: store.stagedEntries.count,
-                        actionIcon: "minus.rectangle",
-                        actionHelp: "Unstage all",
-                        actionEnabled: store.canUnstageAll
-                    ) {
-                        Task { await store.unstageAll() }
-                    }
-                }
+        ScrollViewReader { proxy in
+            List(selection: selection) {
+                unstagedTreeSection
+                stagedTreeSection
             }
-            Section {
-                if store.unstagedEntries.isEmpty {
-                    Text("Nothing to stage")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.tertiary)
-                        .padding(.vertical, 2)
-                } else {
-                    treeRows(for: store.unstagedEntries, staged: false)
-                }
-            } header: {
-                StagingSectionHeader(
-                    title: "Changes",
-                    count: store.unstagedEntries.count,
-                    actionIcon: "plus.rectangle.on.rectangle",
-                    actionHelp: "Stage all",
-                    actionEnabled: store.canStageAll
-                ) {
-                    Task { await store.stageAll() }
+            .scrollContentBackground(.hidden)
+            .animation(.easeInOut(duration: 0.18), value: stagingAnimationKey)
+            .onChange(of: store.selectedPath) { _, newValue in
+                guard let newValue else { return }
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    proxy.scrollTo(newValue, anchor: .center)
                 }
             }
         }
-        .scrollContentBackground(.hidden)
+    }
+
+    @ViewBuilder
+    private var unstagedFlatSection: some View {
+        Section {
+            if store.unstagedEntries.isEmpty {
+                Text("Nothing to stage")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 2)
+            } else {
+                ForEach(store.unstagedEntries) { file in
+                    ChangeRow(file: file, staged: false, store: store)
+                        .tag(file.path)
+                        .id(file.path)
+                }
+            }
+        } header: {
+            StagingSectionHeader(
+                title: "Changes",
+                count: store.unstagedEntries.count,
+                actionIcon: "plus.rectangle.on.rectangle",
+                actionHelp: "Stage all",
+                actionEnabled: store.canStageAll
+            ) {
+                Task { await store.stageAll() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var stagedFlatSection: some View {
+        if !store.stagedEntries.isEmpty {
+            Section {
+                ForEach(store.stagedEntries) { file in
+                    ChangeRow(file: file, staged: true, store: store)
+                        .tag(file.path)
+                        .id(file.path)
+                }
+            } header: {
+                StagingSectionHeader(
+                    title: "Staged",
+                    count: store.stagedEntries.count,
+                    actionIcon: "minus.rectangle",
+                    actionHelp: "Unstage all",
+                    actionEnabled: store.canUnstageAll
+                ) {
+                    Task { await store.unstageAll() }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var unstagedTreeSection: some View {
+        Section {
+            if store.unstagedEntries.isEmpty {
+                Text("Nothing to stage")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                    .padding(.vertical, 2)
+            } else {
+                treeRows(for: store.unstagedEntries, staged: false)
+            }
+        } header: {
+            StagingSectionHeader(
+                title: "Changes",
+                count: store.unstagedEntries.count,
+                actionIcon: "plus.rectangle.on.rectangle",
+                actionHelp: "Stage all",
+                actionEnabled: store.canStageAll
+            ) {
+                Task { await store.stageAll() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var stagedTreeSection: some View {
+        if !store.stagedEntries.isEmpty {
+            Section {
+                treeRows(for: store.stagedEntries, staged: true)
+            } header: {
+                StagingSectionHeader(
+                    title: "Staged",
+                    count: store.stagedEntries.count,
+                    actionIcon: "minus.rectangle",
+                    actionHelp: "Unstage all",
+                    actionEnabled: store.canUnstageAll
+                ) {
+                    Task { await store.unstageAll() }
+                }
+            }
+        }
+    }
+
+    /// Stable key for List animations: counts plus boundary paths. Bulk refreshes
+    /// from the watcher won't trip the animation unless the visible boundary moves.
+    private var stagingAnimationKey: String {
+        let staged = store.stagedEntries.count
+        let unstaged = store.unstagedEntries.count
+        let firstU = store.unstagedEntries.first?.path ?? ""
+        let lastU = store.unstagedEntries.last?.path ?? ""
+        let firstS = store.stagedEntries.first?.path ?? ""
+        let lastS = store.stagedEntries.last?.path ?? ""
+        return "\(unstaged)|\(staged)|\(firstU)|\(lastU)|\(firstS)|\(lastS)"
     }
 
     @ViewBuilder
@@ -190,7 +271,7 @@ struct ChangeListView: View {
     private var summary: String {
         let staged = store.stagedEntries.count
         let unstaged = store.unstagedEntries.count
-        if staged == 0 && unstaged == 0 { return "Clean" }
+        if staged == 0, unstaged == 0 { return "Clean" }
         if staged == 0 { return "\(unstaged) changed" }
         if unstaged == 0 { return "\(staged) staged" }
         return "\(staged) staged · \(unstaged) changed"
@@ -239,7 +320,7 @@ private struct StagingSectionHeader: View {
 
 private struct CleanTreeCard: View {
     let store: RepositoryStore
-    var switchToAllCommits: (() -> Void)? = nil
+    var switchToAllCommits: (() -> Void)?
 
     var body: some View {
         AviEmptyState(

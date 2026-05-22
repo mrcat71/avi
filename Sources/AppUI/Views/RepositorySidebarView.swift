@@ -394,7 +394,7 @@ private struct LocalBranchRow: View {
 
             Spacer(minLength: 4)
 
-            if !ref.isCurrent && (isHovering || isSelected) {
+            if !ref.isCurrent, isHovering || isSelected {
                 Button(action: checkout) {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.system(size: 10, weight: .medium))
@@ -527,7 +527,7 @@ private struct LocalBranchRow: View {
         if let behind = ref.behind, behind > 0 {
             chip(text: "↓\(behind)", color: .blue)
         }
-        if ref.upstream != nil && ref.ahead == nil && ref.behind == nil && !ref.isUpstreamGone {
+        if ref.upstream != nil, ref.ahead == nil, ref.behind == nil, !ref.isUpstreamGone {
             chip(text: "✓", color: .green)
         }
     }

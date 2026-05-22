@@ -4,19 +4,23 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case general
     case appearance
     case git
+    case clone
     case github
     case gitlab
     case ai
     case externalTools
     case advanced
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
         case .general: return "General"
         case .appearance: return "Appearance"
         case .git: return "Git"
+        case .clone: return "Clone"
         case .github: return "GitHub"
         case .gitlab: return "GitLab"
         case .ai: return "AI Commit Messages"
@@ -30,6 +34,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general: return "gear"
         case .appearance: return "paintpalette"
         case .git: return "arrow.triangle.branch"
+        case .clone: return "square.and.arrow.down"
         case .github: return "chevron.left.forwardslash.chevron.right"
         case .gitlab: return "globe"
         case .ai: return "wand.and.stars"
@@ -62,15 +67,20 @@ public struct SettingsRoot: View {
                 }
                 .tag(section)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 220)
+            .listStyle(.sidebar)
         } detail: {
             ScrollView {
                 content
-                    .padding(24)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .navigationTitle(selection.title)
+            .navigationSubtitle(ConfigPath.fileURL.path)
         }
-        .frame(minWidth: 760, minHeight: 520)
+        .frame(minWidth: 820, minHeight: 560)
     }
 
     private func shouldShowPlannedChip(_ section: SettingsSection) -> Bool {
@@ -86,6 +96,7 @@ public struct SettingsRoot: View {
         case .general: GeneralSettingsView()
         case .appearance: AppearanceSettingsView()
         case .git: GitSettingsView()
+        case .clone: CloneSettingsView()
         case .github: GitHubSettingsView()
         case .gitlab: GitLabSettingsView()
         case .ai: AISettingsView()
@@ -98,7 +109,7 @@ public struct SettingsRoot: View {
 /// Standard section row layout used by every settings panel.
 struct SettingsFormRow<Content: View>: View {
     let label: String
-    var description: String? = nil
+    var description: String?
     let content: Content
 
     init(_ label: String, description: String? = nil, @ViewBuilder content: () -> Content) {

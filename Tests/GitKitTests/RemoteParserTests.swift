@@ -1,8 +1,8 @@
-import Testing
 @testable import GitKit
+import Testing
 
-@Suite struct RemoteParserTests {
-    @Test func parsesRemoteVerboseOutput() {
+struct RemoteParserTests {
+    @Test func `parses remote verbose output`() {
         let remotes = RemoteParser.parse("""
         origin  git@example.com:org/repo.git (fetch)
         origin  git@example.com:org/repo.git (push)
@@ -12,11 +12,11 @@ import Testing
 
         #expect(remotes == [
             GitRemote(name: "backup", fetchURL: "https://example.com/repo.git", pushURL: "https://example.com/repo.git"),
-            GitRemote(name: "origin", fetchURL: "git@example.com:org/repo.git", pushURL: "git@example.com:org/repo.git"),
+            GitRemote(name: "origin", fetchURL: "git@example.com:org/repo.git", pushURL: "git@example.com:org/repo.git")
         ])
     }
 
-    @Test func emptyOutputYieldsNoRemotes() {
+    @Test func `empty output yields no remotes`() {
         #expect(RemoteParser.parse("").isEmpty)
     }
 }

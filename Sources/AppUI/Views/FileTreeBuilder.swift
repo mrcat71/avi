@@ -9,7 +9,7 @@ struct FileTreeNode: Identifiable {
         case file(FileStatus)
     }
 
-    let id: String           // full path: "Sources/AppUI/Views" or "Sources/AppUI/Views/Foo.swift"
+    let id: String // full path: "Sources/AppUI/Views" or "Sources/AppUI/Views/Foo.swift"
     let depth: Int
     let payload: Payload
     let changedCount: Int
@@ -20,7 +20,9 @@ struct FileTreeNode: Identifiable {
         return false
     }
 
-    var sortKey: String { id }
+    var sortKey: String {
+        id
+    }
 }
 
 enum FileTreeBuilder {
@@ -54,6 +56,23 @@ enum FileTreeBuilder {
             }
         }
         return out
+    }
+
+    /// Returns the ids of every folder node in the trees produced from `entries`.
+    /// Used to "expand everything" by default or via the Expand all action.
+    static func allFolderIds(for entries: [FileStatus]) -> Set<String> {
+        var ids: Set<String> = []
+        collectFolderIds(build(entries: entries), into: &ids)
+        return ids
+    }
+
+    private static func collectFolderIds(_ nodes: [FileTreeNode], into ids: inout Set<String>) {
+        for node in nodes {
+            if case .folder(_, let children) = node.payload {
+                ids.insert(node.id)
+                collectFolderIds(children, into: &ids)
+            }
+        }
     }
 
     // MARK: - Internal raw tree representation

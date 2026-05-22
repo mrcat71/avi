@@ -27,7 +27,7 @@ struct GitSettingsView: View {
 
             SettingsGroup("Fetch") {
                 SettingsFormRow("Auto-fetch interval", description: "Minutes. 0 disables auto-fetch.") {
-                    Stepper(value: bind(\.git.fetchInterval), in: 0...120, step: 5) {
+                    Stepper(value: bind(\.git.fetchInterval), in: 0 ... 120, step: 5) {
                         Text("\(store.config.git.fetchInterval) min")
                             .font(.system(size: 12, design: .monospaced))
                     }

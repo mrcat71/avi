@@ -89,8 +89,8 @@ struct CommandPalette: View {
         guard !needle.isEmpty else { return commands }
         return commands.filter { c in
             c.title.lowercased().contains(needle) ||
-            c.group.lowercased().contains(needle) ||
-            (c.subtitle?.lowercased().contains(needle) ?? false)
+                c.group.lowercased().contains(needle) ||
+                (c.subtitle?.lowercased().contains(needle) ?? false)
         }
     }
 
@@ -109,7 +109,7 @@ struct CommandPalette: View {
 
     private func flatIndex(groupIndex: Int, itemIndex: Int) -> Int {
         var index = 0
-        for i in 0..<groupIndex {
+        for i in 0 ..< groupIndex {
             index += grouped[i].items.count
         }
         return index + itemIndex
@@ -122,7 +122,7 @@ struct CommandPalette: View {
     }
 
     private func runSelection() {
-        guard selectedIndex >= 0 && selectedIndex < filtered.count else { return }
+        guard selectedIndex >= 0, selectedIndex < filtered.count else { return }
         run(filtered[selectedIndex])
     }
 

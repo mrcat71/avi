@@ -10,7 +10,10 @@ enum GitLabAPIError: Error, CustomStringConvertible, LocalizedError {
     case http(Int, String)
     case decoding(String)
 
-    var description: String { errorDescription ?? "" }
+    var description: String {
+        errorDescription ?? ""
+    }
+
     var errorDescription: String? {
         switch self {
         case .http(let code, let body):
@@ -21,8 +24,8 @@ enum GitLabAPIError: Error, CustomStringConvertible, LocalizedError {
     }
 }
 
-struct GitLabAPI: Sendable {
-    let baseURL: String     // e.g. https://gitlab.com
+struct GitLabAPI {
+    let baseURL: String // e.g. https://gitlab.com
     let token: String
 
     /// `projectPath` is the URL-encoded "group/name" path.
@@ -57,7 +60,7 @@ struct GitLabAPI: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw GitLabAPIError.decoding("No response")
         }
-        if !(200..<300).contains(http.statusCode) {
+        if !(200 ..< 300).contains(http.statusCode) {
             let text = String(data: data, encoding: .utf8) ?? ""
             throw GitLabAPIError.http(http.statusCode, text)
         }

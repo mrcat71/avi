@@ -7,6 +7,8 @@ public struct RootView: View {
     @State private var repositories: [RepositoryStore] = []
     @State private var selectedRepositoryID: RepositoryStore.ID?
     @State private var openErrorMessage: String?
+    @State private var showingPicker: Bool = false
+    @State private var showingCloneSheet: Bool = false
 
     public init() {}
 
@@ -20,9 +22,30 @@ public struct RootView: View {
                     openRepositoryPicker: openRepositoryPicker,
                     closeRepository: closeRepository
                 )
+                .sheet(isPresented: $showingPicker) {
+                    RepositoryPickerView(
+                        openRepository: { url in
+                            openRepository(url)
+                        },
+                        onClone: { showingPicker = false; showingCloneSheet = true },
+                        onDismiss: { showingPicker = false },
+                        presentation: .sheet
+                    )
+                }
             } else {
-                WelcomeView(openRepository: openRepository)
+                RepositoryPickerView(
+                    openRepository: openRepository,
+                    onClone: { showingCloneSheet = true },
+                    onDismiss: nil,
+                    presentation: .standalone
+                )
             }
+        }
+        .sheet(isPresented: $showingCloneSheet) {
+            CloneSheet(
+                onClone: { url in openRepository(url) },
+                onDismiss: { showingCloneSheet = false }
+            )
         }
         .frame(minWidth: 1120, minHeight: 700)
         .alert("Git Error", isPresented: openErrorPresented) {
@@ -72,13 +95,11 @@ public struct RootView: View {
     }
 
     private func openRepositoryPicker() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Open"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        openRepository(url)
+        if selectedStore == nil {
+            // We're already on the picker (standalone empty state). Nothing to open.
+            return
+        }
+        showingPicker = true
     }
 
     private func openRepository(_ url: URL) {

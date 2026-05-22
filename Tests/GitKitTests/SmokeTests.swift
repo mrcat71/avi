@@ -1,6 +1,6 @@
-import Testing
 @testable import GitKit
+import Testing
 
-@Test func versionIsSet() {
-    #expect(GitKit.version == "0.0.1")
+@Test func `version is set`() {
+    #expect(GitKit.version == "0.1.0")
 }

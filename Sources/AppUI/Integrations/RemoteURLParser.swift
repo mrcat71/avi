@@ -3,7 +3,7 @@ import GitKit
 
 public enum ProviderHint: Equatable {
     case github(owner: String, repo: String)
-    case gitlab(host: String, projectPath: String)   // projectPath is "owner/repo" or "group/sub/repo"
+    case gitlab(host: String, projectPath: String) // projectPath is "owner/repo" or "group/sub/repo"
     case unknown
 }
 

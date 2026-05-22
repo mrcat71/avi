@@ -1,11 +1,11 @@
 import Foundation
-import Testing
 @testable import GitKit
+import Testing
 
-@Suite struct RemoteOperationTests {
+struct RemoteOperationTests {
     private let gitURL = URL(fileURLWithPath: "/usr/bin/git")
 
-    @Test func remotesListsConfiguredOrigin() async throws {
+    @Test func `remotes lists configured origin`() async throws {
         let fixture = try await makeClone()
         defer { fixture.removeAll() }
 
@@ -17,7 +17,7 @@ import Testing
         #expect(remotes[0].pushURL != nil)
     }
 
-    @Test func fetchUpdatesRemoteBranches() async throws {
+    @Test func `fetch updates remote branches`() async throws {
         let fixture = try await makeEmptyRepoWithOrigin()
         defer { fixture.removeAll() }
 
@@ -28,7 +28,7 @@ import Testing
         #expect(refs.remoteBranches.contains { $0.name == "origin/main" })
     }
 
-    @Test func pullOnUpToDateCloneSucceeds() async throws {
+    @Test func `pull on up to date clone succeeds`() async throws {
         let fixture = try await makeClone()
         defer { fixture.removeAll() }
 
@@ -37,7 +37,7 @@ import Testing
         #expect(result.output.contains("Already up to date") || result.output.contains("Already up-to-date"))
     }
 
-    @Test func pushWithoutOriginThrows() async throws {
+    @Test func `push without origin throws`() async throws {
         let repo = try await GitFixture.make()
         defer { repo.removeDirectory() }
         try repo.write("a.txt", "v1\n")
@@ -54,7 +54,7 @@ import Testing
         }
     }
 
-    @Test func pushFromDetachedHeadThrows() async throws {
+    @Test func `push from detached head throws`() async throws {
         let repo = try await GitFixture.make()
         defer { repo.removeDirectory() }
         try repo.write("a.txt", "v1\n")

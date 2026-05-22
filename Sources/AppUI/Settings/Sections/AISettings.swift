@@ -87,7 +87,7 @@ struct AISettingsView: View {
                 Divider().padding(.vertical, 4)
                 SettingsFormRow("Temperature") {
                     HStack {
-                        Slider(value: bind(\.ai.temperature), in: 0...1, step: 0.05)
+                        Slider(value: bind(\.ai.temperature), in: 0 ... 1, step: 0.05)
                             .frame(maxWidth: 220)
                         Text(String(format: "%.2f", store.config.ai.temperature))
                             .font(.system(size: 11, design: .monospaced))
@@ -96,14 +96,14 @@ struct AISettingsView: View {
                 }
                 Divider().padding(.vertical, 4)
                 SettingsFormRow("Max tokens") {
-                    Stepper(value: bind(\.ai.maxTokens), in: 100...4000, step: 100) {
+                    Stepper(value: bind(\.ai.maxTokens), in: 100 ... 4000, step: 100) {
                         Text("\(store.config.ai.maxTokens)")
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
                 Divider().padding(.vertical, 4)
                 SettingsFormRow("Timeout", description: "Kill the AI command if it doesn't finish.") {
-                    Stepper(value: bind(\.ai.timeoutSeconds), in: 30...600, step: 30) {
+                    Stepper(value: bind(\.ai.timeoutSeconds), in: 30 ... 600, step: 30) {
                         Text("\(store.config.ai.timeoutSeconds) seconds")
                             .font(.system(size: 12, design: .monospaced))
                     }
@@ -165,21 +165,21 @@ struct AISettingsView: View {
                 }
                 Divider().padding(.vertical, 4)
                 SettingsFormRow("Subject soft limit") {
-                    Stepper(value: bind(\.ai.subjectSoftLimit), in: 30...100, step: 1) {
+                    Stepper(value: bind(\.ai.subjectSoftLimit), in: 30 ... 100, step: 1) {
                         Text("\(store.config.ai.subjectSoftLimit) chars")
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
                 Divider().padding(.vertical, 4)
                 SettingsFormRow("Subject hard limit") {
-                    Stepper(value: bind(\.ai.subjectHardLimit), in: 40...120, step: 1) {
+                    Stepper(value: bind(\.ai.subjectHardLimit), in: 40 ... 120, step: 1) {
                         Text("\(store.config.ai.subjectHardLimit) chars")
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
                 Divider().padding(.vertical, 4)
                 SettingsFormRow("Body wrap") {
-                    Stepper(value: bind(\.ai.bodyWrap), in: 60...120, step: 1) {
+                    Stepper(value: bind(\.ai.bodyWrap), in: 60 ... 120, step: 1) {
                         Text("\(store.config.ai.bodyWrap) chars")
                             .font(.system(size: 12, design: .monospaced))
                     }

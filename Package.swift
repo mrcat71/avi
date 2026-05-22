@@ -9,23 +9,23 @@ let package = Package(
     products: [
         .library(name: "GitKit", targets: ["GitKit"]),
         .library(name: "AppUI", targets: ["AppUI"]),
-        .executable(name: "AviApp", targets: ["AviApp"]),
+        .executable(name: "AviApp", targets: ["AviApp"])
     ],
     dependencies: [
-        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.18.0"),
+        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.18.0")
     ],
     targets: [
         .target(name: "GitKit"),
         .target(name: "AppUI", dependencies: ["GitKit"]),
-        .executableTarget(name: "AviApp", dependencies: ["AppUI"]),
+        .executableTarget(name: "AviApp", dependencies: ["AppUI", "GitKit"]),
         .testTarget(name: "GitKitTests", dependencies: ["GitKit"]),
         .testTarget(
             name: "AppUITests",
             dependencies: [
                 "AppUI",
                 "GitKit",
-                .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
+                .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
             ]
-        ),
+        )
     ]
 )

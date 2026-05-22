@@ -12,7 +12,7 @@ struct ExternalToolsSettingsView: View {
             SettingsGroup("Auto-detected tools") {
                 SettingsFormRow("Status") {
                     HStack(spacing: 8) {
-                        Text("\(detection.filter { $0.isAvailable }.count) of \(detection.count) tools found")
+                        Text("\(detection.count(where: { $0.isAvailable })) of \(detection.count) tools found")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -147,8 +147,8 @@ struct ExternalToolsSettingsView: View {
         Task.detached(priority: .userInitiated) {
             let tools = ExternalToolsScanner.detectAll()
             await MainActor.run {
-                self.detection = tools
-                self.isDetecting = false
+                detection = tools
+                isDetecting = false
             }
         }
     }

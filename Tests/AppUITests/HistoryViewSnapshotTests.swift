@@ -1,8 +1,8 @@
+@testable import AppUI
+@testable import GitKit
 import SnapshotTesting
 import SwiftUI
 import Testing
-@testable import AppUI
-@testable import GitKit
 
 /// Snapshot tests for the history workspace. Render at a fixed window size
 /// against deterministic fixtures so visual regressions surface as image diffs.
@@ -10,9 +10,9 @@ import Testing
 /// On first run these tests record reference images; subsequent runs compare.
 /// To force re-record after intentional UI changes, set environment variable
 /// `RECORD_SNAPSHOTS=true` or call `assertSnapshot(record:)` directly.
-@Suite struct HistoryViewSnapshotTests {
+struct HistoryViewSnapshotTests {
     @Test @MainActor
-    func multibranchHistoryAtComfortableDensity() async throws {
+    func `multibranch history at comfortable density`() async throws {
         let provider = Fixtures.multibranch()
         let store = RepositoryStore(git: provider)
         try await loadStore(store, root: URL(fileURLWithPath: "/tmp/avi-snapshot"))
@@ -24,7 +24,7 @@ import Testing
     }
 
     @Test @MainActor
-    func cleanHistoryEmpty() async throws {
+    func `clean history empty`() async throws {
         let provider = Fixtures.clean()
         let store = RepositoryStore(git: provider)
         try await loadStore(store, root: URL(fileURLWithPath: "/tmp/avi-snapshot"))

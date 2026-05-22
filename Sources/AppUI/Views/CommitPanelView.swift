@@ -10,36 +10,45 @@ struct CommitPanelView: View {
     private let summaryMax = 72
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            header
+        GeometryReader { proxy in
+            VStack(alignment: .leading, spacing: 6) {
+                header
 
-            if let preview = store.aiPendingPreview {
-                AIPreviewCard(preview: preview, store: store, config: config.config.ai)
+                if let preview = store.aiPendingPreview {
+                    AIPreviewCard(preview: preview, store: store, config: config.config.ai)
+                }
+
+                if let err = store.aiErrorDetail {
+                    AIErrorBanner(detail: err, store: store, config: config.config.ai)
+                }
+
+                summaryField
+                bodyField
+
+                footer
             }
-
-            if let err = store.aiErrorDetail {
-                AIErrorCard(detail: err, store: store, config: config.config.ai)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .disabled(isFormDisabled)
+            .opacity(isFormDisabled ? 0.55 : 1)
+            .overlay {
+                if isFormDisabled {
+                    cleanOverlay
+                }
             }
-
-            summaryField
-            bodyField
-
-            footer
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .disabled(isFormDisabled)
-        .opacity(isFormDisabled ? 0.55 : 1)
-        .overlay {
-            if isFormDisabled {
-                cleanOverlay
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if store.aiDebugDrawerVisible {
+                    AIDebugDrawer(store: store, containerHeight: proxy.size.height)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-        }
-        .task(id: store.amend) {
-            await store.prepareAmendIfNeeded()
+            .animation(.easeInOut(duration: 0.18), value: store.aiDebugDrawerVisible)
+            .animation(.easeInOut(duration: 0.18), value: store.aiDebugMinimized)
+            .task(id: store.amend) {
+                await store.prepareAmendIfNeeded()
+            }
         }
     }
-
 
     private var isFormDisabled: Bool {
         !store.amend && store.entries.isEmpty
@@ -81,12 +90,36 @@ struct CommitPanelView: View {
             Spacer()
             if config.config.ai.enabled {
                 generateButton
+                debugToggleButton
             }
             Text(commitHint)
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
+    }
+
+    private var debugToggleButton: some View {
+        Button {
+            store.toggleAIDebugDrawer()
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "ladybug")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(store.aiDebugDrawerVisible ? Color.accentColor : .secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+                if store.aiDebugHasUnreadError {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 6, height: 6)
+                        .offset(x: -3, y: 3)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .help(store.aiDebugDrawerVisible ? "Hide AI debug drawer" : "Show AI debug drawer")
+        .accessibilityLabel("Toggle AI debug drawer")
     }
 
     @ViewBuilder
@@ -290,8 +323,6 @@ private struct AIPreviewCard: View {
     let store: RepositoryStore
     let config: AIConfig
 
-    @State private var debugExpanded = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
@@ -344,20 +375,17 @@ private struct AIPreviewCard: View {
                 }
                 .controlSize(.small)
 
+                Button("Debug") {
+                    store.openAIDebugDrawer()
+                }
+                .controlSize(.small)
+
                 Spacer()
 
                 Button("Discard", role: .destructive) {
                     store.discardAIPreview()
                 }
                 .controlSize(.small)
-            }
-
-            DisclosureGroup(isExpanded: $debugExpanded) {
-                AIRunResultView(result: preview.result)
-            } label: {
-                Text("Debug")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
             }
         }
         .padding(8)
@@ -372,84 +400,57 @@ private struct AIPreviewCard: View {
     }
 }
 
-private struct AIErrorCard: View {
+/// Compact one-line error banner. The full diagnostic (command, stdout, stderr)
+/// lives in the bottom drawer; this banner only surfaces the headline so the
+/// commit form stays usable.
+private struct AIErrorBanner: View {
     let detail: AIErrorDetail
     let store: RepositoryStore
     let config: AIConfig
 
-    @State private var debugExpanded = false
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 1) {
                 Text(detail.title)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.orange)
-                Spacer()
-                Button {
-                    store.dismissAIError()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss AI error")
+                Text(detail.message)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
             }
+            Spacer()
+            Button("Retry") {
+                store.generateCommitMessage(config: config)
+            }
+            .controlSize(.small)
+            .disabled(store.isGeneratingCommitMessage)
 
-            Text(detail.message)
-                .font(.system(size: 11))
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 6) {
-                Button("Retry") {
-                    store.generateCommitMessage(config: config)
-                }
-                .controlSize(.small)
-                .disabled(store.isGeneratingCommitMessage)
-
-                if let run = detail.runResult {
-                    Button("Copy details") {
-                        let text = """
-                        Command: \(run.commandLine)
-                        Exit:    \(run.exitCode.map(String.init) ?? "?") (timeout: \(run.timedOut))
-                        Duration: \(run.durationMS) ms
-                        stdout:
-                        \(run.stdout)
-                        stderr:
-                        \(run.stderr)
-                        """
-                        let pasteboard = NSPasteboard.general
-                        pasteboard.clearContents()
-                        pasteboard.setString(text, forType: .string)
-                    }
-                    .controlSize(.small)
-                }
-
-                Spacer()
-
-                Button("Dismiss") {
-                    store.dismissAIError()
+            if detail.runResult != nil {
+                Button("Show details") {
+                    store.openAIDebugDrawer()
                 }
                 .controlSize(.small)
             }
 
-            if let run = detail.runResult {
-                DisclosureGroup(isExpanded: $debugExpanded) {
-                    AIRunResultView(result: run)
-                } label: {
-                    Text("Debug")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
+            Button {
+                store.dismissAIError()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss AI error")
         }
-        .padding(8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 6)
                 .fill(Color.orange.opacity(0.10))
@@ -458,64 +459,5 @@ private struct AIErrorCard: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(Color.orange.opacity(0.30), lineWidth: 1)
         )
-    }
-}
-
-private struct AIRunResultView: View {
-    let result: AIRunResult
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            kv("Provider", result.provider)
-            kv("Model", result.model)
-            kv("Executable", result.resolvedExecutable)
-            kv("Command", result.commandLine, mono: true)
-            kv("Exit code", result.exitCode.map(String.init) ?? "(none)")
-            kv("Timed out", result.timedOut ? "yes" : "no")
-            kv("Duration", "\(result.durationMS) ms")
-            if !result.stdout.isEmpty {
-                Text("stdout")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                ScrollView(.vertical) {
-                    Text(result.stdout)
-                        .font(.system(size: 10, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 100)
-                .padding(4)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.06)))
-            }
-            if !result.stderr.isEmpty {
-                Text("stderr")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.red)
-                ScrollView(.vertical) {
-                    Text(result.stderr)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 100)
-                .padding(4)
-                .background(RoundedRectangle(cornerRadius: 4).fill(Color.red.opacity(0.08)))
-            }
-        }
-        .padding(.top, 4)
-    }
-
-    private func kv(_ key: String, _ value: String, mono: Bool = false) -> some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text(key)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 80, alignment: .leading)
-            Text(value)
-                .font(.system(size: 10, design: mono ? .monospaced : .default))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 }

@@ -10,7 +10,9 @@ public enum AIEngineError: Error, CustomStringConvertible, LocalizedError {
     case invalidResponse(String)
     case cancelled
 
-    public var description: String { errorDescription ?? "AI error" }
+    public var description: String {
+        errorDescription ?? "AI error"
+    }
 
     public var errorDescription: String? {
         switch self {
@@ -64,11 +66,11 @@ final class CommandAIEngine: AIEngine {
     let timeoutSeconds: Int
 
     init(config: AIConfig) {
-        self.commandTemplate = config.commandTemplate
-        self.timeoutSeconds = max(5, config.timeoutSeconds)
+        commandTemplate = config.commandTemplate
+        timeoutSeconds = max(5, config.timeoutSeconds)
     }
 
-    func generate(prompt: String, model: String, temperature: Double, maxTokens: Int) async throws -> String {
+    func generate(prompt: String, model: String, temperature _: Double, maxTokens _: Int) async throws -> String {
         // Write prompt to a temp file. Templates can reference it via ${prompt_file};
         // we ALSO pipe the prompt on stdin as a fallback for CLIs that read stdin.
         let tmpDir = FileManager.default.temporaryDirectory
@@ -134,8 +136,8 @@ final class CommandAIEngine: AIEngine {
         let outcome = await waitForTerminationOrTimeout(process: process, timeoutSeconds: timeoutSeconds)
 
         // Now that the process is done (or being killed), gather buffered output.
-        let stdout = String(data: await stdoutData, encoding: .utf8) ?? ""
-        let stderr = String(data: await stderrData, encoding: .utf8) ?? ""
+        let stdout = await String(data: stdoutData, encoding: .utf8) ?? ""
+        let stderr = await String(data: stderrData, encoding: .utf8) ?? ""
         let durationMS = Int(Date().timeIntervalSince(startedAt) * 1000)
 
         let result = AIRunResult(
@@ -165,7 +167,7 @@ final class CommandAIEngine: AIEngine {
 
     // MARK: - Subprocess helpers
 
-    private enum WaitOutcome: Sendable, Equatable {
+    private enum WaitOutcome: Equatable {
         case terminated
         case timedOut
         case cancelled
@@ -251,7 +253,7 @@ final class CommandAIEngine: AIEngine {
             "/usr/bin/\(name)",
             "\(home)/.local/bin/\(name)",
             "\(home)/.cargo/bin/\(name)",
-            "\(home)/.nix-profile/bin/\(name)",
+            "\(home)/.nix-profile/bin/\(name)"
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
@@ -306,8 +308,8 @@ final class OpenAIAIEngine: AIEngine {
 
     @MainActor
     init(config: AIConfig) {
-        self.baseURL = config.openAIBaseURL
-        self.token = KeychainStore.getString(account: config.openAIKeychainItem)
+        baseURL = config.openAIBaseURL
+        token = KeychainStore.getString(account: config.openAIKeychainItem)
     }
 
     func generate(prompt: String, model: String, temperature: Double, maxTokens: Int) async throws -> String {
@@ -337,7 +339,7 @@ final class OpenAIAIEngine: AIEngine {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             let text = String(data: data, encoding: .utf8) ?? ""
             throw AIEngineError.invalidResponse("HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(text.prefix(400))")
         }

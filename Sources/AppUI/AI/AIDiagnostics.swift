@@ -3,11 +3,11 @@ import Foundation
 /// Carries the full execution trace of an AI generation attempt so the UI
 /// can render it as a debug disclosure when something goes wrong.
 public struct AIRunResult: Sendable, Equatable {
-    public let provider: String              // "command" | "openai"
+    public let provider: String // "command" | "openai"
     public let resolvedExecutable: String
     public let argv: [String]
     public let model: String
-    public let exitCode: Int32?              // nil = never terminated (timed out)
+    public let exitCode: Int32? // nil = never terminated (timed out)
     public let stdout: String
     public let stderr: String
     public let durationMS: Int

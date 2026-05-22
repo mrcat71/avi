@@ -6,6 +6,7 @@ struct GitHubSettingsView: View {
     @State private var showingDeviceFlow = false
     @State private var showingPATSheet = false
     @State private var patValue: String = ""
+    @State private var ghAuth: ProviderAuthState = .cliMissing
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,6 +14,18 @@ struct GitHubSettingsView: View {
                 provider: "GitHub",
                 features: "Open on GitHub, create pull requests, view PR status"
             )
+
+            SettingsGroup("Command-line tool (gh)") {
+                SettingsFormRow("Status", description: "Avi will reuse gh's authentication when cloning and listing repositories.") {
+                    HStack(spacing: 8) {
+                        ProviderCLIStatusBadge(state: ghAuth)
+                        Spacer()
+                        Button("Refresh") {
+                            Task { ghAuth = await GhCLI.authStatus() }
+                        }
+                    }
+                }
+            }
 
             SettingsGroup("Accounts") {
                 if githubAccounts.isEmpty {
@@ -58,6 +71,9 @@ struct GitHubSettingsView: View {
                     }
                 }
             }
+        }
+        .task {
+            ghAuth = await GhCLI.authStatus()
         }
         .sheet(isPresented: $showingDeviceFlow) {
             GitHubDeviceFlowSheet { account in

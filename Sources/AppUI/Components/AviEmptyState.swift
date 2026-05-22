@@ -64,6 +64,6 @@ extension AviEmptyState where Actions == EmptyView {
         self.title = title
         self.message = message
         self.iconTint = iconTint
-        self.actions = EmptyView()
+        actions = EmptyView()
     }
 }

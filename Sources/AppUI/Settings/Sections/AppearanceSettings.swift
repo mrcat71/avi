@@ -31,7 +31,7 @@ struct AppearanceSettingsView: View {
                 Divider().padding(.vertical, 4)
                 SettingsFormRow("Font size") {
                     HStack {
-                        Slider(value: fontSizeBinding, in: 11...16, step: 1)
+                        Slider(value: fontSizeBinding, in: 11 ... 16, step: 1)
                             .frame(maxWidth: 220)
                         Text("\(store.config.appearance.fontSize) pt")
                             .font(.system(size: 11, design: .monospaced))

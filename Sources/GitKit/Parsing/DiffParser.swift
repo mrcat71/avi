@@ -77,8 +77,8 @@ private struct HunkBuilder {
         self.oldCount = oldCount
         self.newStart = newStart
         self.newCount = newCount
-        self.oldLine = oldStart
-        self.newLine = newStart
+        oldLine = oldStart
+        newLine = newStart
     }
 
     mutating func add(_ kind: DiffLine.Kind, _ text: String, id: inout Int) {

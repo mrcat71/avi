@@ -446,9 +446,9 @@ private struct RepositoryActionToolbarView: View {
 struct ToolbarPillButton: View {
     let title: String
     let systemImage: String
-    var badge: String? = nil
+    var badge: String?
     var badgeTint: Color = .accentColor
-    var helpText: String? = nil
+    var helpText: String?
     let action: () -> Void
 
     @State private var isHovering = false
@@ -823,7 +823,7 @@ struct BranchSwitcherPopover: View {
                             )
                         }
                     }
-                    if filteredLocal.isEmpty && filteredRemote.isEmpty {
+                    if filteredLocal.isEmpty, filteredRemote.isEmpty {
                         Text("No matching branches")
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
@@ -943,7 +943,7 @@ private struct BranchSwitcherRow: View {
 
 struct CreateBranchSheet: View {
     let store: RepositoryStore
-    var startPoint: String? = nil
+    var startPoint: String?
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var checkout = true

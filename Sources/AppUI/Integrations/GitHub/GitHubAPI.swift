@@ -10,7 +10,10 @@ enum GitHubAPIError: Error, CustomStringConvertible, LocalizedError {
     case http(Int, String)
     case decoding(String)
 
-    var description: String { errorDescription ?? "" }
+    var description: String {
+        errorDescription ?? ""
+    }
+
     var errorDescription: String? {
         switch self {
         case .http(let code, let body):
@@ -21,7 +24,7 @@ enum GitHubAPIError: Error, CustomStringConvertible, LocalizedError {
     }
 }
 
-struct GitHubAPI: Sendable {
+struct GitHubAPI {
     let token: String
 
     func createPullRequest(owner: String, repo: String, title: String, body: String, head: String, base: String) async throws -> GitHubPullRequest {
@@ -43,7 +46,7 @@ struct GitHubAPI: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw GitHubAPIError.decoding("No response")
         }
-        if !(200..<300).contains(http.statusCode) {
+        if !(200 ..< 300).contains(http.statusCode) {
             let text = String(data: data, encoding: .utf8) ?? ""
             throw GitHubAPIError.http(http.statusCode, text)
         }

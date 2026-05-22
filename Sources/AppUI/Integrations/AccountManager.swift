@@ -8,7 +8,9 @@ import Observation
 public final class AccountManager {
     public static let shared = AccountManager()
 
-    private var store: ConfigStore { ConfigStore.shared }
+    private var store: ConfigStore {
+        ConfigStore.shared
+    }
 
     private init() {}
 
@@ -124,7 +126,7 @@ public final class AccountManager {
 
     public func account(matching remoteHost: String) -> ProviderAccount? {
         for account in store.config.integrations.accounts {
-            if account.kind == "github" && remoteHost == "github.com" {
+            if account.kind == "github", remoteHost == "github.com" {
                 return account
             }
             if account.kind == "gitlab" {
@@ -169,7 +171,7 @@ public final class AccountManager {
         }
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw NSError(domain: "AccountManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "Provider returned non-2xx"])
         }
         struct UserResponse: Decodable {

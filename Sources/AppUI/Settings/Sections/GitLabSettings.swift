@@ -4,6 +4,7 @@ struct GitLabSettingsView: View {
     @Bindable var store = ConfigStore.shared
     @State private var manager = AccountManager.shared
     @State private var showingPATSheet = false
+    @State private var glabAuth: ProviderAuthState = .cliMissing
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -11,6 +12,18 @@ struct GitLabSettingsView: View {
                 provider: "GitLab",
                 features: "Open on GitLab, create merge requests"
             )
+
+            SettingsGroup("Command-line tool (glab)") {
+                SettingsFormRow("Status", description: "Avi will reuse glab's authentication when cloning and listing repositories.") {
+                    HStack(spacing: 8) {
+                        ProviderCLIStatusBadge(state: glabAuth)
+                        Spacer()
+                        Button("Refresh") {
+                            Task { glabAuth = await GlabCLI.authStatus() }
+                        }
+                    }
+                }
+            }
 
             SettingsGroup("Accounts") {
                 if gitlabAccounts.isEmpty {
@@ -44,6 +57,9 @@ struct GitLabSettingsView: View {
                     }
                 }
             }
+        }
+        .task {
+            glabAuth = await GlabCLI.authStatus()
         }
         .sheet(isPresented: $showingPATSheet) {
             PATEntrySheet(
@@ -101,7 +117,7 @@ struct PATEntrySheet: View {
         self.instanceURLDefault = instanceURLDefault
         self.requiresInstanceURL = requiresInstanceURL
         self.onSubmit = onSubmit
-        self._instanceURL = State(initialValue: instanceURLDefault)
+        _instanceURL = State(initialValue: instanceURLDefault)
     }
 
     var body: some View {

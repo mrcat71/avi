@@ -9,7 +9,9 @@ public struct FileDiff: Sendable, Equatable {
     }
 
     /// No textual changes and not binary (e.g. mode-only change or identical content).
-    public var isEmpty: Bool { hunks.isEmpty && !isBinary }
+    public var isEmpty: Bool {
+        hunks.isEmpty && !isBinary
+    }
 }
 
 public struct DiffHunk: Sendable, Equatable {
@@ -56,7 +58,7 @@ public struct DiffLine: Sendable, Equatable, Identifiable {
 
 /// Which version of a file to diff against.
 public enum DiffSource: Sendable, Equatable {
-    case unstaged   // working tree vs index
-    case staged     // index vs HEAD
-    case untracked  // whole file as additions
+    case unstaged // working tree vs index
+    case staged // index vs HEAD
+    case untracked // whole file as additions
 }

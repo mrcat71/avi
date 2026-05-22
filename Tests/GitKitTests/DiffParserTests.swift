@@ -1,9 +1,9 @@
 import Foundation
-import Testing
 @testable import GitKit
+import Testing
 
-@Suite struct DiffParserTests {
-    @Test func parsesSingleHunkWithLineNumbers() {
+struct DiffParserTests {
+    @Test func `parses single hunk with line numbers`() {
         let text = [
             "diff --git a/a.txt b/a.txt",
             "index 7898192..6178079 100644",
@@ -13,7 +13,7 @@ import Testing
             " line1",
             "-line2",
             "+line2 changed",
-            "+line3",
+            "+line3"
         ].joined(separator: "\n")
 
         let diff = DiffParser.parse(text)
@@ -32,7 +32,7 @@ import Testing
         #expect(hunk.lines[2].text == "line2 changed")
     }
 
-    @Test func parsesMultipleHunks() {
+    @Test func `parses multiple hunks`() {
         let text = [
             "@@ -1 +1 @@",
             "-a",
@@ -40,7 +40,7 @@ import Testing
             "@@ -10,2 +10,2 @@",
             " ctx",
             "-old",
-            "+new",
+            "+new"
         ].joined(separator: "\n")
 
         let diff = DiffParser.parse(text)
@@ -50,10 +50,10 @@ import Testing
         #expect(diff.hunks[1].lines.map(\.kind) == [.context, .deletion, .addition])
     }
 
-    @Test func detectsBinary() {
+    @Test func `detects binary`() {
         let text = [
             "diff --git a/img.png b/img.png",
-            "Binary files a/img.png and b/img.png differ",
+            "Binary files a/img.png and b/img.png differ"
         ].joined(separator: "\n")
 
         let diff = DiffParser.parse(text)
@@ -61,7 +61,7 @@ import Testing
         #expect(diff.hunks.isEmpty)
     }
 
-    @Test func emptyInputYieldsNoHunks() {
+    @Test func `empty input yields no hunks`() {
         #expect(DiffParser.parse("").hunks.isEmpty)
         #expect(DiffParser.parse("").isEmpty)
     }

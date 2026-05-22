@@ -67,6 +67,9 @@ extension View {
     }
 }
 
+/// Pre-macro EnvironmentValues key. Avoids the `@Entry` macro so the
+/// fallback `./build.sh` flow works on bare Command Line Tools without
+/// SwiftUIMacros plugins available.
 private struct AviDensityKey: EnvironmentKey {
     static let defaultValue: Density = .comfortable
 }

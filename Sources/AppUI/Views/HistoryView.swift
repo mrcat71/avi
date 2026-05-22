@@ -16,7 +16,7 @@ struct HistoryListView: View {
 
     @ViewBuilder
     private var content: some View {
-        if store.historyRows.isEmpty && store.isHistoryLoading {
+        if store.historyRows.isEmpty, store.isHistoryLoading {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if store.historyRows.isEmpty {
@@ -202,7 +202,7 @@ struct HistoryRefBadge: Identifiable {
 
 struct PanelHeader: View {
     let title: String
-    var trailing: String? = nil
+    var trailing: String?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -540,7 +540,7 @@ private struct CommitFileListView: View {
             }
             .scrollContentBackground(.hidden)
             .overlay {
-                if store.commitFiles.isEmpty && store.isHistoryLoading {
+                if store.commitFiles.isEmpty, store.isHistoryLoading {
                     ProgressView()
                 }
             }

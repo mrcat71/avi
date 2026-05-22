@@ -7,7 +7,7 @@ import SwiftUI
 /// github.com/settings/applications/new (Device flow enabled) and paste it here.
 /// Without a real client ID, the PAT path in Settings should be used instead.
 enum GitHubDeviceFlowConfig {
-    static let clientID: String = ""    // intentionally empty; user provides for builds.
+    static let clientID: String = "" // intentionally empty; user provides for builds.
     static let scope: String = "repo"
     static let deviceCodeURL = URL(string: "https://github.com/login/device/code")!
     static let tokenURL = URL(string: "https://github.com/login/oauth/access_token")!
@@ -95,7 +95,7 @@ struct GitHubDeviceFlowSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
-                if GitHubDeviceFlowConfig.clientID.isEmpty == false && phase == .initial {
+                if GitHubDeviceFlowConfig.clientID.isEmpty == false, phase == .initial {
                     Button("Start") { Task { await start() } }
                         .buttonStyle(.borderedProminent)
                 }

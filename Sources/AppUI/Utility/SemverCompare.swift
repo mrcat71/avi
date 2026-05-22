@@ -22,13 +22,13 @@ struct SemanticVersion: Equatable {
         let nums = core.split(separator: ".").compactMap { Int($0) }
         guard !nums.isEmpty, nums.count == core.split(separator: ".").count else { return nil }
 
-        self.components = nums
-        self.prerelease = pre
+        components = nums
+        prerelease = pre
     }
 
     static func < (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
         let count = max(lhs.components.count, rhs.components.count)
-        for i in 0..<count {
+        for i in 0 ..< count {
             let l = i < lhs.components.count ? lhs.components[i] : 0
             let r = i < rhs.components.count ? rhs.components[i] : 0
             if l != r { return l < r }

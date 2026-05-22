@@ -31,14 +31,14 @@ public enum StatusParser {
                 parseBranchHeader(field, name: &name, oid: &oid, upstream: &upstream, ahead: &ahead, behind: &behind)
                 i += 1
             case "1":
-                entries.append(try parseChanged(field, hasRenameScore: false, originalPath: nil))
+                try entries.append(parseChanged(field, hasRenameScore: false, originalPath: nil))
                 i += 1
             case "2":
                 let next = i + 1 < fields.count ? String(data: Data(fields[i + 1]), encoding: .utf8) : nil
-                entries.append(try parseChanged(field, hasRenameScore: true, originalPath: next))
+                try entries.append(parseChanged(field, hasRenameScore: true, originalPath: next))
                 i += 2
             case "u":
-                entries.append(try parseUnmerged(field))
+                try entries.append(parseUnmerged(field))
                 i += 1
             case "?":
                 entries.append(FileStatus(path: pathAfterMarker(field), index: .unmodified, worktree: .untracked))
@@ -84,7 +84,7 @@ public enum StatusParser {
         }
     }
 
-    // Handles both ordinary (type 1) and rename/copy (type 2) records.
+    /// Handles both ordinary (type 1) and rename/copy (type 2) records.
     private static func parseChanged(_ field: String, hasRenameScore: Bool, originalPath: String?) throws -> FileStatus {
         let pathIndex = hasRenameScore ? 9 : 8
         let parts = field.split(separator: " ", maxSplits: pathIndex, omittingEmptySubsequences: false)

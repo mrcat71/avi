@@ -37,7 +37,12 @@ public final class RepositoryStore: Identifiable {
     public var isGeneratingCommitMessage: Bool = false
     public var aiErrorDetail: AIErrorDetail?
     public var aiPendingPreview: AIPendingPreview?
+    public var aiDebugDrawerVisible: Bool = false
+    public var aiDebugMinimized: Bool = false
+    public var aiDebugDrawerHeight: CGFloat = AIDebugDrawer.loadHeight()
+    public var aiDebugLatestRun: AIRunResult?
     private var aiTask: Task<Void, Never>?
+    private var pendingDefaultExpand: Bool = false
 
     public var commitMessage: String {
         let trimmedSummary = commitSummary.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -54,7 +59,9 @@ public final class RepositoryStore: Identifiable {
         self.git = git
     }
 
-    public var stagedEntries: [FileStatus] { entries.filter(\.isStaged) }
+    public var stagedEntries: [FileStatus] {
+        entries.filter(\.isStaged)
+    }
 
     public var unstagedEntries: [FileStatus] {
         entries.filter { $0.hasUnstagedChanges || $0.isUntracked }
@@ -101,7 +108,9 @@ public final class RepositoryStore: Identifiable {
             remotes = []
             remoteOutput = nil
             clearHistorySelection()
-            expandedFolders = loadExpandedFolders(for: resolved)
+            let saved = loadExpandedFolders(for: resolved)
+            expandedFolders = saved ?? []
+            pendingDefaultExpand = (saved == nil)
             startWatching(resolved)
             RecentRepositories.add(resolved)
             await refresh()
@@ -132,12 +141,30 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
+    public func expandAllFolders() {
+        expandedFolders = FileTreeBuilder.allFolderIds(for: entries)
+        if let root {
+            saveExpandedFolders(for: root)
+        }
+    }
+
+    public func collapseAllFolders() {
+        expandedFolders.removeAll()
+        if let root {
+            saveExpandedFolders(for: root)
+        }
+    }
+
     private func expandedFoldersKey(for root: URL) -> String {
         "avi.expandedFolders.\(root.standardizedFileURL.path)"
     }
 
-    private func loadExpandedFolders(for root: URL) -> Set<String> {
-        let raw = UserDefaults.standard.stringArray(forKey: expandedFoldersKey(for: root)) ?? []
+    /// Returns the persisted set if the key exists, or `nil` to signal the repo has no
+    /// prior expansion state yet. Callers can then apply a default (expand all).
+    private func loadExpandedFolders(for root: URL) -> Set<String>? {
+        let key = expandedFoldersKey(for: root)
+        guard UserDefaults.standard.object(forKey: key) != nil else { return nil }
+        let raw = UserDefaults.standard.stringArray(forKey: key) ?? []
         return Set(raw)
     }
 
@@ -153,6 +180,11 @@ public final class RepositoryStore: Identifiable {
             let status = try await git.status(in: root)
             branch = status.branch
             entries = status.entries
+            if pendingDefaultExpand, !entries.isEmpty {
+                pendingDefaultExpand = false
+                expandedFolders = FileTreeBuilder.allFolderIds(for: entries)
+                saveExpandedFolders(for: root)
+            }
             if status.branch.isUnborn {
                 amend = false
                 historyRows = []
@@ -426,7 +458,7 @@ public final class RepositoryStore: Identifiable {
             let report = await AICLIValidator.validate(config)
             if Task.isCancelled { return }
             if !report.isValid {
-                self.aiErrorDetail = AIErrorDetail(
+                aiErrorDetail = AIErrorDetail(
                     title: "AI setup not ready",
                     message: report.messages.joined(separator: "\n"),
                     runResult: nil
@@ -435,20 +467,20 @@ public final class RepositoryStore: Identifiable {
             }
 
             do {
-                let diff = try await self.git.stagedDiff(in: root)
+                let diff = try await git.stagedDiff(in: root)
                 if Task.isCancelled { return }
                 guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    self.aiErrorDetail = AIErrorDetail(
+                    aiErrorDetail = AIErrorDetail(
                         title: "Nothing staged",
                         message: "Stage files first or run the command with all changes.",
                         runResult: nil
                     )
                     return
                 }
-                let stagedPaths = self.stagedEntries.map(\.path)
+                let stagedPaths = stagedEntries.map(\.path)
                 let context = PromptContext(
                     stagedDiff: diff,
-                    branch: self.branch?.name ?? "",
+                    branch: branch?.name ?? "",
                     files: stagedPaths,
                     repo: root.lastPathComponent,
                     model: config.model,
@@ -465,7 +497,7 @@ public final class RepositoryStore: Identifiable {
                     maxTokens: config.maxTokens
                 )
                 if Task.isCancelled { return }
-                let (subject, body) = self.splitGeneratedMessage(text)
+                let (subject, body) = splitGeneratedMessage(text)
                 let runResult = AIRunResult(
                     provider: config.backend,
                     resolvedExecutable: report.resolvedExecutable ?? "",
@@ -477,7 +509,9 @@ public final class RepositoryStore: Identifiable {
                     durationMS: 0,
                     timedOut: false
                 )
-                self.aiPendingPreview = AIPendingPreview(subject: subject, body: body, result: runResult)
+                aiPendingPreview = AIPendingPreview(subject: subject, body: body, result: runResult)
+                aiDebugLatestRun = runResult
+                // Success: do NOT auto-open the drawer. Respect prior user state.
             } catch let err as AIEngineError {
                 if case .cancelled = err { return }
                 self.aiErrorDetail = AIErrorDetail(
@@ -485,9 +519,13 @@ public final class RepositoryStore: Identifiable {
                     message: err.errorDescription ?? "AI error",
                     runResult: err.runResult
                 )
+                if let runResult = err.runResult {
+                    self.aiDebugLatestRun = runResult
+                    self.openAIDebugDrawer()
+                }
             } catch {
                 if !(error is CancellationError) {
-                    self.aiErrorDetail = AIErrorDetail(title: "AI error", message: error.localizedDescription, runResult: nil)
+                    aiErrorDetail = AIErrorDetail(title: "AI error", message: error.localizedDescription, runResult: nil)
                 }
             }
         }
@@ -500,6 +538,62 @@ public final class RepositoryStore: Identifiable {
 
     public func dismissAIError() {
         aiErrorDetail = nil
+    }
+
+    // MARK: - AI debug drawer
+
+    public func openAIDebugDrawer() {
+        aiDebugDrawerVisible = true
+        aiDebugMinimized = false
+    }
+
+    public func closeAIDebugDrawer() {
+        aiDebugDrawerVisible = false
+    }
+
+    public func toggleAIDebugDrawer() {
+        if aiDebugDrawerVisible {
+            aiDebugDrawerVisible = false
+        } else {
+            aiDebugDrawerVisible = true
+            aiDebugMinimized = false
+        }
+    }
+
+    public func toggleAIDebugMinimized() {
+        aiDebugMinimized.toggle()
+    }
+
+    public func clearAIDebugBuffer() {
+        aiDebugLatestRun = nil
+    }
+
+    /// Has the latest run ended with a non-zero exit code or a timeout?
+    /// Drives the red badge on the ladybug toggle so the user can spot an
+    /// unread error after dismissing the drawer.
+    public var aiDebugHasUnreadError: Bool {
+        guard let run = aiDebugLatestRun else { return false }
+        if run.timedOut { return true }
+        if let exit = run.exitCode, exit != 0 { return true }
+        return false
+    }
+
+    public func copyAIDebugLog() {
+        guard let run = aiDebugLatestRun else { return }
+        let generated = aiPendingPreview?.combined ?? ""
+        let text = """
+        $ \(run.commandLine)
+        --- stdout ---
+        \(run.stdout)
+        --- stderr ---
+        \(run.stderr)
+        exit=\(run.exitCode.map(String.init) ?? "?") duration=\(run.durationMS)ms timedOut=\(run.timedOut)
+        --- generated ---
+        \(generated)
+        """
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 
     public func acceptAIPreview(_ mode: AIAcceptMode) {
@@ -591,11 +685,31 @@ public final class RepositoryStore: Identifiable {
 
     private func perform(_ action: (GitProviding, URL) async throws -> Void) async {
         guard let root else { return }
+        let priorPath = selectedPath
+        let priorEntries = entries
         do {
             try await action(git, root)
             await refresh()
+            await preserveSelection(priorPath: priorPath, priorEntries: priorEntries)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// After a stage/unstage/discard, if the previously selected file no longer exists
+    /// in the working tree, pick the next surviving neighbour from the prior list so
+    /// the user keeps their place instead of losing selection entirely.
+    private func preserveSelection(priorPath: String?, priorEntries: [FileStatus]) async {
+        guard let priorPath else { return }
+        let survives = entries.contains { $0.path == priorPath }
+        if survives { return }
+        guard let priorIndex = priorEntries.firstIndex(where: { $0.path == priorPath }) else { return }
+        let livingPaths = Set(entries.map(\.path))
+        let forward = priorEntries.suffix(from: priorIndex + 1).first { livingPaths.contains($0.path) }
+        let backward = priorEntries.prefix(priorIndex).reversed().first { livingPaths.contains($0.path) }
+        if let candidate = forward ?? backward,
+           let live = entries.first(where: { $0.path == candidate.path }) {
+            await select(live)
         }
     }
 

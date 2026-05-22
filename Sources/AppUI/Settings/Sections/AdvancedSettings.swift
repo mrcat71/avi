@@ -20,7 +20,7 @@ struct AdvancedSettingsView: View {
 
             SettingsGroup("History") {
                 SettingsFormRow("History limit", description: "Maximum commits loaded into the History view.") {
-                    Stepper(value: bind(\.advanced.historyLimit), in: 50...2000, step: 50) {
+                    Stepper(value: bind(\.advanced.historyLimit), in: 50 ... 2000, step: 50) {
                         Text("\(store.config.advanced.historyLimit) commits")
                             .font(.system(size: 12, design: .monospaced))
                     }
@@ -78,10 +78,15 @@ struct AdvancedSettingsView: View {
 }
 
 private struct TextDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.plainText] }
+    static var readableContentTypes: [UTType] {
+        [.plainText]
+    }
+
     var text: String
 
-    init(text: String) { self.text = text }
+    init(text: String) {
+        self.text = text
+    }
 
     init(configuration: ReadConfiguration) throws {
         if let data = configuration.file.regularFileContents,
@@ -92,7 +97,7 @@ private struct TextDocument: FileDocument {
         }
     }
 
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+    func fileWrapper(configuration _: WriteConfiguration) throws -> FileWrapper {
         FileWrapper(regularFileWithContents: Data(text.utf8))
     }
 }

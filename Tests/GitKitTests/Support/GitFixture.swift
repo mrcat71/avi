@@ -3,7 +3,7 @@ import Foundation
 
 /// A throwaway git repository under /tmp for tests. All git invocations and
 /// file writes are confined to a unique temp directory.
-struct GitFixture: Sendable {
+struct GitFixture {
     let url: URL
     let gitURL = URL(fileURLWithPath: "/usr/bin/git")
 

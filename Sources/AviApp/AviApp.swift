@@ -1,11 +1,42 @@
 import AppKit
 import AppUI
+import GitKit
 import SwiftUI
+
+/// Dispatches between the SwiftUI app and CI-only diagnostic flags before
+/// `NSApplication.run()` takes over. `--version` and `--self-test` are used by
+/// the release pipeline; everything else falls through to the normal app.
+@main
+enum AviAppMain {
+    static func main() {
+        let args = CommandLine.arguments
+        if args.contains("--version") {
+            print(GitKit.version)
+            exit(0)
+        }
+        if args.contains("--self-test") {
+            runSelfTest()
+            exit(0)
+        }
+        AviApp.main()
+    }
+
+    private static func runSelfTest() {
+        // ConfigStore.shared and RepositoryStore are @MainActor-isolated.
+        // main() runs synchronously on the main thread before SwiftUI takes
+        // over, so assuming isolation here is safe.
+        MainActor.assumeIsolated {
+            _ = ConfigStore.shared
+            let store = RepositoryStore()
+            _ = store.id
+        }
+        print("ok")
+    }
+}
 
 /// Minimal runnable shell so the UI can be launched with `swift run AviApp`
 /// (no Xcode project needed for development). A distributable .app bundle is
 /// produced from the Xcode shell later.
-@main
 struct AviApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
@@ -17,6 +48,7 @@ struct AviApp: App {
         Settings {
             SettingsRoot()
         }
+        .windowResizability(.contentSize)
         .commands {
             CommandMenu("Repository") {
                 Button("Open Repository...") {
@@ -102,14 +134,14 @@ struct AviApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationDidFinishLaunching(_: Notification) {
         // A CLI-launched process is an accessory by default; promote it to a
         // normal foreground app so the window appears and takes focus.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         true
     }
 }

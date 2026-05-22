@@ -1,9 +1,9 @@
 import Foundation
-import Testing
 @testable import GitKit
+import Testing
 
-@Suite struct LogParserTests {
-    @Test func parsesNulDelimitedCommits() throws {
+struct LogParserTests {
+    @Test func `parses nul delimited commits`() throws {
         let first = [
             "2222222222222222222222222222222222222222",
             "1111111111111111111111111111111111111111",
@@ -11,7 +11,7 @@ import Testing
             "test@example.com",
             "2026-05-20T12:34:56Z",
             "second commit",
-            "body line",
+            "body line"
         ].joined(separator: "\u{1F}")
         let second = [
             "1111111111111111111111111111111111111111",
@@ -20,7 +20,7 @@ import Testing
             "test@example.com",
             "2026-05-19T10:00:00Z",
             "first commit",
-            "",
+            ""
         ].joined(separator: "\u{1F}")
         let raw = first + "\u{0}" + second + "\u{0}"
 

@@ -1,17 +1,17 @@
 import Foundation
-import Testing
 @testable import GitKit
+import Testing
 
 /// Parser-only tests with canned porcelain v2 bytes, independent of the installed git version.
-@Suite struct StatusParserTests {
-    @Test func parsesOrdinaryAndRenameRecords() throws {
+struct StatusParserTests {
+    @Test func `parses ordinary and rename records`() throws {
         let raw = [
             "# branch.head main",
             "1 .M N... 100644 100644 100644 0000000 1111111 modified.txt",
             "2 R. N... 100644 100644 100644 0000000 1111111 R100 new.txt",
             "old.txt",
             "? untracked.txt",
-            "",
+            ""
         ].joined(separator: "\u{0}")
 
         let status = try StatusParser.parse(Data(raw.utf8))
@@ -30,7 +30,7 @@ import Testing
         #expect(untracked.isUntracked)
     }
 
-    @Test func emptyInputYieldsNoEntries() throws {
+    @Test func `empty input yields no entries`() throws {
         #expect(try StatusParser.parse(Data()).entries.isEmpty)
     }
 }

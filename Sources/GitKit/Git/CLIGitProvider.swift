@@ -46,7 +46,7 @@ public struct CLIGitProvider: GitProviding {
             "--date=iso-strict",
             "--pretty=format:\(prettyFormat)",
             "-n",
-            String(limit),
+            String(limit)
         ]
         if filter.hideMerges {
             arguments.append("--no-merges")
@@ -91,7 +91,7 @@ public struct CLIGitProvider: GitProviding {
             "--format=\(format)",
             "refs/heads",
             "refs/remotes",
-            "refs/tags",
+            "refs/tags"
         ], in: repository)
         return try RefParser.parse(result.stdout)
     }
@@ -111,7 +111,7 @@ public struct CLIGitProvider: GitProviding {
             "-z",
             "-M",
             "-C",
-            commitOID,
+            commitOID
         ], in: repository)
         return try CommitFileChangeParser.parse(result.stdout)
     }
@@ -124,7 +124,7 @@ public struct CLIGitProvider: GitProviding {
             "--no-ext-diff",
             commitOID,
             "--",
-            path,
+            path
         ], in: repository)
         return DiffParser.parse(result.stdoutString)
     }

@@ -1,16 +1,16 @@
 import Foundation
-import Testing
 @testable import GitKit
+import Testing
 
-@Suite struct RefParserTests {
-    @Test func parsesBranchesRemoteBranchesAndTags() throws {
+struct RefParserTests {
+    @Test func `parses branches remote branches and tags`() throws {
         let raw = [
             record("refs/heads/main", "1111", "origin/main", "[ahead 2, behind 1]", "*", "main subject", "", ""),
             record("refs/heads/feature", "2222", "", "", "", "feature subject", "", ""),
             record("refs/remotes/origin/HEAD", "1111", "", "", "", "origin head", "", ""),
             record("refs/remotes/origin/main", "1111", "", "", "", "origin main", "", ""),
             record("refs/tags/v1.0.0", "3333", "", "", "", "release", "2024-01-01T12:00:00+00:00", "release notes"),
-            "",
+            ""
         ].joined(separator: "\u{0}")
 
         let refs = try RefParser.parse(Data(raw.utf8))
@@ -30,10 +30,10 @@ import Testing
         #expect(tag?.taggerDate != nil)
     }
 
-    @Test func parsesGoneUpstream() throws {
+    @Test func `parses gone upstream`() throws {
         let raw = [
             record("refs/heads/feature", "2222", "origin/feature", "[gone]", "", "feature subject", "", ""),
-            "",
+            ""
         ].joined(separator: "\u{0}")
 
         let refs = try RefParser.parse(Data(raw.utf8))
@@ -43,11 +43,11 @@ import Testing
         #expect(feature?.behind == nil)
     }
 
-    @Test func parsesAheadOnlyAndBehindOnly() throws {
+    @Test func `parses ahead only and behind only`() throws {
         let raw = [
             record("refs/heads/a", "aaaa", "origin/a", "[ahead 5]", "", "a", "", ""),
             record("refs/heads/b", "bbbb", "origin/b", "[behind 3]", "", "b", "", ""),
-            "",
+            ""
         ].joined(separator: "\u{0}")
 
         let refs = try RefParser.parse(Data(raw.utf8))
@@ -59,10 +59,10 @@ import Testing
         #expect(b?.behind == 3)
     }
 
-    @Test func lightweightTagHasNoAnnotation() throws {
+    @Test func `lightweight tag has no annotation`() throws {
         let raw = [
             record("refs/tags/v0.1", "1111", "", "", "", "lightweight", "", ""),
-            "",
+            ""
         ].joined(separator: "\u{0}")
 
         let refs = try RefParser.parse(Data(raw.utf8))
@@ -71,10 +71,10 @@ import Testing
         #expect(tag?.annotatedMessage == nil)
     }
 
-    @Test func parsesEmptyTracking() throws {
+    @Test func `parses empty tracking`() throws {
         let raw = [
             record("refs/heads/main", "1111", "", "", "*", "subject", "", ""),
-            "",
+            ""
         ].joined(separator: "\u{0}")
 
         let refs = try RefParser.parse(Data(raw.utf8))

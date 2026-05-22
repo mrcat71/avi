@@ -10,3 +10,18 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# Release artifacts
+*.app
+*.dmg
+*.zip
+*.tar.gz
+SHA256SUMS
+dist/
+
+# Logs
+*.log
+
+# Local secrets (defensive; real tokens live in Keychain)
+.env
+.env.local
