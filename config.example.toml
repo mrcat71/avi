@@ -1,0 +1,69 @@
+# Avi config file (example). The real file lives at
+# ~/Library/Application Support/Avi/config.toml and is created automatically on
+# first launch. Copy values from here as a starting point; you do not need to
+# keep keys you don't change.
+#
+# Secrets (GitHub/GitLab tokens, AI provider API keys) live in the macOS
+# Keychain under service "com.avi" and are never written to this file.
+
+version = 1
+
+[appearance]
+theme = "system"           # system | light | dark
+density = "comfortable"    # comfortable | compact
+fontSize = 13
+diffFont = "SF Mono"
+fileListMode = "tree"      # tree | flat
+graphLaneWidth = 16
+
+[git]
+defaultAuthorName = ""
+defaultAuthorEmail = ""
+signCommits = false
+fetchInterval = 0          # minutes; 0 disables auto-fetch
+autoRefresh = true
+pruneOnFetch = true
+externalEditor = ""        # absolute path or empty
+terminalApp = ""           # absolute path or empty
+
+[clone]
+defaultDirectory = "~/Developer"
+openAfterClone = true
+preferredProtocol = "https"     # https | ssh
+preferredCLI = "auto"           # auto | gh-glab | git
+rememberDestinationPerProvider = true
+
+[ai]
+enabled = false
+backend = "command"        # command | openai
+model = ""
+temperature = 0.2
+maxTokens = 800
+conventionalCommits = true
+subjectSoftLimit = 50
+subjectHardLimit = 72
+bodyWrap = 72
+commandTemplate = "codex exec --model ${model}"
+openAIBaseURL = "https://api.openai.com/v1"
+timeoutSeconds = 120
+
+[externalTools]
+gitPath = ""
+ghPath = ""
+glabPath = ""
+codexPath = ""
+claudePath = ""
+editorPath = ""
+terminalPath = ""
+diffToolPath = ""
+mergeToolPath = ""
+
+[advanced]
+historyLimit = 200
+verboseLogging = false
+
+# `integrations.accounts` is managed by the Accounts UI. Each entry stores
+# non-secret metadata (kind, instance URL, username, Keychain reference) -
+# the actual token sits in the Keychain.
+[integrations]
+accounts = []

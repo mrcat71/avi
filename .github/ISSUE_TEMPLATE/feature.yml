@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose a new feature or change.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What you would like Avi to do, in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why this matters - what problem it solves or workflow it enables.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you have tried or other tools that solve this.

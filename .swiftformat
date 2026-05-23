@@ -1,0 +1,17 @@
+# SwiftFormat configuration for Avi. Run `swiftformat --lint .` locally to
+# catch drift before pushing. CI enforces the same check.
+#
+# The config favours leaving the existing SwiftUI style alone: long chained
+# modifiers are tolerated and the new `let x = switch {...}` Swift 5.9+
+# rewrite is left to the author. Rules kept here catch the high-signal
+# drift (trailing whitespace, redundant `= nil`, `&&` in if-conditions).
+
+--swiftversion 6.2
+--indent 4
+--maxwidth 160
+--ifdef no-indent
+--commas inline
+--trimwhitespace always
+--header strip
+--self remove
+--disable wrap,wrapArguments,wrapMultilineStatementBraces,conditionalAssignment,hoistPatternLet,redundantViewBuilder,redundantReturn,environmentEntry,swiftTestingTestCaseNames,preferKeyPath
