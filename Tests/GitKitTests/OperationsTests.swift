@@ -66,7 +66,7 @@ struct OperationsTests {
             let status = try await provider(repo).status(in: repo.url)
             #expect(status.entries.allSatisfy { !$0.isStaged })
             #expect(status.entries.map(\.path).sorted() == ["a.txt", "b.txt"])
-            #expect(status.entries.allSatisfy(\.hasUnstagedChanges))
+            #expect(status.entries.allSatisfy { $0.hasUnstagedChanges })
         }
     }
 
