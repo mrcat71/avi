@@ -102,6 +102,31 @@ struct AISettingsView: View {
                     }
                 }
                 Divider().padding(.vertical, 4)
+                SettingsFormRow(
+                    "Reasoning effort",
+                    description: "Sent as `reasoning_effort` to the OpenAI API; exposed as `${effort}` to custom commands."
+                ) {
+                    Picker("", selection: bind(\.ai.reasoningEffort)) {
+                        Text("None").tag("")
+                        Text("Minimal").tag("minimal")
+                        Text("Low").tag("low")
+                        Text("Medium").tag("medium")
+                        Text("High").tag("high")
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(maxWidth: 200)
+                }
+                Divider().padding(.vertical, 4)
+                SettingsFormRow(
+                    "Insert directly",
+                    description: "Replace the commit summary and body on success. When off, show a preview card with Replace / Append / Discard."
+                ) {
+                    Toggle("", isOn: bind(\.ai.directInsert))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                }
+                Divider().padding(.vertical, 4)
                 SettingsFormRow("Timeout", description: "Kill the AI command if it doesn't finish.") {
                     Stepper(value: bind(\.ai.timeoutSeconds), in: 30 ... 600, step: 30) {
                         Text("\(store.config.ai.timeoutSeconds) seconds")
@@ -112,7 +137,7 @@ struct AISettingsView: View {
 
             if store.config.ai.backend == "command" {
                 SettingsGroup("Custom command") {
-                    SettingsFormRow("Command template", description: "Variables: ${model}, ${prompt_file}. Prompt is also piped on stdin.") {
+                    SettingsFormRow("Command template", description: "Variables: ${model}, ${prompt_file}, ${effort}. Prompt is also piped on stdin.") {
                         TextField("codex exec --model ${model}", text: bind(\.ai.commandTemplate))
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 400)

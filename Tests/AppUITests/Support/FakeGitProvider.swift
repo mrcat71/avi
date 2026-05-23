@@ -2,8 +2,9 @@ import Foundation
 @testable import GitKit
 
 /// In-memory GitProviding used by snapshot tests to render `RepositoryStore`-backed views
-/// with deterministic data and no shell-outs to git.
-public final class FakeGitProvider: GitProviding {
+/// with deterministic data and no shell-outs to git. Marked `@unchecked Sendable`
+/// because the test fake mutates state from tests on a single thread.
+public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public var status: WorkingCopyStatus
     public var refs: RepositoryRefs
     public var commits: [CommitSummary]

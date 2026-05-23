@@ -494,7 +494,8 @@ public final class RepositoryStore: Identifiable {
                     prompt: prompt,
                     model: config.model,
                     temperature: config.temperature,
-                    maxTokens: config.maxTokens
+                    maxTokens: config.maxTokens,
+                    reasoningEffort: config.reasoningEffort
                 )
                 if Task.isCancelled { return }
                 let (subject, body) = splitGeneratedMessage(text)
@@ -509,8 +510,17 @@ public final class RepositoryStore: Identifiable {
                     durationMS: 0,
                     timedOut: false
                 )
-                aiPendingPreview = AIPendingPreview(subject: subject, body: body, result: runResult)
                 aiDebugLatestRun = runResult
+                if config.directInsert {
+                    // User opted out of the preview/accept flow: replace the
+                    // commit fields directly. The debug drawer still has the
+                    // run if they want to inspect what was generated.
+                    commitSummary = subject
+                    commitBody = body
+                    aiPendingPreview = nil
+                } else {
+                    aiPendingPreview = AIPendingPreview(subject: subject, body: body, result: runResult)
+                }
                 // Success: do NOT auto-open the drawer. Respect prior user state.
             } catch let err as AIEngineError {
                 if case .cancelled = err { return }

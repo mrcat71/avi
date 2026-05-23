@@ -215,6 +215,8 @@ public struct AIConfig: Codable, Equatable, Sendable {
     public var openAIBaseURL: String
     public var openAIKeychainItem: String
     public var timeoutSeconds: Int
+    public var reasoningEffort: String // "" | "minimal" | "low" | "medium" | "high"
+    public var directInsert: Bool // skip the preview card; replace commit fields directly
 
     public init(
         enabled: Bool = false,
@@ -230,7 +232,9 @@ public struct AIConfig: Codable, Equatable, Sendable {
         commandTemplate: String = "codex exec --model ${model}",
         openAIBaseURL: String = "https://api.openai.com/v1",
         openAIKeychainItem: String = "avi.openai.apiKey",
-        timeoutSeconds: Int = 120
+        timeoutSeconds: Int = 120,
+        reasoningEffort: String = "",
+        directInsert: Bool = true
     ) {
         self.enabled = enabled
         self.backend = backend
@@ -246,6 +250,8 @@ public struct AIConfig: Codable, Equatable, Sendable {
         self.openAIBaseURL = openAIBaseURL
         self.openAIKeychainItem = openAIKeychainItem
         self.timeoutSeconds = timeoutSeconds
+        self.reasoningEffort = reasoningEffort
+        self.directInsert = directInsert
     }
 
     public static let defaultPromptTemplate = """
@@ -278,6 +284,8 @@ public struct AIConfig: Codable, Equatable, Sendable {
         openAIBaseURL = (try? c.decode(String.self, forKey: .openAIBaseURL)) ?? defaults.openAIBaseURL
         openAIKeychainItem = (try? c.decode(String.self, forKey: .openAIKeychainItem)) ?? defaults.openAIKeychainItem
         timeoutSeconds = (try? c.decode(Int.self, forKey: .timeoutSeconds)) ?? defaults.timeoutSeconds
+        reasoningEffort = (try? c.decode(String.self, forKey: .reasoningEffort)) ?? defaults.reasoningEffort
+        directInsert = (try? c.decode(Bool.self, forKey: .directInsert)) ?? defaults.directInsert
     }
 }
 

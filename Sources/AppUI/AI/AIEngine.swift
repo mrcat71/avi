@@ -44,7 +44,13 @@ public enum AIEngineError: Error, CustomStringConvertible, LocalizedError {
 }
 
 protocol AIEngine: Sendable {
-    func generate(prompt: String, model: String, temperature: Double, maxTokens: Int) async throws -> String
+    func generate(
+        prompt: String,
+        model: String,
+        temperature: Double,
+        maxTokens: Int,
+        reasoningEffort: String
+    ) async throws -> String
 }
 
 enum AIEngineFactory {
@@ -70,7 +76,13 @@ final class CommandAIEngine: AIEngine {
         timeoutSeconds = max(5, config.timeoutSeconds)
     }
 
-    func generate(prompt: String, model: String, temperature _: Double, maxTokens _: Int) async throws -> String {
+    func generate(
+        prompt: String,
+        model: String,
+        temperature _: Double,
+        maxTokens _: Int,
+        reasoningEffort: String
+    ) async throws -> String {
         // Write prompt to a temp file. Templates can reference it via ${prompt_file};
         // we ALSO pipe the prompt on stdin as a fallback for CLIs that read stdin.
         let tmpDir = FileManager.default.temporaryDirectory
@@ -78,10 +90,11 @@ final class CommandAIEngine: AIEngine {
         try Data(prompt.utf8).write(to: promptURL)
         defer { try? FileManager.default.removeItem(at: promptURL) }
 
-        // Substitute ${model} and ${prompt_file} in the command template.
+        // Substitute ${model}, ${prompt_file} and ${effort} in the command template.
         let rendered = commandTemplate
             .replacingOccurrences(of: "${model}", with: model)
             .replacingOccurrences(of: "${prompt_file}", with: promptURL.path)
+            .replacingOccurrences(of: "${effort}", with: reasoningEffort)
 
         let argv = try shellSplit(rendered)
         guard let firstToken = argv.first, !firstToken.isEmpty else {
@@ -312,7 +325,13 @@ final class OpenAIAIEngine: AIEngine {
         token = KeychainStore.getString(account: config.openAIKeychainItem)
     }
 
-    func generate(prompt: String, model: String, temperature: Double, maxTokens: Int) async throws -> String {
+    func generate(
+        prompt: String,
+        model: String,
+        temperature: Double,
+        maxTokens: Int,
+        reasoningEffort: String
+    ) async throws -> String {
         guard let token, !token.isEmpty else {
             throw AIEngineError.missingAPIKey
         }
@@ -329,12 +348,30 @@ final class OpenAIAIEngine: AIEngine {
             let messages: [Message]
             let temperature: Double
             let max_tokens: Int
+            let reasoning_effort: String?
+
+            enum CodingKeys: String, CodingKey {
+                case model, messages, temperature, max_tokens, reasoning_effort
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(model, forKey: .model)
+                try c.encode(messages, forKey: .messages)
+                try c.encode(temperature, forKey: .temperature)
+                try c.encode(max_tokens, forKey: .max_tokens)
+                // Drop the key entirely when nil so providers that don't understand
+                // `reasoning_effort` aren't confused by an explicit null.
+                try c.encodeIfPresent(reasoning_effort, forKey: .reasoning_effort)
+            }
         }
+        let trimmedEffort = reasoningEffort.trimmingCharacters(in: .whitespaces)
         let body = Body(
             model: model,
             messages: [Message(role: "user", content: prompt)],
             temperature: temperature,
-            max_tokens: maxTokens
+            max_tokens: maxTokens,
+            reasoning_effort: trimmedEffort.isEmpty ? nil : trimmedEffort
         )
         request.httpBody = try JSONEncoder().encode(body)
 
