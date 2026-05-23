@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cache SwiftPM
-        uses: actions/cache@v4 # renovate will pin this to a SHA on first run
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4 # renovate will pin this to a SHA on first run
         with:
           path: |
             .build
@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload dispatch artifacts
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4 # renovate will pin this to a SHA on first run
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4 # renovate will pin this to a SHA on first run
         with:
           name: avi-${{ steps.ver.outputs.version }}-macos-arm64
           path: |
