@@ -7,7 +7,7 @@ struct RefOperationTests {
         CLIGitProvider(gitURL: repo.gitURL)
     }
 
-    @Test func `refs list local branches and tags`() async throws {
+    @Test func refsListLocalBranchesAndTags() async throws {
         try await withCommittedRepo { repo in
             let initialBranch = try #require(try await provider(repo).status(in: repo.url).branch.name)
             try await repo.git("branch", "feature")
@@ -22,7 +22,7 @@ struct RefOperationTests {
         }
     }
 
-    @Test func `create branch with checkout switches to new branch`() async throws {
+    @Test func createBranchWithCheckoutSwitchesToNewBranch() async throws {
         try await withCommittedRepo { repo in
             try await provider(repo).createBranch(named: "feature", startPoint: nil, checkout: true, in: repo.url)
 
@@ -31,7 +31,7 @@ struct RefOperationTests {
         }
     }
 
-    @Test func `checkout local branch switches branch`() async throws {
+    @Test func checkoutLocalBranchSwitchesBranch() async throws {
         try await withCommittedRepo { repo in
             try await repo.git("branch", "feature")
             let ref = try #require(try await provider(repo).refs(in: repo.url).localBranches.first { $0.name == "feature" })
@@ -43,7 +43,7 @@ struct RefOperationTests {
         }
     }
 
-    @Test func `checkout tag detaches head`() async throws {
+    @Test func checkoutTagDetachesHead() async throws {
         try await withCommittedRepo { repo in
             try await repo.git("tag", "v1.0.0")
             let ref = try #require(try await provider(repo).refs(in: repo.url).tags.first { $0.name == "v1.0.0" })
@@ -55,7 +55,7 @@ struct RefOperationTests {
         }
     }
 
-    @Test func `delete branch removes local branch`() async throws {
+    @Test func deleteBranchRemovesLocalBranch() async throws {
         try await withCommittedRepo { repo in
             try await repo.git("branch", "delete-me")
 
@@ -66,7 +66,7 @@ struct RefOperationTests {
         }
     }
 
-    @Test func `create branch rejects empty name`() async throws {
+    @Test func createBranchRejectsEmptyName() async throws {
         try await withCommittedRepo { repo in
             do {
                 try await provider(repo).createBranch(named: "   ", startPoint: nil, checkout: false, in: repo.url)

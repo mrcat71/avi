@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 struct LogParserTests {
-    @Test func `parses nul delimited commits`() throws {
+    @Test func parsesNulDelimitedCommits() throws {
         let first = [
             "2222222222222222222222222222222222222222",
             "1111111111111111111111111111111111111111",

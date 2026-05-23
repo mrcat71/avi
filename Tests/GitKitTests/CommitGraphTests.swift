@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 struct CommitGraphTests {
-    @Test func `linear history stays on one lane`() {
+    @Test func linearHistoryStaysOnOneLane() {
         let rows = CommitGraph.assignRows(for: [
             commit("c", parents: ["b"]),
             commit("b", parents: ["a"]),
@@ -14,7 +14,7 @@ struct CommitGraphTests {
         #expect(rows.map(\.laneCount) == [1, 1, 1])
     }
 
-    @Test func `merge commit creates additional lane`() {
+    @Test func mergeCommitCreatesAdditionalLane() {
         let rows = CommitGraph.assignRows(for: [
             commit("d", parents: ["b", "c"]),
             commit("b", parents: ["a"]),
@@ -28,7 +28,7 @@ struct CommitGraphTests {
         #expect(rows[2].lane == 1)
     }
 
-    @Test func `long branch holds same lane`() {
+    @Test func longBranchHoldsSameLane() {
         // main: m3 -> m2 -> m1
         // feature: f3 -> f2 -> f1 -> m1 (merge at m3)
         // History order:  m3 (merge), m2, f3, f2, f1, m1
@@ -54,7 +54,7 @@ struct CommitGraphTests {
         #expect(rows[5].lane == 0)
     }
 
-    @Test func `lanes do not shift when A branch terminates`() {
+    @Test func lanesDoNotShiftWhenABranchTerminates() {
         // Two parallel branches a and b. b terminates at its root.
         // After b's root, a should remain on lane 0 (no shift).
         let rows = CommitGraph.assignRows(for: [
@@ -71,7 +71,7 @@ struct CommitGraphTests {
         #expect(rows[3].lane == 0) // a0 lane 0
     }
 
-    @Test func `parent lane count reflects lane index not size`() {
+    @Test func parentLaneCountReflectsLaneIndexNotSize() {
         // After a branch ends, a new branch's lane is allocated to the lowest free slot.
         let rows = CommitGraph.assignRows(for: [
             commit("x"), // root, lane 0, lane freed
@@ -82,7 +82,7 @@ struct CommitGraphTests {
         #expect(rows[1].lane == 0)
     }
 
-    @Test func `lane identities use branch tip names`() {
+    @Test func laneIdentitiesUseBranchTipNames() {
         let refs = RepositoryRefs(
             localBranches: [
                 GitReference(name: "main", fullName: "refs/heads/main", oid: "m1", kind: .localBranch)

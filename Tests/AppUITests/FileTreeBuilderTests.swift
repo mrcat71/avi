@@ -3,13 +3,13 @@ import GitKit
 import Testing
 
 struct FileTreeBuilderTests {
-    @Test func `empty entries produce empty tree`() {
+    @Test func emptyEntriesProduceEmptyTree() {
         let tree = FileTreeBuilder.build(entries: [])
         #expect(tree.isEmpty)
         #expect(FileTreeBuilder.allFolderIds(for: []).isEmpty)
     }
 
-    @Test func `chain collapse flattens single child folders`() {
+    @Test func chainCollapseFlattensSingleChildFolders() {
         // A single nested file under a chain of folders collapses into one
         // folder node with a combined display name.
         let file = FileStatus(path: "Sources/AppUI/Views/Foo.swift", index: .modified, worktree: .unmodified)
@@ -28,7 +28,7 @@ struct FileTreeBuilderTests {
         #expect(leaf.path == "Sources/AppUI/Views/Foo.swift")
     }
 
-    @Test func `all folder ids collects every folder`() {
+    @Test func allFolderIdsCollectsEveryFolder() {
         let entries = [
             FileStatus(path: "a/b/c.swift", index: .modified, worktree: .unmodified),
             FileStatus(path: "a/d/e.swift", index: .modified, worktree: .unmodified),
@@ -46,7 +46,7 @@ struct FileTreeBuilderTests {
         #expect(!ids.contains("f.swift"))
     }
 
-    @Test func `flatten honors expanded set`() {
+    @Test func flattenHonorsExpandedSet() {
         let entries = [
             FileStatus(path: "a/b/c.swift", index: .modified, worktree: .unmodified),
             FileStatus(path: "a/d/e.swift", index: .modified, worktree: .unmodified)

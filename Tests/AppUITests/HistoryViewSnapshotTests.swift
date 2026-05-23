@@ -12,7 +12,7 @@ import Testing
 /// `RECORD_SNAPSHOTS=true` or call `assertSnapshot(record:)` directly.
 struct HistoryViewSnapshotTests {
     @Test @MainActor
-    func `multibranch history at comfortable density`() async throws {
+    func multibranchHistoryAtComfortableDensity() async throws {
         let provider = Fixtures.multibranch()
         let store = RepositoryStore(git: provider)
         try await loadStore(store, root: URL(fileURLWithPath: "/tmp/avi-snapshot"))
@@ -24,7 +24,7 @@ struct HistoryViewSnapshotTests {
     }
 
     @Test @MainActor
-    func `clean history empty`() async throws {
+    func cleanHistoryEmpty() async throws {
         let provider = Fixtures.clean()
         let store = RepositoryStore(git: provider)
         try await loadStore(store, root: URL(fileURLWithPath: "/tmp/avi-snapshot"))

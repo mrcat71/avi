@@ -7,7 +7,7 @@ struct DiffTests {
         CLIGitProvider(gitURL: repo.gitURL)
     }
 
-    @Test func `unstaged diff shows added and removed lines`() async throws {
+    @Test func unstagedDiffShowsAddedAndRemovedLines() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "line1\nline2\n")
             try await repo.git("add", "a.txt")
@@ -21,7 +21,7 @@ struct DiffTests {
         }
     }
 
-    @Test func `staged diff shows staged content`() async throws {
+    @Test func stagedDiffShowsStagedContent() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "line1\n")
             try await repo.git("add", "a.txt")
@@ -35,7 +35,7 @@ struct DiffTests {
         }
     }
 
-    @Test func `untracked diff renders file as additions`() async throws {
+    @Test func untrackedDiffRendersFileAsAdditions() async throws {
         try await withTempRepo { repo in
             try repo.write("u.txt", "new content\n")
 
@@ -45,14 +45,14 @@ struct DiffTests {
         }
     }
 
-    @Test func `repository root resolves to fixture`() async throws {
+    @Test func repositoryRootResolvesToFixture() async throws {
         try await withTempRepo { repo in
             let root = try await provider(repo).repositoryRoot(for: repo.url)
             #expect(root.resolvingSymlinksInPath().path == repo.url.resolvingSymlinksInPath().path)
         }
     }
 
-    @Test func `repository root fails outside repo`() async throws {
+    @Test func repositoryRootFailsOutsideRepo() async throws {
         let dir = URL(fileURLWithPath: "/tmp").appendingPathComponent("avi-nonrepo-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }

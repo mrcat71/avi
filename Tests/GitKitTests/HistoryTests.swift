@@ -7,7 +7,7 @@ struct HistoryTests {
         CLIGitProvider(gitURL: repo.gitURL)
     }
 
-    @Test func `history returns newest first with parents`() async throws {
+    @Test func historyReturnsNewestFirstWithParents() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")
@@ -27,14 +27,14 @@ struct HistoryTests {
         }
     }
 
-    @Test func `history is empty on unborn branch`() async throws {
+    @Test func historyIsEmptyOnUnbornBranch() async throws {
         try await withTempRepo { repo in
             let commits = try await provider(repo).history(in: repo.url, limit: 10)
             #expect(commits.isEmpty)
         }
     }
 
-    @Test func `changed files includes root commit additions`() async throws {
+    @Test func changedFilesIncludesRootCommitAdditions() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")
@@ -47,7 +47,7 @@ struct HistoryTests {
         }
     }
 
-    @Test func `commit diff parses changed file patch`() async throws {
+    @Test func commitDiffParsesChangedFilePatch() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")

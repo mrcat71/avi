@@ -7,7 +7,7 @@ struct OperationsTests {
         CLIGitProvider(gitURL: repo.gitURL)
     }
 
-    @Test func `stage moves file to index`() async throws {
+    @Test func stageMovesFileToIndex() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "hello\n")
             try await provider(repo).stage(path: "a.txt", in: repo.url)
@@ -18,7 +18,7 @@ struct OperationsTests {
         }
     }
 
-    @Test func `stage all stages multiple changes`() async throws {
+    @Test func stageAllStagesMultipleChanges() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try repo.write("b.txt", "v1\n")
@@ -35,7 +35,7 @@ struct OperationsTests {
         }
     }
 
-    @Test func `unstage keeps working tree change`() async throws {
+    @Test func unstageKeepsWorkingTreeChange() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")
@@ -51,7 +51,7 @@ struct OperationsTests {
         }
     }
 
-    @Test func `unstage all keeps working tree changes`() async throws {
+    @Test func unstageAllKeepsWorkingTreeChanges() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try repo.write("b.txt", "v1\n")
@@ -70,7 +70,7 @@ struct OperationsTests {
         }
     }
 
-    @Test func `discard tracked restores content`() async throws {
+    @Test func discardTrackedRestoresContent() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")
@@ -87,7 +87,7 @@ struct OperationsTests {
         }
     }
 
-    @Test func `discard untracked deletes file`() async throws {
+    @Test func discardUntrackedDeletesFile() async throws {
         try await withTempRepo { repo in
             try repo.write("u.txt", "junk\n")
 
@@ -99,7 +99,7 @@ struct OperationsTests {
         }
     }
 
-    @Test func `commit creates commit and cleans index`() async throws {
+    @Test func commitCreatesCommitAndCleansIndex() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "hello\n")
             try await provider(repo).stage(path: "a.txt", in: repo.url)
@@ -114,7 +114,7 @@ struct OperationsTests {
         }
     }
 
-    @Test func `amend replaces last commit message`() async throws {
+    @Test func amendReplacesLastCommitMessage() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "hello\n")
             try await repo.git("add", "a.txt")
@@ -127,7 +127,7 @@ struct OperationsTests {
         }
     }
 
-    @Test func `last commit message is nil on unborn branch`() async throws {
+    @Test func lastCommitMessageIsNilOnUnbornBranch() async throws {
         try await withTempRepo { repo in
             let lastMessage = try await provider(repo).lastCommitMessage(in: repo.url)
             #expect(lastMessage == nil)

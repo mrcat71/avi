@@ -3,20 +3,20 @@ import Foundation
 import Testing
 
 struct ConfigStoreTests {
-    @Test func `config path is under application support`() {
+    @Test func configPathIsUnderApplicationSupport() {
         let path = ConfigPath.fileURL.path
         #expect(path.hasSuffix("Avi/config.toml"))
         #expect(path.contains("Application Support"))
     }
 
-    @Test func `ensure directory exists is idempotent`() throws {
+    @Test func ensureDirectoryExistsIsIdempotent() throws {
         // Calling it twice in a row must not throw or corrupt the directory.
         try ConfigPath.ensureDirectoryExists()
         try ConfigPath.ensureDirectoryExists()
         #expect(FileManager.default.fileExists(atPath: ConfigPath.directoryURL.path))
     }
 
-    @Test func `default avi config populates every section`() {
+    @Test func defaultAviConfigPopulatesEverySection() {
         let config = AviConfig()
         // Sub-structs come from explicit defaults; sanity-check that the
         // tolerant decoder won't be needed for a fresh install.
@@ -29,7 +29,7 @@ struct ConfigStoreTests {
         #expect(config.advanced.historyLimit == 200)
     }
 
-    @Test func `clone config tolerant decoder fills missing keys`() throws {
+    @Test func cloneConfigTolerantDecoderFillsMissingKeys() throws {
         // A clone config with only one field set should decode all other
         // keys to their defaults (the tolerant decoder behaviour exercised
         // by every section).
@@ -43,7 +43,7 @@ struct ConfigStoreTests {
         #expect(decoded.rememberDestinationPerProvider == true)
     }
 
-    @Test func `avi config tolerant decoder handles minimal input`() throws {
+    @Test func aviConfigTolerantDecoderHandlesMinimalInput() throws {
         // Just `version`; every section should fall back to defaults.
         let minimal = #"{"version": 1}"#
         let data = Data(minimal.utf8)

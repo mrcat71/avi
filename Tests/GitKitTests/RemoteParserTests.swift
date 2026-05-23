@@ -2,7 +2,7 @@
 import Testing
 
 struct RemoteParserTests {
-    @Test func `parses remote verbose output`() {
+    @Test func parsesRemoteVerboseOutput() {
         let remotes = RemoteParser.parse("""
         origin  git@example.com:org/repo.git (fetch)
         origin  git@example.com:org/repo.git (push)
@@ -16,7 +16,7 @@ struct RemoteParserTests {
         ])
     }
 
-    @Test func `empty output yields no remotes`() {
+    @Test func emptyOutputYieldsNoRemotes() {
         #expect(RemoteParser.parse("").isEmpty)
     }
 }

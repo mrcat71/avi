@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 struct CommitFileChangeParserTests {
-    @Test func `parses ordinary and rename records`() throws {
+    @Test func parsesOrdinaryAndRenameRecords() throws {
         let raw = [
             "M",
             "modified.txt",

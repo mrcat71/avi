@@ -7,7 +7,7 @@ struct StatusTests {
         CLIGitProvider(gitURL: repo.gitURL)
     }
 
-    @Test func `clean repo has no entries`() async throws {
+    @Test func cleanRepoHasNoEntries() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "hello\n")
             try await repo.git("add", "a.txt")
@@ -18,7 +18,7 @@ struct StatusTests {
         }
     }
 
-    @Test func `untracked file detected`() async throws {
+    @Test func untrackedFileDetected() async throws {
         try await withTempRepo { repo in
             try repo.write("new.txt", "x\n")
 
@@ -30,7 +30,7 @@ struct StatusTests {
         }
     }
 
-    @Test func `staged new file is added`() async throws {
+    @Test func stagedNewFileIsAdded() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "hello\n")
             try await repo.git("add", "a.txt")
@@ -42,7 +42,7 @@ struct StatusTests {
         }
     }
 
-    @Test func `unstaged modification detected`() async throws {
+    @Test func unstagedModificationDetected() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")
@@ -57,7 +57,7 @@ struct StatusTests {
         }
     }
 
-    @Test func `staged modification detected`() async throws {
+    @Test func stagedModificationDetected() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
             try await repo.git("add", "a.txt")
@@ -73,7 +73,7 @@ struct StatusTests {
         }
     }
 
-    @Test func `rename detected with original path`() async throws {
+    @Test func renameDetectedWithOriginalPath() async throws {
         try await withTempRepo { repo in
             try repo.write("old.txt", "content\n")
             try await repo.git("add", "old.txt")

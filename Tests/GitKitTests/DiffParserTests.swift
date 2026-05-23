@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 struct DiffParserTests {
-    @Test func `parses single hunk with line numbers`() {
+    @Test func parsesSingleHunkWithLineNumbers() {
         let text = [
             "diff --git a/a.txt b/a.txt",
             "index 7898192..6178079 100644",
@@ -32,7 +32,7 @@ struct DiffParserTests {
         #expect(hunk.lines[2].text == "line2 changed")
     }
 
-    @Test func `parses multiple hunks`() {
+    @Test func parsesMultipleHunks() {
         let text = [
             "@@ -1 +1 @@",
             "-a",
@@ -50,7 +50,7 @@ struct DiffParserTests {
         #expect(diff.hunks[1].lines.map(\.kind) == [.context, .deletion, .addition])
     }
 
-    @Test func `detects binary`() {
+    @Test func detectsBinary() {
         let text = [
             "diff --git a/img.png b/img.png",
             "Binary files a/img.png and b/img.png differ"
@@ -61,7 +61,7 @@ struct DiffParserTests {
         #expect(diff.hunks.isEmpty)
     }
 
-    @Test func `empty input yields no hunks`() {
+    @Test func emptyInputYieldsNoHunks() {
         #expect(DiffParser.parse("").hunks.isEmpty)
         #expect(DiffParser.parse("").isEmpty)
     }

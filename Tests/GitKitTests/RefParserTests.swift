@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 struct RefParserTests {
-    @Test func `parses branches remote branches and tags`() throws {
+    @Test func parsesBranchesRemoteBranchesAndTags() throws {
         let raw = [
             record("refs/heads/main", "1111", "origin/main", "[ahead 2, behind 1]", "*", "main subject", "", ""),
             record("refs/heads/feature", "2222", "", "", "", "feature subject", "", ""),
@@ -30,7 +30,7 @@ struct RefParserTests {
         #expect(tag?.taggerDate != nil)
     }
 
-    @Test func `parses gone upstream`() throws {
+    @Test func parsesGoneUpstream() throws {
         let raw = [
             record("refs/heads/feature", "2222", "origin/feature", "[gone]", "", "feature subject", "", ""),
             ""
@@ -43,7 +43,7 @@ struct RefParserTests {
         #expect(feature?.behind == nil)
     }
 
-    @Test func `parses ahead only and behind only`() throws {
+    @Test func parsesAheadOnlyAndBehindOnly() throws {
         let raw = [
             record("refs/heads/a", "aaaa", "origin/a", "[ahead 5]", "", "a", "", ""),
             record("refs/heads/b", "bbbb", "origin/b", "[behind 3]", "", "b", "", ""),
@@ -59,7 +59,7 @@ struct RefParserTests {
         #expect(b?.behind == 3)
     }
 
-    @Test func `lightweight tag has no annotation`() throws {
+    @Test func lightweightTagHasNoAnnotation() throws {
         let raw = [
             record("refs/tags/v0.1", "1111", "", "", "", "lightweight", "", ""),
             ""
@@ -71,7 +71,7 @@ struct RefParserTests {
         #expect(tag?.annotatedMessage == nil)
     }
 
-    @Test func `parses empty tracking`() throws {
+    @Test func parsesEmptyTracking() throws {
         let raw = [
             record("refs/heads/main", "1111", "", "", "*", "subject", "", ""),
             ""

@@ -4,7 +4,7 @@ import Testing
 
 /// Parser-only tests with canned porcelain v2 bytes, independent of the installed git version.
 struct StatusParserTests {
-    @Test func `parses ordinary and rename records`() throws {
+    @Test func parsesOrdinaryAndRenameRecords() throws {
         let raw = [
             "# branch.head main",
             "1 .M N... 100644 100644 100644 0000000 1111111 modified.txt",
@@ -30,7 +30,7 @@ struct StatusParserTests {
         #expect(untracked.isUntracked)
     }
 
-    @Test func `empty input yields no entries`() throws {
+    @Test func emptyInputYieldsNoEntries() throws {
         #expect(try StatusParser.parse(Data()).entries.isEmpty)
     }
 }

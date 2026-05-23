@@ -2,7 +2,7 @@
 import Testing
 
 struct PromptRendererTests {
-    @Test func `substitutes all known placeholders`() {
+    @Test func substitutesAllKnownPlaceholders() {
         let context = PromptContext(
             stagedDiff: "diff --git a/x b/x",
             branch: "feature/x",
@@ -35,7 +35,7 @@ struct PromptRendererTests {
         #expect(rendered.contains("diff --git a/x b/x"))
     }
 
-    @Test func `leaves unknown placeholders literal`() {
+    @Test func leavesUnknownPlaceholdersLiteral() {
         let context = PromptContext(
             stagedDiff: "",
             branch: "main",
@@ -50,7 +50,7 @@ struct PromptRendererTests {
         #expect(rendered == "hello ${typo}")
     }
 
-    @Test func `target mirrors staged diff`() {
+    @Test func targetMirrorsStagedDiff() {
         let context = PromptContext(
             stagedDiff: "SOME_DIFF",
             branch: "",

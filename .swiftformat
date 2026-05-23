@@ -14,4 +14,4 @@
 --trimwhitespace always
 --header strip
 --self remove
---disable wrap,wrapArguments,wrapMultilineStatementBraces,conditionalAssignment,hoistPatternLet,redundantViewBuilder,redundantReturn,environmentEntry
+--disable wrap,wrapArguments,wrapMultilineStatementBraces,conditionalAssignment,hoistPatternLet,redundantViewBuilder,redundantReturn,environmentEntry,swiftTestingTestCaseNames
