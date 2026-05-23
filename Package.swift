@@ -12,7 +12,7 @@ let package = Package(
         .executable(name: "AviApp", targets: ["AviApp"])
     ],
     dependencies: [
-        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.18.0")
+        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.19.2")
     ],
     targets: [
         .target(name: "GitKit"),
