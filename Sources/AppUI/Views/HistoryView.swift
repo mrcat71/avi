@@ -6,11 +6,22 @@ struct HistoryListView: View {
     let store: RepositoryStore
     var refBadgesByOID: [String: [HistoryRefBadge]] = [:]
 
+    @State private var multiSelection: Set<String> = []
+
     var body: some View {
         VStack(spacing: 0) {
             HistoryHeader(store: store)
             Divider()
             content
+        }
+        .onChange(of: store.selectedCommitOID) { _, newValue in
+            // Keep List in sync when the detail-view selection moves by code
+            // (initial load, command palette navigation, etc.).
+            if let newValue {
+                if multiSelection != [newValue] { multiSelection = [newValue] }
+            } else if !multiSelection.isEmpty {
+                multiSelection.removeAll()
+            }
         }
     }
 
@@ -26,13 +37,15 @@ struct HistoryListView: View {
                 description: Text("This repository has no commits yet.")
             )
         } else {
-            List(selection: selection) {
+            List(selection: $multiSelection) {
                 ForEach(store.historyRows) { row in
                     HistoryRowView(
                         row: row,
-                        isSelected: row.commit.oid == store.selectedCommitOID,
+                        isSelected: multiSelection.contains(row.commit.oid),
                         refBadges: refBadgesByOID[row.commit.oid] ?? [],
-                        laneColors: laneColors
+                        laneColors: laneColors,
+                        store: store,
+                        multiSelectionOIDs: multiSelection
                     ) { ref in
                         Task { await store.checkout(ref) }
                     }
@@ -43,6 +56,17 @@ struct HistoryListView: View {
             }
             .scrollContentBackground(.hidden)
             .listStyle(.plain)
+            .onChange(of: multiSelection) { _, newValue in
+                // Load the diff for the most recently single-selected commit;
+                // when 2+ are selected, leave the detail view as-is (we don't
+                // have a meaningful "combined diff" view yet).
+                if newValue.count == 1, let oid = newValue.first {
+                    let commit = store.historyRows.first { $0.commit.oid == oid }?.commit
+                    Task { await store.selectCommit(commit) }
+                } else if newValue.isEmpty {
+                    Task { await store.selectCommit(nil) }
+                }
+            }
         }
     }
 
@@ -73,16 +97,6 @@ struct HistoryListView: View {
             }
         }
         return result
-    }
-
-    private var selection: Binding<String?> {
-        Binding(
-            get: { store.selectedCommitOID },
-            set: { newValue in
-                let commit = store.historyRows.first { $0.commit.oid == newValue }?.commit
-                Task { await store.selectCommit(commit) }
-            }
-        )
     }
 }
 
@@ -229,6 +243,8 @@ private struct HistoryRowView: View {
     let isSelected: Bool
     let refBadges: [HistoryRefBadge]
     let laneColors: [Int: Color]
+    let store: RepositoryStore
+    let multiSelectionOIDs: Set<String>
     let checkoutRef: (GitReference) -> Void
 
     @Environment(\.aviDensity) private var density
@@ -306,6 +322,33 @@ private struct HistoryRowView: View {
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
                 pasteboard.setString(row.commit.subject, forType: .string)
+            }
+            Divider()
+            aiContextMenuSection
+        }
+    }
+
+    @ViewBuilder
+    private var aiContextMenuSection: some View {
+        let aiEnabled = ConfigStore.shared.config.ai.enabled
+        let busy = store.isAIWorking || store.rebaseInProgress
+        let isInMultiSelection = multiSelectionOIDs.contains(row.commit.oid)
+        let multiCount = multiSelectionOIDs.count
+        if isInMultiSelection, multiCount >= 2 {
+            Button("Recompose \(multiCount) Selected Commits with AI") {
+                store.recomposeCommitsWithAI(oids: multiSelectionOIDs)
+            }
+            .disabled(!aiEnabled || busy)
+        } else {
+            Menu("AI") {
+                Button("Reword Commit") {
+                    store.rewordCommitWithAI(oid: row.commit.oid)
+                }
+                .disabled(!aiEnabled || busy)
+                Button("Split Commit Into Multiple…") {
+                    store.splitOldCommitWithAI(oid: row.commit.oid)
+                }
+                .disabled(!aiEnabled || busy)
             }
         }
     }

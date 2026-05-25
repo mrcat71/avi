@@ -41,6 +41,10 @@ public final class RepositoryStore: Identifiable {
     public var aiDebugMinimized: Bool = false
     public var aiDebugDrawerHeight: CGFloat = AIDebugDrawer.loadHeight()
     public var aiDebugLatestRun: AIRunResult?
+    public var aiRewordPreview: AIRewordPreview?
+    public var aiSplitPreview: AISplitPreview?
+    public var isAIWorking: Bool = false
+    public var rebaseInProgress: Bool = false
     private var aiTask: Task<Void, Never>?
     private var pendingDefaultExpand: Bool = false
 
@@ -342,6 +346,12 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
+    public func push(branch: String?, remote: String?, force: Bool, pushTags: Bool) async {
+        await performRemoteOperation {
+            try await $0.push(branch: branch, remote: remote, force: force, pushTags: pushTags, in: $1)
+        }
+    }
+
     public func setHistoryFilter(_ filter: HistoryFilter) async {
         historyFilter = filter
         await refreshHistory()
@@ -353,7 +363,26 @@ public final class RepositoryStore: Identifiable {
         defer { isHistoryLoading = false }
 
         do {
-            let commits = try await git.history(in: root, limit: limit, filter: historyFilter)
+            // Fetch the requested window. If the resulting commits reference
+            // parent OIDs we didn't load (a branch that forked far enough back
+            // that its merge-base is outside the window), pull progressively
+            // larger windows so the graph never dangles a lane into empty
+            // space. Capped so a pathological branch can't blow the budget.
+            var effectiveLimit = limit
+            var commits = try await git.history(in: root, limit: effectiveLimit, filter: historyFilter)
+            var extensions = 0
+            while extensions < Self.maxAutoExtendSteps, !orphanParents(in: commits).isEmpty {
+                let nextLimit = effectiveLimit + Self.autoExtendStep
+                let next = try await git.history(in: root, limit: nextLimit, filter: historyFilter)
+                if next.count <= commits.count {
+                    // Repo is shorter than the new limit; further extensions won't help.
+                    break
+                }
+                effectiveLimit = nextLimit
+                commits = next
+                extensions += 1
+            }
+
             historyRows = CommitGraph.assignRows(for: commits, refs: refs)
 
             if let selectedCommitOID,
@@ -365,6 +394,30 @@ public final class RepositoryStore: Identifiable {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private static let maxAutoExtendSteps = 3
+    private static let autoExtendStep = 200
+
+    private func orphanParents(in commits: [CommitSummary]) -> Set<String> {
+        let known = Set(commits.map(\.oid))
+        var orphans: Set<String> = []
+        for commit in commits {
+            for parent in commit.parentOIDs where !known.contains(parent) {
+                orphans.insert(parent)
+            }
+        }
+        // The oldest commit's parent (the root-of-window) is always "missing"
+        // unless we happen to reach the repo root. That single dangling line
+        // looks the same as a real orphan but doesn't warrant another fetch -
+        // dropping the oldest commit's parents from the orphan set keeps the
+        // loop bounded for normal "linear" histories.
+        if let last = commits.last {
+            for parent in last.parentOIDs {
+                orphans.remove(parent)
+            }
+        }
+        return orphans
     }
 
     public func selectCommit(_ commit: CommitSummary?) async {
@@ -763,4 +816,445 @@ public final class RepositoryStore: Identifiable {
         selectedCommitPath = nil
         commitDiff = nil
     }
+
+    // MARK: - AI reword / split
+
+    public func rewordCommitWithAI(oid: String) {
+        guard let root else { return }
+        let config = ConfigStore.shared.config.ai
+        aiTask?.cancel()
+        aiErrorDetail = nil
+        aiRewordPreview = nil
+        isAIWorking = true
+        aiTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isAIWorking = false }
+
+            let report = await AICLIValidator.validate(config)
+            if Task.isCancelled { return }
+            if !report.isValid {
+                aiErrorDetail = AIErrorDetail(
+                    title: "AI setup not ready",
+                    message: report.messages.joined(separator: "\n"),
+                    runResult: nil
+                )
+                return
+            }
+
+            do {
+                guard let existing = try await git.commitMessage(for: oid, in: root) else {
+                    aiErrorDetail = AIErrorDetail(title: "Commit not found", message: oid, runResult: nil)
+                    return
+                }
+                let diff = try await git.commitDiff(for: oid, in: root)
+                let context = PromptContext(
+                    stagedDiff: "",
+                    branch: branch?.name ?? "",
+                    files: [],
+                    repo: root.lastPathComponent,
+                    model: config.model,
+                    lowLimit: config.subjectSoftLimit,
+                    highLimit: config.subjectHardLimit,
+                    guideLine: config.bodyWrap,
+                    existingMessage: existing,
+                    commitDiff: diff
+                )
+                let prompt = PromptRenderer.render(template: config.rewordPromptTemplate, context: context)
+                let engine = AIEngineFactory.make(config: config)
+                let raw = try await engine.generate(
+                    prompt: prompt,
+                    model: config.model,
+                    temperature: config.temperature,
+                    maxTokens: config.maxTokens,
+                    reasoningEffort: config.reasoningEffort
+                )
+                if Task.isCancelled { return }
+                let proposed = Self.cleanRewordResponse(raw)
+                aiDebugLatestRun = AIRunResult(
+                    provider: config.backend,
+                    resolvedExecutable: report.resolvedExecutable ?? "",
+                    argv: [],
+                    model: config.model,
+                    exitCode: 0,
+                    stdout: raw,
+                    stderr: "",
+                    durationMS: 0,
+                    timedOut: false
+                )
+                aiRewordPreview = AIRewordPreview(
+                    oid: oid,
+                    oldMessage: existing,
+                    proposed: proposed
+                )
+            } catch let err as AIEngineError {
+                if case .cancelled = err { return }
+                aiErrorDetail = AIErrorDetail(
+                    title: errorTitle(for: err),
+                    message: err.errorDescription ?? "AI error",
+                    runResult: err.runResult
+                )
+                if let r = err.runResult {
+                    aiDebugLatestRun = r
+                    openAIDebugDrawer()
+                }
+            } catch {
+                if !(error is CancellationError) {
+                    aiErrorDetail = AIErrorDetail(title: "AI error", message: error.localizedDescription, runResult: nil)
+                }
+            }
+        }
+    }
+
+    public func dismissAIRewordPreview() {
+        aiRewordPreview = nil
+    }
+
+    public func applyAIRewordPreview() {
+        guard let preview = aiRewordPreview, let root else { return }
+        let edited = preview.proposed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !edited.isEmpty else { return }
+        aiRewordPreview = nil
+        Task { @MainActor in
+            do {
+                let headOID = await currentHeadOID() ?? ""
+                if preview.oid == "HEAD" || preview.oid == headOID {
+                    try await git.amend(message: edited, in: root)
+                } else {
+                    try await git.rebaseSingle(commit: preview.oid, action: .reword(newMessage: edited), in: root)
+                }
+                rebaseInProgress = await git.isRebaseInProgress(in: root)
+                await refresh()
+                await refreshHistory()
+            } catch {
+                errorMessage = error.localizedDescription
+                rebaseInProgress = await git.isRebaseInProgress(in: root)
+            }
+        }
+    }
+
+    public func splitStagedWithAI() {
+        guard let root else { return }
+        let config = ConfigStore.shared.config.ai
+        aiTask?.cancel()
+        aiErrorDetail = nil
+        aiSplitPreview = nil
+        isAIWorking = true
+        aiTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isAIWorking = false }
+
+            let report = await AICLIValidator.validate(config)
+            if Task.isCancelled { return }
+            if !report.isValid {
+                aiErrorDetail = AIErrorDetail(
+                    title: "AI setup not ready",
+                    message: report.messages.joined(separator: "\n"),
+                    runResult: nil
+                )
+                return
+            }
+            do {
+                let diff = try await git.stagedDiff(in: root)
+                guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    aiErrorDetail = AIErrorDetail(title: "Nothing staged", message: "Stage files first.", runResult: nil)
+                    return
+                }
+                try await runSplit(
+                    diff: diff,
+                    source: .staged,
+                    config: config,
+                    report: report
+                )
+            } catch let err as AIEngineError {
+                handleAIError(err)
+            } catch {
+                if !(error is CancellationError) {
+                    aiErrorDetail = AIErrorDetail(title: "AI error", message: error.localizedDescription, runResult: nil)
+                }
+            }
+        }
+    }
+
+    /// Recompose a range of consecutive commits via AI. Combines their diffs,
+    /// asks the AI to propose new groups, and on Apply replays the new commits
+    /// via an interactive rebase that rewinds the whole range.
+    /// Caller passes the commit OIDs in any order; we validate consecutiveness
+    /// and surface a clear error if the selection has gaps.
+    public func recomposeCommitsWithAI(oids: Set<String>) {
+        guard let root else { return }
+        guard oids.count >= 2 else { return }
+        let config = ConfigStore.shared.config.ai
+
+        // Sort selected OIDs by their position in historyRows (newest-first).
+        let indexed = historyRows.enumerated().filter { oids.contains($0.element.commit.oid) }
+        guard indexed.count == oids.count else {
+            aiErrorDetail = AIErrorDetail(
+                title: "Selected commits not in history",
+                message: "Some of the selected commits are not in the loaded history range. Scroll the history view down to load more commits, then retry.",
+                runResult: nil
+            )
+            return
+        }
+        let positions = indexed.map(\.offset).sorted()
+        // Consecutive in the newest-first array means each position is exactly
+        // one more than the previous.
+        let isConsecutive = zip(positions, positions.dropFirst()).allSatisfy { $0 + 1 == $1 }
+        guard isConsecutive else {
+            aiErrorDetail = AIErrorDetail(
+                title: "Selection must be consecutive",
+                message: "Multi-commit recompose currently requires the selected commits to be next to each other in history (no gaps).",
+                runResult: nil
+            )
+            return
+        }
+
+        // Oldest = highest index in newest-first; newest = lowest index.
+        guard let newestIdx = positions.first, let oldestIdx = positions.last else { return }
+        let newestOID = historyRows[newestIdx].commit.oid
+        let oldestOID = historyRows[oldestIdx].commit.oid
+        let orderedOIDs = positions.reversed().map { historyRows[$0].commit.oid }
+
+        aiTask?.cancel()
+        aiErrorDetail = nil
+        aiSplitPreview = nil
+        isAIWorking = true
+        aiTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isAIWorking = false }
+
+            let report = await AICLIValidator.validate(config)
+            if Task.isCancelled { return }
+            if !report.isValid {
+                aiErrorDetail = AIErrorDetail(
+                    title: "AI setup not ready",
+                    message: report.messages.joined(separator: "\n"),
+                    runResult: nil
+                )
+                return
+            }
+            do {
+                // Combined diff: everything that landed across the range.
+                let diff = try await git.commitRangeDiff(oldest: oldestOID, newest: newestOID, in: root)
+                try await runSplit(
+                    diff: diff,
+                    source: .commitRange(oids: orderedOIDs),
+                    config: config,
+                    report: report
+                )
+            } catch let err as AIEngineError {
+                handleAIError(err)
+            } catch {
+                if !(error is CancellationError) {
+                    aiErrorDetail = AIErrorDetail(title: "AI error", message: error.localizedDescription, runResult: nil)
+                }
+            }
+        }
+    }
+
+    public func splitOldCommitWithAI(oid: String) {
+        guard let root else { return }
+        let config = ConfigStore.shared.config.ai
+        aiTask?.cancel()
+        aiErrorDetail = nil
+        aiSplitPreview = nil
+        isAIWorking = true
+        aiTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isAIWorking = false }
+
+            let report = await AICLIValidator.validate(config)
+            if Task.isCancelled { return }
+            if !report.isValid {
+                aiErrorDetail = AIErrorDetail(
+                    title: "AI setup not ready",
+                    message: report.messages.joined(separator: "\n"),
+                    runResult: nil
+                )
+                return
+            }
+            do {
+                let diff = try await git.commitDiff(for: oid, in: root)
+                try await runSplit(
+                    diff: diff,
+                    source: .oldCommit(oid: oid),
+                    config: config,
+                    report: report
+                )
+            } catch let err as AIEngineError {
+                handleAIError(err)
+            } catch {
+                if !(error is CancellationError) {
+                    aiErrorDetail = AIErrorDetail(title: "AI error", message: error.localizedDescription, runResult: nil)
+                }
+            }
+        }
+    }
+
+    public func dismissAISplitPreview() {
+        aiSplitPreview = nil
+    }
+
+    public func applyAISplitPreview() {
+        guard let preview = aiSplitPreview, let root else { return }
+        let groups = preview.groups
+        guard !groups.isEmpty else { return }
+        Task { @MainActor in
+            do {
+                switch preview.source {
+                case .staged:
+                    try await git.unstageAll(in: root)
+                    for group in groups {
+                        try await stageGroup(group, in: root)
+                        try await git.commit(message: group.message, in: root)
+                    }
+                case .oldCommit(let oid):
+                    try await git.rebaseSingle(commit: oid, action: .edit, in: root)
+                    try await git.reset(mode: .mixed, target: "HEAD^", in: root)
+                    for group in groups {
+                        try await stageGroup(group, in: root)
+                        try await git.commit(message: group.message, in: root)
+                    }
+                    _ = try await git.rebaseContinue(in: root)
+                case .commitRange(let oids):
+                    // oids are oldest-first; replay span is [oldest..newest].
+                    guard let oldest = oids.first, let newest = oids.last else { break }
+                    try await git.rebaseRangeEdit(oldest: oldest, newest: newest, in: root)
+                    try await git.reset(mode: .mixed, target: "\(oldest)^", in: root)
+                    for group in groups {
+                        try await stageGroup(group, in: root)
+                        try await git.commit(message: group.message, in: root)
+                    }
+                    _ = try await git.rebaseContinue(in: root)
+                }
+                aiSplitPreview = nil
+                rebaseInProgress = await git.isRebaseInProgress(in: root)
+                await refresh()
+                await refreshHistory()
+            } catch {
+                errorMessage = error.localizedDescription
+                rebaseInProgress = await git.isRebaseInProgress(in: root)
+            }
+        }
+    }
+
+    public func cancelOngoingRebase() {
+        guard let root else { return }
+        Task { @MainActor in
+            try? await git.rebaseAbort(in: root)
+            rebaseInProgress = await git.isRebaseInProgress(in: root)
+            await refresh()
+            await refreshHistory()
+        }
+    }
+
+    // MARK: - Split helpers
+
+    private func runSplit(
+        diff: String,
+        source: AISplitPreview.Source,
+        config: AIConfig,
+        report: AIValidationReport
+    ) async throws {
+        let context = PromptContext(
+            stagedDiff: diff,
+            branch: branch?.name ?? "",
+            files: [],
+            repo: root?.lastPathComponent ?? "",
+            model: config.model,
+            lowLimit: config.subjectSoftLimit,
+            highLimit: config.subjectHardLimit,
+            guideLine: config.bodyWrap
+        )
+        let prompt = PromptRenderer.render(template: config.splitPromptTemplate, context: context)
+        let engine = AIEngineFactory.make(config: config)
+        let raw = try await engine.generate(
+            prompt: prompt,
+            model: config.model,
+            temperature: config.temperature,
+            maxTokens: config.maxTokens,
+            reasoningEffort: config.reasoningEffort
+        )
+        aiDebugLatestRun = AIRunResult(
+            provider: config.backend,
+            resolvedExecutable: report.resolvedExecutable ?? "",
+            argv: [],
+            model: config.model,
+            exitCode: 0,
+            stdout: raw,
+            stderr: "",
+            durationMS: 0,
+            timedOut: false
+        )
+        do {
+            let groups = try AISplitParser.parse(raw)
+            aiSplitPreview = AISplitPreview(source: source, groups: groups)
+        } catch let err as AISplitParseError {
+            aiErrorDetail = AIErrorDetail(
+                title: "Could not parse AI response",
+                message: err.errorDescription ?? "Parse failed",
+                runResult: aiDebugLatestRun
+            )
+            openAIDebugDrawer()
+        }
+    }
+
+    private func stageGroup(_ group: AICommitGroup, in root: URL) async throws {
+        guard !group.files.isEmpty else { return }
+        // Use stageAll-style call per file; the existing API is per-path.
+        for path in group.files {
+            try await git.stage(path: path, in: root)
+        }
+    }
+
+    private func handleAIError(_ err: AIEngineError) {
+        if case .cancelled = err { return }
+        aiErrorDetail = AIErrorDetail(
+            title: errorTitle(for: err),
+            message: err.errorDescription ?? "AI error",
+            runResult: err.runResult
+        )
+        if let r = err.runResult {
+            aiDebugLatestRun = r
+            openAIDebugDrawer()
+        }
+    }
+
+    private func currentHeadOID() async -> String? {
+        historyRows.first?.commit.oid
+    }
+
+    /// Strip surrounding triple-backtick fencing and trim whitespace from a
+    /// reword response that occasionally arrives wrapped in markdown.
+    private static func cleanRewordResponse(_ raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("```") {
+            if let firstNewline = text.firstIndex(of: "\n") {
+                text = String(text[text.index(after: firstNewline)...])
+            }
+        }
+        if text.hasSuffix("```") {
+            text = String(text.dropLast(3))
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+public struct AIRewordPreview: Equatable, Sendable {
+    public let oid: String
+    public let oldMessage: String
+    public var proposed: String
+}
+
+public struct AISplitPreview: Equatable, Sendable {
+    public enum Source: Equatable, Sendable {
+        case staged
+        case oldCommit(oid: String)
+        /// Range of consecutive commits, oldest-first. Apply uses `git rebase -i`
+        /// with the newest commit marked `edit` and a `git reset --mixed <oldest>^`
+        /// to roll back the entire range before staging the new groups.
+        case commitRange(oids: [String])
+    }
+
+    public let source: Source
+    public var groups: [AICommitGroup]
 }

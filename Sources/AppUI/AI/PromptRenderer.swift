@@ -11,6 +11,8 @@ public struct PromptContext {
     public let lowLimit: Int
     public let highLimit: Int
     public let guideLine: Int
+    public let existingMessage: String
+    public let commitDiff: String
 
     public init(
         stagedDiff: String,
@@ -20,7 +22,9 @@ public struct PromptContext {
         model: String,
         lowLimit: Int,
         highLimit: Int,
-        guideLine: Int
+        guideLine: Int,
+        existingMessage: String = "",
+        commitDiff: String = ""
     ) {
         target = stagedDiff
         self.stagedDiff = stagedDiff
@@ -31,6 +35,8 @@ public struct PromptContext {
         self.lowLimit = lowLimit
         self.highLimit = highLimit
         self.guideLine = guideLine
+        self.existingMessage = existingMessage
+        self.commitDiff = commitDiff
     }
 }
 
@@ -48,7 +54,9 @@ enum PromptRenderer {
             "model": context.model,
             "lowLimit": "\(context.lowLimit)",
             "highLimit": "\(context.highLimit)",
-            "guideLine": "\(context.guideLine)"
+            "guideLine": "\(context.guideLine)",
+            "existing_message": context.existingMessage,
+            "commit_diff": context.commitDiff
         ]
         for (key, value) in table {
             output = output.replacingOccurrences(of: "${\(key)}", with: value)

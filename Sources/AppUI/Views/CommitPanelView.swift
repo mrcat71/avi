@@ -42,8 +42,8 @@ struct CommitPanelView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(.easeInOut(duration: 0.18), value: store.aiDebugDrawerVisible)
-            .animation(.easeInOut(duration: 0.18), value: store.aiDebugMinimized)
+            .animation(Glass.Motion.snappy, value: store.aiDebugDrawerVisible)
+            .animation(Glass.Motion.snappy, value: store.aiDebugMinimized)
             .task(id: store.amend) {
                 await store.prepareAmendIfNeeded()
             }
@@ -73,8 +73,8 @@ struct CommitPanelView: View {
                 .fill(.regularMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
         )
         .allowsHitTesting(false)
         .opacity(1.0 / 0.55)
@@ -89,7 +89,7 @@ struct CommitPanelView: View {
                 .tracking(0.5)
             Spacer()
             if config.config.ai.enabled {
-                generateButton
+                aiMenu
                 debugToggleButton
             }
             Text(commitHint)
@@ -97,6 +97,61 @@ struct CommitPanelView: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
+    }
+
+    /// Single AI menu - explicit actions, no auto-magic. The user picks what
+    /// they want the AI to do; we do exactly that and nothing else.
+    private var aiMenu: some View {
+        Menu {
+            if store.isGeneratingCommitMessage || store.isAIWorking {
+                Button("Cancel") {
+                    store.cancelCommitMessageGeneration()
+                }
+            } else {
+                Button {
+                    store.generateCommitMessage(config: config.config.ai)
+                } label: {
+                    Label("Generate Commit Message", systemImage: "wand.and.stars")
+                }
+                .disabled(store.entries.isEmpty)
+
+                Button {
+                    store.splitStagedWithAI()
+                } label: {
+                    Label("Split Staged Into Multiple Commits…", systemImage: "rectangle.split.3x1")
+                }
+                .disabled(store.stagedEntries.count < 2)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if store.isGeneratingCommitMessage || store.isAIWorking {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                Text("AI")
+                    .font(.system(size: 11, weight: .medium))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .foregroundStyle(Color.accentColor)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(.thinMaterial)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
+            )
+            .contentShape(Capsule(style: .continuous))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("AI commit actions")
     }
 
     private var debugToggleButton: some View {
@@ -122,47 +177,6 @@ struct CommitPanelView: View {
         .accessibilityLabel("Toggle AI debug drawer")
     }
 
-    @ViewBuilder
-    private var generateButton: some View {
-        if store.isGeneratingCommitMessage {
-            Button {
-                store.cancelCommitMessageGeneration()
-            } label: {
-                HStack(spacing: 4) {
-                    ProgressView().controlSize(.mini)
-                    Text("Cancel")
-                        .font(.system(size: 11, weight: .medium))
-                }
-            }
-            .buttonStyle(.plain)
-        } else {
-            Button {
-                store.generateCommitMessage(config: config.config.ai)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 10, weight: .medium))
-                    Text(store.aiPendingPreview == nil ? "Generate" : "Regenerate")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .padding(.horizontal, 6)
-                .frame(height: 20)
-                .foregroundStyle(Color.accentColor)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(store.entries.isEmpty)
-            .help(generateHelp)
-            .accessibilityLabel("Generate commit message with AI")
-        }
-    }
-
-    private var generateHelp: String {
-        if !config.config.ai.enabled { return "AI generation is disabled. Enable it in Settings → AI Commit Messages." }
-        if store.stagedEntries.isEmpty { return "Stage files first. Generation reads the staged diff." }
-        return "Generate a commit message from staged changes via \(config.config.ai.backend == "openai" ? "OpenAI API" : "custom command")."
-    }
-
     private var summaryField: some View {
         HStack(spacing: 0) {
             TextField("feat(scope): short summary", text: summaryBinding)
@@ -177,12 +191,12 @@ struct CommitPanelView: View {
                 .padding(.trailing, 8)
         }
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.primary.opacity(0.05))
+            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                .fill(.regularMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
         )
     }
 

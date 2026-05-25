@@ -217,6 +217,8 @@ public struct AIConfig: Codable, Equatable, Sendable {
     public var timeoutSeconds: Int
     public var reasoningEffort: String // "" | "minimal" | "low" | "medium" | "high"
     public var directInsert: Bool // skip the preview card; replace commit fields directly
+    public var rewordPromptTemplate: String
+    public var splitPromptTemplate: String
 
     public init(
         enabled: Bool = false,
@@ -229,12 +231,14 @@ public struct AIConfig: Codable, Equatable, Sendable {
         subjectSoftLimit: Int = 50,
         subjectHardLimit: Int = 72,
         bodyWrap: Int = 72,
-        commandTemplate: String = "codex exec --model ${model}",
+        commandTemplate: String = "codex exec --model ${model} ${effort_kv}",
         openAIBaseURL: String = "https://api.openai.com/v1",
         openAIKeychainItem: String = "avi.openai.apiKey",
         timeoutSeconds: Int = 120,
         reasoningEffort: String = "",
-        directInsert: Bool = true
+        directInsert: Bool = true,
+        rewordPromptTemplate: String = AIConfig.defaultRewordPromptTemplate,
+        splitPromptTemplate: String = AIConfig.defaultSplitPromptTemplate
     ) {
         self.enabled = enabled
         self.backend = backend
@@ -252,6 +256,8 @@ public struct AIConfig: Codable, Equatable, Sendable {
         self.timeoutSeconds = timeoutSeconds
         self.reasoningEffort = reasoningEffort
         self.directInsert = directInsert
+        self.rewordPromptTemplate = rewordPromptTemplate
+        self.splitPromptTemplate = splitPromptTemplate
     }
 
     public static let defaultPromptTemplate = """
@@ -264,6 +270,44 @@ public struct AIConfig: Codable, Equatable, Sendable {
 
     - Use Conventional Commits style:
       <type>(<scope>): <summary>
+    """
+
+    public static let defaultRewordPromptTemplate = """
+    Rewrite the following commit message to follow Conventional Commits
+    style (<type>(<scope>): <summary> on the first line; optional body
+    after a blank line). Preserve the intent but improve clarity and
+    concision. Subject must be at most ${highLimit} characters; wrap the
+    body at ${guideLine} characters.
+
+    Current message:
+    ${existing_message}
+
+    Diff of the commit:
+    ${commit_diff}
+
+    Respond with ONLY the new message, no commentary.
+    """
+
+    public static let defaultSplitPromptTemplate = """
+    Split the following changes into coherent commits grouped by feature
+    or topic (not by file). Each group must contain at least one file.
+    Every file in the diff must end up in exactly one group.
+
+    Use Conventional Commits style for messages. Subject must be at most
+    ${highLimit} characters; wrap the body at ${guideLine} characters.
+
+    Respond with ONLY a JSON object in a ```json fenced block:
+    ```json
+    {
+      "groups": [
+        { "files": ["path/to/file1", "path/to/file2"], "message": "feat(scope): subject\\n\\nOptional body." },
+        { "files": ["path/to/file3"], "message": "..." }
+      ]
+    }
+    ```
+
+    Diff:
+    ${target}
     """
 
     /// Tolerant decoder: any field can be missing in an older config file.
@@ -286,6 +330,8 @@ public struct AIConfig: Codable, Equatable, Sendable {
         timeoutSeconds = (try? c.decode(Int.self, forKey: .timeoutSeconds)) ?? defaults.timeoutSeconds
         reasoningEffort = (try? c.decode(String.self, forKey: .reasoningEffort)) ?? defaults.reasoningEffort
         directInsert = (try? c.decode(Bool.self, forKey: .directInsert)) ?? defaults.directInsert
+        rewordPromptTemplate = (try? c.decode(String.self, forKey: .rewordPromptTemplate)) ?? defaults.rewordPromptTemplate
+        splitPromptTemplate = (try? c.decode(String.self, forKey: .splitPromptTemplate)) ?? defaults.splitPromptTemplate
     }
 }
 

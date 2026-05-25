@@ -43,7 +43,7 @@ conventionalCommits = true
 subjectSoftLimit = 50
 subjectHardLimit = 72
 bodyWrap = 72
-commandTemplate = "codex exec --model ${model}"
+commandTemplate = "codex exec --model ${model} ${effort_kv}"
 openAIBaseURL = "https://api.openai.com/v1"
 timeoutSeconds = 120
 

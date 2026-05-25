@@ -90,10 +90,15 @@ final class CommandAIEngine: AIEngine {
         try Data(prompt.utf8).write(to: promptURL)
         defer { try? FileManager.default.removeItem(at: promptURL) }
 
-        // Substitute ${model}, ${prompt_file} and ${effort} in the command template.
+        // Substitute placeholders. `${effort_kv}` expands to a codex-style
+        // `-c model_reasoning_effort=<value>` pair when effort is set, and to
+        // an empty string otherwise - so a template that uses it stays valid
+        // when the user hasn't picked an effort.
+        let effortKV = reasoningEffort.isEmpty ? "" : "-c model_reasoning_effort=\(reasoningEffort)"
         let rendered = commandTemplate
             .replacingOccurrences(of: "${model}", with: model)
             .replacingOccurrences(of: "${prompt_file}", with: promptURL.path)
+            .replacingOccurrences(of: "${effort_kv}", with: effortKV)
             .replacingOccurrences(of: "${effort}", with: reasoningEffort)
 
         let argv = try shellSplit(rendered)
