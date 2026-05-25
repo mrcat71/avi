@@ -7,6 +7,7 @@ struct ChangeListView: View {
     var switchToAllCommits: (() -> Void)?
 
     @Bindable private var config = ConfigStore.shared
+    @State private var multiSelection: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,6 +15,32 @@ struct ChangeListView: View {
             Divider()
             content
         }
+        .background(selectAllShortcut)
+        .onChange(of: store.selectedPath) { _, newValue in
+            // Keep multi-selection in sync when the store changes the active file
+            // (e.g. after a stage/unstage shuffle). Only collapse to single when
+            // the view wasn't already in a multi-selection state the user built.
+            if let newValue {
+                if multiSelection != [newValue] {
+                    multiSelection = [newValue]
+                }
+            } else if !multiSelection.isEmpty {
+                multiSelection.removeAll()
+            }
+        }
+    }
+
+    /// Hidden button that registers Cmd+A as "select all changed files".
+    /// Lives behind the view so the shortcut is in the responder chain while
+    /// the list has focus, without taking visible space.
+    private var selectAllShortcut: some View {
+        Button("Select All Files") {
+            multiSelection = Set(store.entries.map(\.path))
+        }
+        .keyboardShortcut("a", modifiers: .command)
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
     }
 
     private var isTreeMode: Bool {
@@ -92,13 +119,16 @@ struct ChangeListView: View {
 
     private var flatList: some View {
         ScrollViewReader { proxy in
-            List(selection: selection) {
+            List(selection: $multiSelection) {
                 unstagedFlatSection
                 stagedFlatSection
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .animation(Glass.Motion.snappy, value: stagingAnimationKey)
+            .onChange(of: multiSelection) { _, newValue in
+                syncSingleSelectionToStore(newValue)
+            }
             .onChange(of: store.selectedPath) { _, newValue in
                 guard let newValue else { return }
                 withAnimation(Glass.Motion.snappy) {
@@ -110,13 +140,16 @@ struct ChangeListView: View {
 
     private var treeList: some View {
         ScrollViewReader { proxy in
-            List(selection: selection) {
+            List(selection: $multiSelection) {
                 unstagedTreeSection
                 stagedTreeSection
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .animation(Glass.Motion.snappy, value: stagingAnimationKey)
+            .onChange(of: multiSelection) { _, newValue in
+                syncSingleSelectionToStore(newValue)
+            }
             .onChange(of: store.selectedPath) { _, newValue in
                 guard let newValue else { return }
                 withAnimation(Glass.Motion.snappy) {
@@ -124,6 +157,21 @@ struct ChangeListView: View {
                 }
             }
         }
+    }
+
+    /// Drive the diff viewer from multi-selection. When a single FILE row is
+    /// selected, load its diff. When 2+ rows or a folder is selected, leave the
+    /// diff view on whatever was last shown (mirrors HistoryView's pattern).
+    /// When selection is empty, clear the diff.
+    private func syncSingleSelectionToStore(_ selection: Set<String>) {
+        if selection.count == 1, let id = selection.first,
+           let file = store.entries.first(where: { $0.path == id }) {
+            Task { await store.select(file) }
+        } else if selection.isEmpty {
+            Task { await store.select(nil) }
+        }
+        // Otherwise (multi-select, or selection landed on a folder header),
+        // leave store.selectedPath alone.
     }
 
     @ViewBuilder
@@ -250,6 +298,11 @@ struct ChangeListView: View {
                     isExpanded: store.expandedFolders.contains(node.id),
                     onToggle: { store.toggleFolderExpanded(node.id) }
                 )
+                // Tag folder rows so arrow-key navigation traverses them and
+                // selection can cross folder boundaries naturally. The
+                // sync-to-store guard filters folder ids back out so the diff
+                // view isn't asked to render a folder path.
+                .tag(node.id)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
             case .file(let file):
@@ -258,16 +311,6 @@ struct ChangeListView: View {
                     .padding(.leading, CGFloat(node.depth + 1) * 12)
             }
         }
-    }
-
-    private var selection: Binding<String?> {
-        Binding(
-            get: { store.selectedPath },
-            set: { newValue in
-                let file = store.entries.first { $0.path == newValue }
-                Task { await store.select(file) }
-            }
-        )
     }
 
     private var summary: String {
