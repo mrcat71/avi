@@ -38,6 +38,13 @@ public struct RecentEntry: Codable, Equatable, Sendable, Identifiable {
 /// historical path-only schema (key `"recentRepositories"`) and the enriched v2
 /// schema (key `"recentRepositoriesV2"`, JSON-encoded `[RecentEntry]`). The legacy
 /// key is preserved across migrations as a safety net for one release.
+///
+/// A SwiftData-backed migration was prototyped and reverted: the bare-CLI
+/// `./build.sh` toolchain doesn't ship `SwiftDataMacros`, so `@Model` can't
+/// compile in the fallback build path. When the project moves to Xcode-only
+/// builds, swapping the internals to a `@Model` + `ModelContainer` is a
+/// drop-in change since the public API here (entries/add/remove/clear/
+/// updateLastKnown) was designed to be storage-agnostic.
 enum RecentRepositories {
     private static let legacyKey = "recentRepositories"
     private static let v2Key = "recentRepositoriesV2"
