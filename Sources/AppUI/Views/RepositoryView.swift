@@ -1,3 +1,4 @@
+import AppKit
 import GitKit
 import SwiftUI
 
@@ -95,6 +96,80 @@ struct RepositoryView: View {
             Button("OK", role: .cancel) { store.dismissError() }
         } message: {
             Text(store.errorMessage ?? "")
+        }
+        .sheet(isPresented: aiRewordPresented) {
+            if let preview = store.aiRewordPreview {
+                AIRewordSheet(store: store, preview: preview)
+            }
+        }
+        .sheet(isPresented: aiSplitLoadingPresented) {
+            AISplitLoadingSheet(onCancel: { store.dismissAISplitPreview() })
+        }
+        .sheet(isPresented: aiSplitPresented) {
+            if let preview = store.aiSplitPreview {
+                AISplitSheet(store: store, preview: preview)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if store.rebaseInProgress {
+                rebaseBanner
+            }
+        }
+    }
+
+    private var aiRewordPresented: Binding<Bool> {
+        Binding(
+            get: { store.aiRewordPreview != nil },
+            set: { presented in
+                if !presented { store.dismissAIRewordPreview() }
+            }
+        )
+    }
+
+    private var aiSplitPresented: Binding<Bool> {
+        Binding(
+            get: { store.aiSplitPreview != nil && !store.isAIWorking },
+            set: { presented in
+                if !presented { store.dismissAISplitPreview() }
+            }
+        )
+    }
+
+    private var aiSplitLoadingPresented: Binding<Bool> {
+        Binding(
+            get: { store.isAIWorking && store.aiSplitPreview == nil },
+            set: { _ in }
+        )
+    }
+
+    private var rebaseBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Rebase in progress")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Resolve any conflicts in the working tree, then run `git rebase --continue` in a terminal.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Open Terminal") {
+                if let root = store.root {
+                    NSWorkspace.shared.open(root)
+                }
+            }
+            .controlSize(.small)
+            Button("Abort rebase", role: .destructive) {
+                store.cancelOngoingRebase()
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Glass.edgeStroke).frame(height: 0.6)
         }
     }
 
@@ -204,11 +279,11 @@ private struct RepositoryTabsBar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 32)
-        .background(.regularMaterial)
+        .background(.ultraThinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(height: 1)
+                .fill(Glass.edgeStroke)
+                .frame(height: 0.6)
         }
     }
 }
@@ -294,6 +369,8 @@ private struct RepositoryActionToolbarView: View {
     let store: RepositoryStore
     let openRepositoryPicker: () -> Void
 
+    @State private var showingPushSheet = false
+
     var body: some View {
         HStack(spacing: 2) {
             ToolbarPillButton(title: "Open", systemImage: "folder", action: openRepositoryPicker)
@@ -327,16 +404,9 @@ private struct RepositoryActionToolbarView: View {
                 badgeTint: .green,
                 helpText: pushHelp
             ) {
-                Task { await store.push() }
+                showingPushSheet = true
             }
             .disabled(!canPullPush)
-
-            toolbarDivider
-
-            ToolbarPillButton(title: "Refresh", systemImage: "arrow.clockwise") {
-                Task { await store.refresh() }
-            }
-            .disabled(store.isLoading)
 
             if let providerURL = providerWebURL {
                 toolbarDivider
@@ -356,7 +426,15 @@ private struct RepositoryActionToolbarView: View {
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity)
         .frame(height: 40)
-        .background(.regularMaterial)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Glass.edgeStroke)
+                .frame(height: 0.6)
+        }
+        .sheet(isPresented: $showingPushSheet) {
+            PushSheet(store: store, dismiss: { showingPushSheet = false })
+        }
         .overlay(alignment: .topTrailing) {
             if store.isLoading || store.isRemoteOperationRunning {
                 Circle()
@@ -473,16 +551,28 @@ struct ToolbarPillButton: View {
                 }
             }
             .padding(.horizontal, DS.Spacing.lg)
-            .frame(height: 26)
+            .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: DS.Radius.md)
-                    .fill(isHovering && isEnabled ? DS.Palette.rowHoverFill : Color.clear)
+                ZStack {
+                    Capsule(style: .continuous)
+                        .fill(isHovering && isEnabled ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(Color.clear))
+                    if isHovering, isEnabled {
+                        Capsule(style: .continuous)
+                            .fill(Glass.hoverTint())
+                    }
+                }
             )
-            .contentShape(Rectangle())
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(isHovering && isEnabled ? Glass.edgeStroke : LinearGradient(colors: [.clear, .clear], startPoint: .top, endPoint: .bottom), lineWidth: 0.6)
+            )
+            .contentShape(Capsule(style: .continuous))
+            .scaleEffect(isHovering && isEnabled ? 1.0 : 1.0)
         }
         .buttonStyle(.plain)
         .opacity(isEnabled ? 1 : 0.4)
         .onHover { isHovering = $0 }
+        .animation(Glass.Motion.snappy, value: isHovering)
         .help(helpText ?? title)
         .accessibilityLabel(helpText ?? title)
     }
@@ -640,7 +730,7 @@ struct LocalChangesWorkspaceView: View {
                 .aviPane()
 
                 CommitPanelView(store: store)
-                    .frame(minHeight: 158, idealHeight: 178, maxHeight: 240)
+                    .frame(minHeight: 158, idealHeight: 220)
                     .aviPane()
             }
         }
@@ -703,11 +793,12 @@ private struct LocalChangesStatusBar: View {
             Button {
                 Task { await store.refresh() }
             } label: {
-                Image(systemName: "arrow.clockwise")
+                Image(systemName: store.isLoading ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
+                    .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
             .disabled(store.isLoading)
@@ -715,7 +806,12 @@ private struct LocalChangesStatusBar: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 32)
-        .background(.regularMaterial)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Glass.edgeStroke)
+                .frame(height: 0.6)
+        }
     }
 
     private var statusLabel: String {
@@ -759,19 +855,35 @@ private struct LocalChangesStatusBar: View {
 }
 
 private struct AviWorkspaceBackground: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     var body: some View {
-        Color(nsColor: .windowBackgroundColor)
-            .ignoresSafeArea()
+        ZStack {
+            if reduceTransparency {
+                Color(nsColor: .windowBackgroundColor)
+            } else {
+                LinearGradient(
+                    colors: [
+                        Color(nsColor: .windowBackgroundColor),
+                        Color(nsColor: .underPageBackgroundColor)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                Rectangle().fill(.ultraThinMaterial)
+            }
+        }
+        .ignoresSafeArea()
     }
 }
 
 extension View {
     func aviPane() -> some View {
-        background(Color(nsColor: .controlBackgroundColor))
+        background(.regularMaterial)
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(Color.primary.opacity(0.08))
-                    .frame(height: 1)
+                    .fill(Glass.edgeStroke)
+                    .frame(height: 0.6)
             }
     }
 }

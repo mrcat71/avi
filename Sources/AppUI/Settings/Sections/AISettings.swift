@@ -137,11 +137,38 @@ struct AISettingsView: View {
 
             if store.config.ai.backend == "command" {
                 SettingsGroup("Custom command") {
-                    SettingsFormRow("Command template", description: "Variables: ${model}, ${prompt_file}, ${effort}. Prompt is also piped on stdin.") {
-                        TextField("codex exec --model ${model}", text: bind(\.ai.commandTemplate))
+                    SettingsFormRow(
+                        "Command template",
+                        description: "${prompt_file} is a temp file containing the rendered Prompt template configured below; the same content is piped on stdin. ${model} = the model field above. ${effort_kv} expands to codex's `-c model_reasoning_effort=<value>` flag when an effort is picked, or to an empty string when not. ${effort} is the raw value (use only if your CLI accepts it directly)."
+                    ) {
+                        TextField("codex exec --model ${model} ${effort_kv}", text: bind(\.ai.commandTemplate))
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 400)
                             .font(.system(size: 12, design: .monospaced))
+                    }
+                    Divider().padding(.vertical, 4)
+                    SettingsFormRow(
+                        "Resolved preview",
+                        description: "How the template renders with the current settings."
+                    ) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(resolvedCommandPreview)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .lineLimit(2)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: 400, alignment: .leading)
+                            if effortPickedButNotUsed {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "lightbulb")
+                                        .font(.system(size: 10))
+                                    Text("Tip: add ${effort_kv} to the template (for codex) or ${effort} (raw) to use the picked effort.")
+                                        .font(.system(size: 10))
+                                }
+                                .foregroundStyle(.orange)
+                            }
+                        }
                     }
                 }
             } else {
@@ -245,6 +272,26 @@ struct AISettingsView: View {
             get: { store.config[keyPath: kp] },
             set: { v in store.update { $0[keyPath: kp] = v } }
         )
+    }
+
+    /// Renders the command template with the current Settings substituted.
+    /// `${prompt_file}` is shown as `/tmp/avi-prompt.txt` because the real
+    /// path is generated per run; everything else is a faithful preview.
+    private var resolvedCommandPreview: String {
+        let ai = store.config.ai
+        let template = ai.commandTemplate.isEmpty ? "(empty)" : ai.commandTemplate
+        let effortKV = ai.reasoningEffort.isEmpty ? "" : "-c model_reasoning_effort=\(ai.reasoningEffort)"
+        return template
+            .replacingOccurrences(of: "${model}", with: ai.model.isEmpty ? "<model>" : ai.model)
+            .replacingOccurrences(of: "${effort_kv}", with: effortKV)
+            .replacingOccurrences(of: "${effort}", with: ai.reasoningEffort.isEmpty ? "" : ai.reasoningEffort)
+            .replacingOccurrences(of: "${prompt_file}", with: "/tmp/avi-prompt.txt")
+    }
+
+    private var effortPickedButNotUsed: Bool {
+        let ai = store.config.ai
+        guard !ai.reasoningEffort.isEmpty else { return false }
+        return !ai.commandTemplate.contains("${effort}") && !ai.commandTemplate.contains("${effort_kv}")
     }
 
     private func runValidation() {
