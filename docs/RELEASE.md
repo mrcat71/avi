@@ -1,7 +1,20 @@
-# Release checklist
+# Release checklist (local Mac build)
 
-The steps a maintainer takes to cut a new Avi release. Replace `<version>`
-with the new semver (for example `0.1.0`).
+The end-to-end flow to cut a new Avi release without CI runners. Everything
+runs on your Mac. Replace `<version>` with the new semver (for example
+`0.1.0`).
+
+Requirements:
+
+- macOS 14+ with Xcode installed (full Xcode, not just Command Line Tools -
+  the SwiftPM manifest links cleanly with full Xcode).
+- `gh` CLI authenticated against the `mrcat71/avi` repo (`gh auth status`).
+- A working `git` push remote.
+
+No paid Apple Developer ID is required for v0.1.0: the bundle is ad-hoc
+signed by `scripts/package-app.sh`. Downloaders on other Macs will hit
+Gatekeeper the first time and must right-click -> Open the `.app`. The
+README documents this.
 
 ## 1. Prepare the branch
 
@@ -10,66 +23,99 @@ with the new semver (for example `0.1.0`).
    public static let version = "<version>"
    ```
 2. Update the matching assertion in `Tests/GitKitTests/SmokeTests.swift`.
-3. Move CHANGELOG entries from `[Unreleased]` into a new
+3. In `CHANGELOG.md`, move entries from `[Unreleased]` into a new
    `## [<version>] - YYYY-MM-DD` section.
-4. Commit:
+4. Stage and commit:
    ```sh
-   git commit -am "chore: prepare v<version>"
+   git add Sources/GitKit/GitKit.swift Tests/GitKitTests/SmokeTests.swift CHANGELOG.md
+   git commit -m "chore: prepare v<version>"
    ```
-5. Open a PR. CI (`build-test`, `lint`, `bundle-smoke`) must pass.
+5. Push the branch and open / merge a PR (skip if you're maintaining a
+   tag-only flow on `main`).
 
-## 2. Tag from main
+## 2. Build the release artifacts locally
 
-1. Merge the prep PR.
-2. Pull `main` and create an annotated tag:
-   ```sh
-   git checkout main && git pull
-   git tag -a v<version> -m "v<version>"
-   git push origin v<version>
-   ```
+```sh
+# Sanity check toolchain.
+swift --version
 
-## 3. Watch the release workflow
+# Release build of the executable.
+swift build -c release --arch arm64
 
-`release.yml` runs on tag push and performs:
+# Wrap into Avi.app, copy the icon + wordmark, ad-hoc sign, and zip.
+scripts/package-app.sh <version>
+```
 
-1. Tag version is parsed from `${GITHUB_REF}`.
-2. `GitKit.version` is grepped from source and must match the tag.
-3. A duplicate-release check via `gh release view` aborts if the tag was
-   already released.
-4. `swift test` runs before any packaging.
-5. `swift build -c release --arch arm64`.
-6. `scripts/package-app.sh <version>` assembles `dist/Avi.app` with the
-   right `CFBundleShortVersionString`, then zips it.
-7. `SHA256SUMS` is generated.
-8. `gh release create` publishes the release with auto-generated notes and
-   the zip + checksum attached.
+`package-app.sh` writes:
 
-## 4. Verify the release
+- `dist/Avi.app`               - the bundle.
+- `avi-<version>-macos-arm64.zip` - the distributable archive.
 
-1. Browse to the GitHub Release page; confirm
-   `avi-<version>-macos-arm64.zip` and `SHA256SUMS` are attached.
-2. Download both files to a clean directory.
-3. Run `shasum -a 256 -c SHA256SUMS` and confirm OK.
-4. Unzip `Avi.app` and double-click. Verify:
-   - The app launches; the picker shows the empty state.
-   - "Add existing" can open a local repo.
-   - Commit panel, history view, and Settings all behave.
-   - `./Avi.app/Contents/MacOS/Avi --version` prints `<version>`.
+If `swift build -c release` fails on a stock-Command-Line-Tools toolchain
+(no full Xcode), install Xcode from the App Store and rerun. The legacy
+fallback `./build.sh` is debug-only and not suitable for releases.
 
-## 5. Recover from a bad release
+Generate the checksum next to the zip:
 
-1. Delete the GitHub Release (Release page → Delete).
-2. Delete the tag locally and remotely:
-   ```sh
-   git tag -d v<version>
-   git push --delete origin v<version>
-   ```
-3. Fix the underlying issue with a follow-up commit, then restart from
-   step 2 with the same or bumped version.
+```sh
+shasum -a 256 avi-<version>-macos-arm64.zip > SHA256SUMS
+```
 
-## 6. Manual dispatch (test builds)
+## 3. Smoke-test the bundle
 
-The `release.yml` workflow also accepts a `workflow_dispatch` event with a
-`dry_run` input. Triggering it from the Actions tab builds the artifacts and
-uploads them as workflow artifacts (`retention-days: 14`) without creating a
-GitHub Release. Useful for verifying the packaging script before tagging.
+```sh
+./dist/Avi.app/Contents/MacOS/Avi --version         # prints <version>
+./dist/Avi.app/Contents/MacOS/Avi --self-test       # prints "ok"
+open dist/Avi.app                                   # launches the GUI
+```
+
+In the GUI verify:
+
+- The dock and Cmd-Tab show the Avi wordmark icon.
+- Avi -> About Avi shows the wordmark as the panel icon and the version.
+- The repository picker empty state shows the wordmark above the
+  description.
+- "Add existing" can open a local repo and the basic flows work.
+
+## 4. Tag from main
+
+Once the prep commit is merged into `main`:
+
+```sh
+git checkout main && git pull
+git tag -a v<version> -m "v<version>"
+git push origin v<version>
+```
+
+## 5. Publish the GitHub Release
+
+Auto-generate notes from the tag and attach both artifacts:
+
+```sh
+gh release create v<version> \
+  avi-<version>-macos-arm64.zip \
+  SHA256SUMS \
+  --title "v<version>" \
+  --generate-notes
+```
+
+If you prefer hand-written notes, replace `--generate-notes` with
+`--notes-file path/to/notes.md`.
+
+## 6. Verify the release page
+
+1. Browse to https://github.com/mrcat71/avi/releases/tag/v<version>.
+2. Confirm `avi-<version>-macos-arm64.zip` and `SHA256SUMS` are attached.
+3. On a clean machine: download both, run `shasum -a 256 -c SHA256SUMS`,
+   unzip, right-click -> Open the `.app`, click Open in the Gatekeeper
+   dialog. The app should launch.
+
+## 7. Recover from a bad release
+
+```sh
+gh release delete v<version> --yes
+git tag -d v<version>
+git push --delete origin v<version>
+```
+
+Fix the underlying issue, restart from step 1.

@@ -729,19 +729,20 @@ struct LocalChangesWorkspaceView: View {
         VStack(spacing: 0) {
             LocalChangesStatusBar(store: store)
             Divider()
-            VSplitView {
-                HSplitView {
-                    ChangeListView(store: store, switchToAllCommits: switchToAllCommits)
-                        .frame(minWidth: 300, idealWidth: 380)
-                    DiffDetailView(store: store)
-                        .frame(minWidth: 460)
-                }
-                .frame(minHeight: 280)
-                .aviPane()
-
-                CommitPanelView(store: store)
-                    .frame(minHeight: 158, idealHeight: 220)
+            HSplitView {
+                ChangeListView(store: store, switchToAllCommits: switchToAllCommits)
+                    .frame(minWidth: 300, idealWidth: 380)
                     .aviPane()
+
+                VSplitView {
+                    DiffDetailView(store: store)
+                        .frame(minHeight: 240)
+                        .aviPane()
+                    CommitPanelView(store: store)
+                        .frame(minHeight: 158, idealHeight: 220)
+                        .aviPane()
+                }
+                .frame(minWidth: 460)
             }
         }
     }

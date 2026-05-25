@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/avi-wordmark.png" alt="Avi" width="160">
+</p>
+
 # Avi
 
 Avi is a SwiftUI-based macOS git client. It focuses on local-first workflows
@@ -54,8 +58,9 @@ script that bypasses `swift build`:
 ./build.sh run     # build + launch
 ```
 
-The release CI workflow uses standard `swift build -c release`; the fallback
-script is for local development only.
+Tagged releases are built locally on a Mac with `swift build -c release` and
+packaged by `scripts/package-app.sh`. See
+[`docs/RELEASE.md`](docs/RELEASE.md) for the full runbook.
 
 ## Configuration
 
@@ -78,6 +83,11 @@ Verify a download with:
 ```sh
 shasum -a 256 -c SHA256SUMS
 ```
+
+The bundle is ad-hoc signed, not notarized with a Developer ID. The first
+time you launch the downloaded `Avi.app`, macOS Gatekeeper will refuse to
+open it; right-click the app in Finder and pick **Open**, then click
+**Open** in the warning sheet. Subsequent launches work normally.
 
 See [`docs/RELEASE.md`](docs/RELEASE.md) for the maintainer's release checklist.
 
