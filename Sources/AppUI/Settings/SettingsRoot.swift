@@ -5,6 +5,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case appearance
     case git
     case clone
+    case keyboard
     case github
     case gitlab
     case ai
@@ -21,6 +22,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: return "Appearance"
         case .git: return "Git"
         case .clone: return "Clone"
+        case .keyboard: return "Keyboard"
         case .github: return "GitHub"
         case .gitlab: return "GitLab"
         case .ai: return "AI Commit Messages"
@@ -35,6 +37,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .appearance: return "paintpalette"
         case .git: return "arrow.triangle.branch"
         case .clone: return "square.and.arrow.down"
+        case .keyboard: return "keyboard"
         case .github: return "chevron.left.forwardslash.chevron.right"
         case .gitlab: return "globe"
         case .ai: return "wand.and.stars"
@@ -68,7 +71,13 @@ public struct SettingsRoot: View {
                 .tag(section)
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 220)
-            .listStyle(.sidebar)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(.thinMaterial)
+            .toolbar(removing: .sidebarToggle)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Color.clear.frame(height: 8)
+            }
         } detail: {
             ScrollView {
                 content
@@ -80,6 +89,7 @@ public struct SettingsRoot: View {
             .navigationTitle(selection.title)
             .navigationSubtitle(ConfigPath.fileURL.path)
         }
+        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 820, minHeight: 560)
     }
 
@@ -97,6 +107,7 @@ public struct SettingsRoot: View {
         case .appearance: AppearanceSettingsView()
         case .git: GitSettingsView()
         case .clone: CloneSettingsView()
+        case .keyboard: KeyboardSettingsView()
         case .github: GitHubSettingsView()
         case .gitlab: GitLabSettingsView()
         case .ai: AISettingsView()
@@ -160,13 +171,14 @@ struct SettingsGroup<Content: View>: View {
             }
             .padding(12)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(nsColor: .controlBackgroundColor))
+                RoundedRectangle(cornerRadius: Glass.Corner.card, style: .continuous)
+                    .fill(.regularMaterial)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Glass.Corner.card, style: .continuous)
+                    .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
             )
+            .aviShadow(Glass.Elevation.resting.shadow)
         }
         .padding(.bottom, 14)
     }

@@ -48,7 +48,6 @@ struct AviApp: App {
         Settings {
             SettingsRoot()
         }
-        .windowResizability(.contentSize)
         .commands {
             CommandMenu("Repository") {
                 Button("Open Repository...") {
@@ -139,6 +138,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // normal foreground app so the window appears and takes focus.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        // Register customisable keyboard shortcuts. No-op when the
+        // KeyboardShortcuts library isn't linked (bare-CLI build).
+        AviShortcuts.registerAll()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
