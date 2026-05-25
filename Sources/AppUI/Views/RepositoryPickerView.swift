@@ -193,29 +193,43 @@ public struct RepositoryPickerView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "tray")
-                .font(.system(size: 36, weight: .ultraLight))
-                .foregroundStyle(DS.Palette.accent)
-            VStack(spacing: 4) {
-                Text("No repositories yet")
-                    .font(.system(size: 14, weight: .semibold))
-                Text("Add an existing local repository or clone one from GitHub or GitLab.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            HStack(spacing: 8) {
-                AviButton("Add existing", icon: "folder", variant: .primary, size: .medium, action: openPanelToAdd)
-                if onClone != nil {
-                    AviButton("Clone", icon: "square.and.arrow.down", variant: .secondary, size: .medium) {
-                        onClone?()
+        ZStack {
+            HeroBackground(tint: DS.Palette.accent)
+                .ignoresSafeArea()
+
+            VStack(spacing: DS.Spacing.xxxl) {
+                LottieView(
+                    name: "empty-repo",
+                    loopMode: .loop,
+                    size: CGSize(width: 140, height: 140)
+                )
+
+                VStack(spacing: DS.Spacing.md) {
+                    Text("Welcome to Avi")
+                        .font(DS.Font.heroTitle(currentDensity))
+                    Text("Open a repository to get started — add an existing one from your disk, or clone from GitHub / GitLab.")
+                        .font(DS.Font.heroSubtitle(currentDensity))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 480)
+                }
+
+                HStack(spacing: DS.Spacing.lg) {
+                    AviButton("Add existing", icon: "folder", variant: .primary, size: .medium, action: openPanelToAdd)
+                    if onClone != nil {
+                        AviButton("Clone", icon: "square.and.arrow.down", variant: .secondary, size: .medium) {
+                            onClone?()
+                        }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(DS.Spacing.display)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
+    }
+
+    private var currentDensity: Density {
+        AppPreferences.density
     }
 
     // MARK: - Footer

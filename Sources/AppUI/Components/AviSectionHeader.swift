@@ -53,7 +53,7 @@ struct AviSectionHeader<Trailing: View>: View {
 
     private func toggle() {
         guard let isExpanded else { return }
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withAnimation(Glass.Motion.snappy) {
             isExpanded.wrappedValue.toggle()
         }
     }

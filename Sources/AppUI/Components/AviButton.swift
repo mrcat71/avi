@@ -104,20 +104,38 @@ struct AviButton: View {
     private var backgroundShape: some View {
         switch variant {
         case .primary:
-            RoundedRectangle(cornerRadius: DS.Radius.md)
+            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
                 .fill(isHovering && isEnabled ? DS.Palette.accentEmphasis.opacity(0.9) : DS.Palette.accent)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                        .fill(Glass.topHighlight)
+                )
         case .secondary:
-            RoundedRectangle(cornerRadius: DS.Radius.md)
-                .fill(isActive ? DS.Palette.accent : (isHovering && isEnabled ? DS.Palette.rowHoverFill : Color.clear))
+            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                .fill(.thinMaterial)
+                .opacity(isActive || isHovering && isEnabled ? 1 : 0.65)
+                .overlay {
+                    if isActive {
+                        RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                            .fill(DS.Palette.accent.opacity(0.25))
+                    } else if isHovering, isEnabled {
+                        RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                            .fill(Glass.hoverTint())
+                    }
+                }
         case .ghost:
-            RoundedRectangle(cornerRadius: DS.Radius.md)
+            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
                 .fill(isActive ? DS.Palette.accent : (isHovering && isEnabled ? DS.Palette.rowHoverFill : Color.clear))
         case .iconOnly:
-            RoundedRectangle(cornerRadius: DS.Radius.sm)
+            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
                 .fill(isHovering && isEnabled ? DS.Palette.rowHoverFill : Color.clear)
         case .destructive:
-            RoundedRectangle(cornerRadius: DS.Radius.md)
+            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
                 .fill(isHovering && isEnabled ? DS.Palette.danger.opacity(0.9) : DS.Palette.danger)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                        .fill(Glass.topHighlight)
+                )
         }
     }
 
@@ -125,8 +143,11 @@ struct AviButton: View {
     private var borderShape: some View {
         switch variant {
         case .secondary:
-            RoundedRectangle(cornerRadius: DS.Radius.md)
-                .stroke(isActive ? Color.clear : DS.Palette.dividerStrong, lineWidth: 1)
+            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
+        case .primary, .destructive:
+            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.6)
         default:
             EmptyView()
         }

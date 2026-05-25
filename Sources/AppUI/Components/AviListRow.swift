@@ -38,13 +38,24 @@ struct AviListRow<Content: View>: View {
             .padding(.horizontal, DS.Spacing.lg - 2)
             .frame(height: rowHeight)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: DS.Radius.md)
-                    .fill(rowFill)
-            )
+            .background {
+                let shape = RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
+                if isSelected {
+                    shape.fill(DS.Palette.accent)
+                        .overlay(shape.fill(Glass.topHighlight))
+                } else if isCurrentBranch {
+                    shape.fill(DS.Palette.accent.opacity(0.18))
+                } else if isHovering {
+                    shape.fill(.thinMaterial)
+                        .overlay(shape.fill(Glass.hoverTint()))
+                } else {
+                    shape.fill(Color.clear)
+                }
+            }
             .contentShape(Rectangle())
             .onTapGesture { onTap?() }
             .onHover { isHovering = $0 }
+            .animation(Glass.Motion.snappy, value: isHovering)
     }
 
     private var rowHeight: CGFloat {
@@ -53,12 +64,5 @@ struct AviListRow<Content: View>: View {
         case .standard: return DS.RowHeight.standard(density)
         case .comfortable: return DS.RowHeight.standard(density) + 4
         }
-    }
-
-    private var rowFill: Color {
-        if isSelected { return DS.Palette.rowSelectedFill }
-        if isCurrentBranch { return DS.Palette.rowCurrentBranchFill }
-        if isHovering { return DS.Palette.rowHoverFill }
-        return Color.clear
     }
 }

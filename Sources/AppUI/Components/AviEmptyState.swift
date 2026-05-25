@@ -27,9 +27,18 @@ struct AviEmptyState<Actions: View>: View {
 
     var body: some View {
         VStack(spacing: DS.Spacing.lg) {
-            Image(systemName: icon)
-                .font(.system(size: 28, weight: .light))
-                .foregroundStyle(iconTint)
+            ZStack {
+                Circle()
+                    .fill(.thinMaterial)
+                    .frame(width: 64, height: 64)
+                Circle()
+                    .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
+                    .frame(width: 64, height: 64)
+                Image(systemName: icon)
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundStyle(iconTint)
+            }
+            .aviShadow(Glass.Elevation.resting.shadow)
 
             VStack(spacing: DS.Spacing.sm) {
                 Text(title)
