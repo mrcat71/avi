@@ -19,6 +19,9 @@ xcuserdata/
 SHA256SUMS
 dist/
 
+# Iconset intermediates regenerated from Branding/avi-logo-1024.png
+Branding/AppIcon.iconset/
+
 # Logs
 *.log
 

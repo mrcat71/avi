@@ -49,6 +49,11 @@ struct AviApp: App {
             SettingsRoot()
         }
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Avi") {
+                    showAboutPanel()
+                }
+            }
             CommandMenu("Repository") {
                 Button("Open Repository...") {
                     NotificationCenter.default.post(name: .aviOpenRepository, object: nil)
@@ -147,4 +152,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
         true
     }
+}
+
+/// Custom About panel: replaces the app-icon thumbnail with the wordmark when
+/// the resource is bundled. Falls back to the default about panel in dev runs
+/// where the wordmark isn't present.
+@MainActor
+private func showAboutPanel() {
+    var options: [NSApplication.AboutPanelOptionKey: Any] = [
+        .applicationVersion: GitKit.version,
+        .version: GitKit.version
+    ]
+    if let wordmark = Branding.wordmarkNSImage {
+        options[.applicationIcon] = wordmark
+    }
+    NSApp.activate(ignoringOtherApps: true)
+    NSApp.orderFrontStandardAboutPanel(options: options)
 }

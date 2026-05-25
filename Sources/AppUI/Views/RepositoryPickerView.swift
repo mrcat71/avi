@@ -205,8 +205,16 @@ public struct RepositoryPickerView: View {
                 )
 
                 VStack(spacing: DS.Spacing.md) {
-                    Text("Welcome to Avi")
-                        .font(DS.Font.heroTitle(currentDensity))
+                    if let wordmark = Branding.wordmark {
+                        wordmark
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 72)
+                            .accessibilityLabel("Avi")
+                    } else {
+                        Text("Welcome to Avi")
+                            .font(DS.Font.heroTitle(currentDensity))
+                    }
                     Text("Open a repository to get started — add an existing one from your disk, or clone from GitHub / GitLab.")
                         .font(DS.Font.heroSubtitle(currentDensity))
                         .foregroundStyle(.secondary)
