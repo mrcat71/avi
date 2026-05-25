@@ -78,13 +78,13 @@ struct AviBadge: View {
         case .tag:
             Capsule().fill(tint.opacity(0.18))
         case .remoteBranch:
-            RoundedRectangle(cornerRadius: DS.Radius.sm).fill(Color.clear)
+            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous).fill(Color.clear)
         case .ahead, .behind, .synced, .info, .warning:
-            RoundedRectangle(cornerRadius: DS.Radius.sm).fill(tint.opacity(0.16))
+            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous).fill(tint.opacity(0.16))
         case .count:
             Capsule().fill(isSelected ? Color.white.opacity(0.25) : Color.primary.opacity(0.10))
         case .localBranch:
-            RoundedRectangle(cornerRadius: DS.Radius.sm).fill(tint.opacity(0.18))
+            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous).fill(tint.opacity(0.18))
         }
     }
 
@@ -92,14 +92,14 @@ struct AviBadge: View {
     private var border: some View {
         switch kind {
         case .remoteBranch:
-            RoundedRectangle(cornerRadius: DS.Radius.sm)
+            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
                 .stroke(tint.opacity(0.55), lineWidth: 1)
         case .currentBranch:
             Capsule().stroke(tint, lineWidth: 0.5)
         case .tag:
             Capsule().stroke(tint.opacity(0.35), lineWidth: 0.5)
         case .localBranch:
-            RoundedRectangle(cornerRadius: DS.Radius.sm)
+            RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
                 .stroke(tint.opacity(0.32), lineWidth: 0.5)
         default:
             EmptyView()

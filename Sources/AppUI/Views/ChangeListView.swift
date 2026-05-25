@@ -96,11 +96,12 @@ struct ChangeListView: View {
                 unstagedFlatSection
                 stagedFlatSection
             }
+            .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .animation(.easeInOut(duration: 0.18), value: stagingAnimationKey)
+            .animation(Glass.Motion.snappy, value: stagingAnimationKey)
             .onChange(of: store.selectedPath) { _, newValue in
                 guard let newValue else { return }
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(Glass.Motion.snappy) {
                     proxy.scrollTo(newValue, anchor: .center)
                 }
             }
@@ -113,11 +114,12 @@ struct ChangeListView: View {
                 unstagedTreeSection
                 stagedTreeSection
             }
+            .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .animation(.easeInOut(duration: 0.18), value: stagingAnimationKey)
+            .animation(Glass.Motion.snappy, value: stagingAnimationKey)
             .onChange(of: store.selectedPath) { _, newValue in
                 guard let newValue else { return }
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(Glass.Motion.snappy) {
                     proxy.scrollTo(newValue, anchor: .center)
                 }
             }

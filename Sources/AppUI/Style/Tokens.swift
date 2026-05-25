@@ -90,6 +90,21 @@ extension DS {
         static func headlineSize(_ density: Density) -> CGFloat {
             density == .compact ? 13 : 14
         }
+
+        /// Section / card title - bigger than headline, smaller than hero.
+        static func display(_ density: Density) -> SwiftUI.Font {
+            .system(size: density == .compact ? 24 : 28, weight: .semibold, design: .default)
+        }
+
+        /// Hero / welcome title. Used at the top of empty states.
+        static func heroTitle(_ density: Density) -> SwiftUI.Font {
+            .system(size: density == .compact ? 32 : 36, weight: .bold, design: .default)
+        }
+
+        /// Hero subtitle - one notch above body.
+        static func heroSubtitle(_ density: Density) -> SwiftUI.Font {
+            .system(size: density == .compact ? 14 : 16, weight: .regular, design: .default)
+        }
     }
 
     enum Radius {

@@ -10,6 +10,12 @@ enum DS {
         static let lg: CGFloat = 10
         static let xl: CGFloat = 14
         static let xxl: CGFloat = 20
+        /// Raycast/Linear-scale spacing for section breaks within a hero pane.
+        static let xxxl: CGFloat = 32
+        /// Padding around a hero area (welcome screen, empty state).
+        static let hero: CGFloat = 48
+        /// Outermost inset on full-bleed empty states / splash surfaces.
+        static let display: CGFloat = 64
     }
 
     enum Color {

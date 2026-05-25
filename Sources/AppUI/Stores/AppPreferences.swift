@@ -5,7 +5,7 @@ import Foundation
 /// these accessors are kept so existing call sites read the same names.
 @MainActor
 enum AppPreferences {
-    static let defaultSidebarWidth: Double = 286
+    static let defaultSidebarWidth: Double = 230
     static let minSidebarWidth: Double = 220
     static let maxSidebarWidth: Double = 380
 

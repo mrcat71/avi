@@ -392,6 +392,12 @@ private struct ProgressStep: View {
                 .textCase(.uppercase)
                 .tracking(0.5)
 
+            HStack {
+                Spacer()
+                LottieView(name: "downloading", loopMode: .loop, size: CGSize(width: 96, height: 96))
+                Spacer()
+            }
+
             if let progress = controller.progress {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {

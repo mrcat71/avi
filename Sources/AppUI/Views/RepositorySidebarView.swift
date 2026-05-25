@@ -28,11 +28,11 @@ struct RepositorySidebarView: View {
                 .padding(.bottom, 12)
             }
         }
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .background(.thinMaterial)
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(width: 1)
+                .fill(Glass.edgeStroke)
+                .frame(width: 0.6)
         }
     }
 
@@ -585,7 +585,7 @@ private struct RemoteGroupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
+                withAnimation(Glass.Motion.snappy) {
                     isExpanded.toggle()
                 }
             } label: {
