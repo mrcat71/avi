@@ -222,6 +222,46 @@ public struct CLIGitProvider: GitProviding {
         try await push(branch: nil, in: repository)
     }
 
+    public func push(
+        branch: String?,
+        remote: String?,
+        force: Bool,
+        pushTags: Bool,
+        in repository: URL
+    ) async throws -> GitRemoteOperationResult {
+        let currentStatus = try await status(in: repository)
+        guard let branchName = (branch ?? currentStatus.branch.name) else {
+            throw GitError.invalidInput("Cannot push from detached HEAD.")
+        }
+
+        // Resolve target remote: explicit > upstream > origin fallback.
+        let targetRemote: String
+        if let remote, !remote.isEmpty {
+            targetRemote = remote
+        } else if let upstream = currentStatus.branch.upstream,
+                  let head = upstream.split(separator: "/", maxSplits: 1).first {
+            targetRemote = String(head)
+        } else {
+            let hasOrigin = try await remotes(in: repository).contains { $0.name == "origin" }
+            guard hasOrigin else {
+                throw GitError.invalidInput("No upstream configured and no origin remote found.")
+            }
+            targetRemote = "origin"
+        }
+
+        var args = ["push"]
+        if pushTags { args.append("--tags") }
+        if force { args.append("--force-with-lease") }
+        if currentStatus.branch.upstream == nil {
+            args.append("-u")
+        }
+        args.append(targetRemote)
+        args.append(branchName)
+
+        let result = try await run(args, in: repository)
+        return remoteResult(result)
+    }
+
     public func push(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult {
         let currentStatus = try await status(in: repository)
 
@@ -316,6 +356,222 @@ public struct CLIGitProvider: GitProviding {
     public func stagedDiff(in repository: URL) async throws -> String {
         let result = try await run(["diff", "--cached", "--no-color", "--no-ext-diff"], in: repository)
         return result.stdoutString
+    }
+
+    public func commitMessage(for oid: String, in repository: URL) async throws -> String? {
+        let result = try await ProcessRunner.run(
+            executable: gitURL,
+            arguments: ["log", "-1", "--format=%B", oid],
+            workingDirectory: repository,
+            environment: gitEnvironment()
+        )
+        guard result.exitCode == 0 else { return nil }
+        let message = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+        return message.isEmpty ? nil : message
+    }
+
+    public func commitDiff(for oid: String, in repository: URL) async throws -> String {
+        let result = try await run(
+            ["show", "--format=", "--no-color", "--no-ext-diff", oid],
+            in: repository
+        )
+        return result.stdoutString
+    }
+
+    public func commitRangeDiff(oldest: String, newest: String, in repository: URL) async throws -> String {
+        let result = try await run(
+            ["diff", "--no-color", "--no-ext-diff", "\(oldest)^..\(newest)"],
+            in: repository
+        )
+        return result.stdoutString
+    }
+
+    public func reset(mode: GitResetMode, target: String?, in repository: URL) async throws {
+        var args = ["reset", "--\(mode.rawValue)"]
+        if let target { args.append(target) }
+        try await run(args, in: repository)
+    }
+
+    public func rebaseSingle(
+        commit oid: String,
+        action: SingleCommitRebaseAction,
+        in repository: URL
+    ) async throws {
+        // Resolve the commit's short subject so the todo file looks like git's own.
+        let subject: String = await (try? subjectOf(commit: oid, in: repository)) ?? ""
+
+        // Stage a working dir for the helper scripts and todo/message files.
+        let workDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("avi-rebase-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workDir) }
+
+        let verb: String
+        switch action {
+        case .edit: verb = "edit"
+        case .reword: verb = "reword"
+        }
+        let todoLine = "\(verb) \(oid) \(subject)\n"
+        let todoURL = workDir.appendingPathComponent("todo")
+        try todoLine.write(to: todoURL, atomically: true, encoding: .utf8)
+
+        // Build env. GIT_SEQUENCE_EDITOR is invoked as `<editor> <todo-file>`
+        // by git; setting it to `cp <our-todo>` causes our content to overwrite
+        // the real todo file.
+        var env = gitEnvironment()
+        env["GIT_SEQUENCE_EDITOR"] = "/bin/cp \(shellQuote(todoURL.path))"
+
+        if case .reword(let newMessage) = action {
+            let messageURL = workDir.appendingPathComponent("message")
+            try newMessage.write(to: messageURL, atomically: true, encoding: .utf8)
+            env["GIT_EDITOR"] = "/bin/cp \(shellQuote(messageURL.path))"
+        } else {
+            // For .edit the rebase pauses BEFORE invoking the editor, so we
+            // don't need GIT_EDITOR; set it to `true` so any unexpected editor
+            // invocation is a no-op rather than a hang.
+            env["GIT_EDITOR"] = "/usr/bin/true"
+        }
+
+        let rebaseBase = "\(oid)^"
+        let result = try await ProcessRunner.run(
+            executable: gitURL,
+            arguments: ["rebase", "-i", "--autostash", rebaseBase],
+            workingDirectory: repository,
+            environment: env
+        )
+        switch action {
+        case .reword:
+            // Reword must run to completion (no pause).
+            guard result.exitCode == 0 else {
+                throw GitError.commandFailed(
+                    command: "git rebase -i \(rebaseBase) (reword)",
+                    exitCode: result.exitCode,
+                    stderr: result.stderrString
+                )
+            }
+        case .edit:
+            // For edit, git rebase pauses with exit code 0 if the pause is
+            // expected, or non-zero if the rebase failed to start. We accept
+            // exit 0 (paused or completed) - the caller checks isRebaseInProgress.
+            guard result.exitCode == 0 else {
+                throw GitError.commandFailed(
+                    command: "git rebase -i \(rebaseBase) (edit)",
+                    exitCode: result.exitCode,
+                    stderr: result.stderrString
+                )
+            }
+        }
+    }
+
+    public func rebaseRangeEdit(oldest: String, newest: String, in repository: URL) async throws {
+        // Fetch the OIDs to be replayed, oldest-first, so we know which line
+        // in the todo needs `edit`.
+        let listResult = try await ProcessRunner.run(
+            executable: gitURL,
+            arguments: ["rev-list", "--reverse", "\(oldest)^..HEAD"],
+            workingDirectory: repository,
+            environment: gitEnvironment()
+        )
+        guard listResult.exitCode == 0 else {
+            throw GitError.commandFailed(
+                command: "git rev-list --reverse \(oldest)^..HEAD",
+                exitCode: listResult.exitCode,
+                stderr: listResult.stderrString
+            )
+        }
+        let oids = listResult.stdoutString.split(separator: "\n").map(String.init)
+        guard !oids.isEmpty else {
+            throw GitError.invalidInput("Empty rebase range for \(oldest)..HEAD.")
+        }
+
+        // Build the todo file: every commit picks, except `newest` which edits.
+        let workDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("avi-rebase-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workDir) }
+
+        var todo = ""
+        for oid in oids {
+            let verb = (oid == newest) ? "edit" : "pick"
+            let subject = await (try? subjectOf(commit: oid, in: repository)) ?? ""
+            todo.append("\(verb) \(oid) \(subject)\n")
+        }
+        let todoURL = workDir.appendingPathComponent("todo")
+        try todo.write(to: todoURL, atomically: true, encoding: .utf8)
+
+        var env = gitEnvironment()
+        env["GIT_SEQUENCE_EDITOR"] = "/bin/cp \(shellQuote(todoURL.path))"
+        env["GIT_EDITOR"] = "/usr/bin/true"
+
+        let rebaseBase = "\(oldest)^"
+        let result = try await ProcessRunner.run(
+            executable: gitURL,
+            arguments: ["rebase", "-i", "--autostash", rebaseBase],
+            workingDirectory: repository,
+            environment: env
+        )
+        guard result.exitCode == 0 else {
+            throw GitError.commandFailed(
+                command: "git rebase -i \(rebaseBase) (range edit)",
+                exitCode: result.exitCode,
+                stderr: result.stderrString
+            )
+        }
+    }
+
+    public func rebaseContinue(in repository: URL) async throws -> GitRemoteOperationResult {
+        var env = gitEnvironment()
+        // No editor prompts during continue: keep the existing message via --no-edit
+        // semantics by setting GIT_EDITOR to true (the user already set messages
+        // via per-group commits before continuing).
+        env["GIT_EDITOR"] = "/usr/bin/true"
+        let result = try await ProcessRunner.run(
+            executable: gitURL,
+            arguments: ["rebase", "--continue"],
+            workingDirectory: repository,
+            environment: env
+        )
+        guard result.exitCode == 0 else {
+            throw GitError.commandFailed(
+                command: "git rebase --continue",
+                exitCode: result.exitCode,
+                stderr: result.stderrString
+            )
+        }
+        return remoteResult(result)
+    }
+
+    public func rebaseAbort(in repository: URL) async throws {
+        // Best-effort: if there's no rebase in progress, git returns non-zero.
+        // Don't surface that as an error.
+        _ = try? await run(["rebase", "--abort"], in: repository, allowedExitCodes: [0, 128])
+    }
+
+    public func isRebaseInProgress(in repository: URL) async -> Bool {
+        let gitDir = repository.appendingPathComponent(".git", isDirectory: true)
+        let candidates = [
+            gitDir.appendingPathComponent("rebase-merge"),
+            gitDir.appendingPathComponent("rebase-apply")
+        ]
+        return candidates.contains { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    // MARK: - Internal helpers
+
+    private func subjectOf(commit oid: String, in repository: URL) async throws -> String {
+        let result = try await ProcessRunner.run(
+            executable: gitURL,
+            arguments: ["log", "-1", "--format=%s", oid],
+            workingDirectory: repository,
+            environment: gitEnvironment()
+        )
+        return result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Quote a path for inclusion in GIT_SEQUENCE_EDITOR / GIT_EDITOR.
+    /// Wraps in single quotes and escapes any embedded single quote.
+    private func shellQuote(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     @discardableResult
