@@ -10,6 +10,7 @@ public extension Notification.Name {
     static let aviPullRepository = Notification.Name("avi.pullRepository")
     static let aviPushRepository = Notification.Name("avi.pushRepository")
     static let aviCreateBranch = Notification.Name("avi.createBranch")
+    static let aviCreateTag = Notification.Name("avi.createTag")
     static let aviOpenCommandPalette = Notification.Name("avi.openCommandPalette")
     static let aviOpenBranchSwitcher = Notification.Name("avi.openBranchSwitcher")
     static let aviGoToLocalChanges = Notification.Name("avi.goToLocalChanges")

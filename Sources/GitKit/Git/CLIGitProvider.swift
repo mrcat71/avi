@@ -181,6 +181,22 @@ public struct CLIGitProvider: GitProviding {
         try await run(["branch", "-d", "--", name], in: repository)
     }
 
+    public func createTag(name: String, targetOID: String, message: String?, in repository: URL) async throws {
+        var args = ["tag"]
+        if let message, !message.isEmpty {
+            args.append(contentsOf: ["-a", name, targetOID, "-m", message])
+        } else {
+            args.append(contentsOf: [name, targetOID])
+        }
+        try await run(args, in: repository)
+    }
+
+    public func pushTag(name: String, remote: String?, in repository: URL) async throws -> GitRemoteOperationResult {
+        let target = remote ?? "origin"
+        let result = try await run(["push", target, "refs/tags/\(name)"], in: repository)
+        return remoteResult(result)
+    }
+
     public func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult {
         let arguments: [String]
         if let remote, !remote.isEmpty {
