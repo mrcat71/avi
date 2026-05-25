@@ -53,7 +53,13 @@ public struct CLIGitProvider: GitProviding {
         }
         switch filter.scope {
         case .currentBranch:
-            break
+            // Include the upstream as an extra log root so origin/<branch>
+            // (and any commits it still points at) stay visible after a
+            // history-rewriting op like AI recompose - otherwise the badge
+            // disappears because the old chain falls outside HEAD's log.
+            if let upstream = try? await upstreamRef(in: repository) {
+                arguments.append(contentsOf: ["HEAD", upstream])
+            }
         case .allBranches:
             arguments.append("--all")
         case .ref(let name):
@@ -214,7 +220,7 @@ public struct CLIGitProvider: GitProviding {
             return remoteResult(result)
         }
 
-        let result = try await run(["pull", "--ff-only"], in: repository)
+        let result = try await run(["pull"], in: repository)
         return remoteResult(result)
     }
 
@@ -557,6 +563,21 @@ public struct CLIGitProvider: GitProviding {
     }
 
     // MARK: - Internal helpers
+
+    /// Returns the upstream of HEAD as `<remote>/<branch>` (e.g. `origin/main`),
+    /// or `nil` when HEAD has no upstream configured or is detached. Uses
+    /// `git rev-parse` so missing-upstream produces a clean nil rather than a throw.
+    private func upstreamRef(in repository: URL) async throws -> String? {
+        let result = try await ProcessRunner.run(
+            executable: gitURL,
+            arguments: ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "HEAD@{u}"],
+            workingDirectory: repository,
+            environment: gitEnvironment()
+        )
+        guard result.exitCode == 0 else { return nil }
+        let name = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
+    }
 
     private func subjectOf(commit oid: String, in repository: URL) async throws -> String {
         let result = try await ProcessRunner.run(

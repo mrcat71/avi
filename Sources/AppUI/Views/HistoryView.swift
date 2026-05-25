@@ -52,6 +52,7 @@ struct HistoryListView: View {
                     .tag(row.commit.oid)
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -253,11 +254,6 @@ private struct HistoryRowView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Leading accent stripe (visible only on selected row).
-            Rectangle()
-                .fill(isSelected ? Color.accentColor : Color.clear)
-                .frame(width: 3)
-
             HStack(spacing: 6) {
                 HistoryGraphView(row: row, isSelected: isSelected, laneColors: laneColors)
 
@@ -305,6 +301,7 @@ private struct HistoryRowView: View {
             .padding(.leading, 4)
         }
         .frame(height: density == .compact ? 28 : 36)
+        .background(isSelected ? Color.primary.opacity(0.08) : Color.clear)
         .contentShape(Rectangle())
         .help(fullMessage)
         .contextMenu {
