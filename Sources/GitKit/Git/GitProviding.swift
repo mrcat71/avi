@@ -89,6 +89,16 @@ public protocol GitProviding: Sendable {
     /// For non-current branches without an upstream, throws.
     func push(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult
 
+    /// Push the current branch with explicit options. `remote` overrides the upstream remote.
+    /// `force` uses `--force-with-lease` (safer than `--force`). `pushTags` adds `--tags`.
+    func push(
+        branch: String?,
+        remote: String?,
+        force: Bool,
+        pushTags: Bool,
+        in repository: URL
+    ) async throws -> GitRemoteOperationResult
+
     /// Stage `path` (`git add`).
     func stage(path: String, in repository: URL) async throws
 
@@ -116,11 +126,72 @@ public protocol GitProviding: Sendable {
 
     /// Raw unified diff of staged changes (used as AI input).
     func stagedDiff(in repository: URL) async throws -> String
+
+    /// Full subject + body of the commit at `oid`, or `nil` if it doesn't exist.
+    func commitMessage(for oid: String, in repository: URL) async throws -> String?
+
+    /// Unified diff produced by a single commit (`git show --format= <oid>`).
+    func commitDiff(for oid: String, in repository: URL) async throws -> String
+
+    /// Unified diff covering the combined changes from `oldest`^..`newest`
+    /// (used as input for multi-commit AI recompose).
+    func commitRangeDiff(oldest: String, newest: String, in repository: URL) async throws -> String
+
+    /// `git reset --<mode> <target>`. Pass `target = nil` to reset against HEAD.
+    func reset(mode: GitResetMode, target: String?, in repository: URL) async throws
+
+    /// Begin a one-commit-targeted interactive rebase. For `.edit` the rebase
+    /// pauses at `oid` and the method returns; for `.reword(newMessage:)` the
+    /// rebase runs to completion replacing only that commit's message.
+    func rebaseSingle(commit oid: String, action: SingleCommitRebaseAction, in repository: URL) async throws
+
+    /// Begin an interactive rebase that pauses just AFTER applying `newest`,
+    /// keeping everything from `oldest` through `newest` (inclusive) as picks.
+    /// Caller is then expected to `git reset --mixed <oldest>^` to roll back
+    /// the whole range, stage the new groups, commit them, and call
+    /// `rebaseContinue` to replay the commits that came after `newest`.
+    func rebaseRangeEdit(oldest: String, newest: String, in repository: URL) async throws
+
+    /// `git rebase --continue`. Surfaces stderr through the result so the UI
+    /// can show conflicts.
+    func rebaseContinue(in repository: URL) async throws -> GitRemoteOperationResult
+
+    /// `git rebase --abort`. Best-effort: ignores the "no rebase in progress" error.
+    func rebaseAbort(in repository: URL) async throws
+
+    /// True iff `.git/rebase-merge` or `.git/rebase-apply` exists.
+    func isRebaseInProgress(in repository: URL) async -> Bool
+}
+
+public enum GitResetMode: String, Sendable {
+    case soft
+    case mixed
+    case hard
+}
+
+public enum SingleCommitRebaseAction: Sendable {
+    /// Rebase pauses at the target commit; caller is expected to mutate the
+    /// working tree, stage groups, and call `rebaseContinue`.
+    case edit
+    /// Rebase runs to completion replacing the target commit's message.
+    case reword(newMessage: String)
 }
 
 public extension GitProviding {
     /// Default implementation forwards the simple `history` call to the filtered variant.
     func history(in repository: URL, limit: Int) async throws -> [CommitSummary] {
         try await history(in: repository, limit: limit, filter: .default)
+    }
+
+    /// Default implementation: delegates to the simple `push(branch:in:)` for callers that
+    /// don't need the explicit-flags overload. CLI provider overrides this with real flag handling.
+    func push(
+        branch: String?,
+        remote _: String?,
+        force _: Bool,
+        pushTags _: Bool,
+        in repository: URL
+    ) async throws -> GitRemoteOperationResult {
+        try await push(branch: branch, in: repository)
     }
 }
