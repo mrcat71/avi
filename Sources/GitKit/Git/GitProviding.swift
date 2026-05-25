@@ -74,11 +74,15 @@ public protocol GitProviding: Sendable {
     /// Fetch from one remote or all configured remotes when nil.
     func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult
 
-    /// Pull the current branch with a fast-forward-only strategy.
+    /// Pull the current branch using git's default merge strategy.
+    /// Diverged branches produce a merge commit. A dirty working tree
+    /// still aborts the pull (git refuses to overwrite local changes).
     func pull(in repository: URL) async throws -> GitRemoteOperationResult
 
-    /// Pull a specific branch fast-forward-only. When `branch` is nil, pulls the current branch.
-    /// If `branch` is not the current branch, uses `git fetch <remote> <upstream>:<branch>` to update locally without checking out.
+    /// Pull a branch using git's default merge strategy. When `branch` is nil,
+    /// pulls the current branch. If `branch` is not the current branch, uses
+    /// `git fetch <remote> <upstream>:<branch>` to fast-forward the local ref
+    /// without checking out.
     func pull(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult
 
     /// Push the current branch. If it has no upstream, set origin/<branch> when origin exists.
