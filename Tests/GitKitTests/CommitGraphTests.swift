@@ -98,6 +98,45 @@ struct CommitGraphTests {
         #expect(rows[0].laneIdentities[0] == "local:main")
     }
 
+    @Test func mergedDeletedBranchDoesNotLingerAsGhostLane() {
+        // Real-world scenario: Renovate (or a feature PR) branched off the
+        // previous main HEAD `b`, added one commit `r1`, was merged via merge
+        // commit `m` (parents: [b, r1]), and then the branch was deleted on
+        // GitHub. `c` is the newest main commit on top of the merge.
+        //
+        // Before the fix, the algorithm allowed two slots to expect `b`
+        // simultaneously: main's slot (continuing down) and the side branch's
+        // slot (heading to its parent). Only main's slot got consumed when
+        // `b` was reached; the side branch's slot remained as a perpetual
+        // through-lane all the way to the bottom of the log - the "orphan"
+        // line the user reported.
+        //
+        // After the fix the side branch's lane terminates exactly at row `b`
+        // (the common ancestor) by being reported as a `mergeInLane`, so the
+        // renderer draws a curve from lane 1 (the side branch's tail) into
+        // the dot at lane 0.
+        let rows = CommitGraph.assignRows(for: [
+            commit("c", parents: ["m"]), // newest main commit
+            commit("m", parents: ["b", "r1"]), // merge of the deleted PR branch
+            commit("r1", parents: ["b"]), // PR branch tip, branched off `b`
+            commit("b", parents: ["a"]), // previous main HEAD = common ancestor
+            commit("a") // root
+        ])
+
+        // Dot lanes: main at lane 0 throughout; the deleted branch sits on lane 1
+        // for exactly one row (its own commit).
+        #expect(rows.map(\.lane) == [0, 0, 1, 0, 0])
+
+        // At `b`, the row that absorbs both lanes: dot stays on main (0) and
+        // the side branch (lane 1) is reported as a mergeInLane so the
+        // renderer draws its tail-into-dot curve.
+        #expect(rows[3].mergeInLanes == [1])
+
+        // After `b`, no through-lane at slot 1 - the orphan tail is gone.
+        #expect(rows[4].throughLanes.contains(1) == false)
+        #expect(rows[4].laneCount == 1)
+    }
+
     private func commit(_ oid: String, parents: [String] = []) -> CommitSummary {
         CommitSummary(
             oid: oid,

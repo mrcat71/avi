@@ -13,6 +13,10 @@ public struct CommitGraphRow: Sendable, Equatable, Identifiable {
     /// Slots that pass through this row (vertical lines on the gutter).
     /// Excludes the slot at `lane`; that one is drawn separately so the dot can sit on top.
     public let throughLanes: [Int]
+    /// Parent lanes that already existed before this row - they need a vertical
+    /// top-half segment so the side-branch curve coming into the dot doesn't
+    /// leave a visual gap on the main lane.
+    public let mergeInLanes: [Int]
     /// Stable identity name (branch / remote-branch ref name) for each slot, when known.
     /// Used by the renderer to derive a stable color per branch.
     public let laneIdentities: [Int: String]
@@ -23,6 +27,7 @@ public struct CommitGraphRow: Sendable, Equatable, Identifiable {
         parentLanes: [Int],
         laneCount: Int,
         throughLanes: [Int] = [],
+        mergeInLanes: [Int] = [],
         laneIdentities: [Int: String] = [:]
     ) {
         self.commit = commit
@@ -30,6 +35,7 @@ public struct CommitGraphRow: Sendable, Equatable, Identifiable {
         self.parentLanes = parentLanes
         self.laneCount = laneCount
         self.throughLanes = throughLanes
+        self.mergeInLanes = mergeInLanes
         self.laneIdentities = laneIdentities
     }
 }
@@ -65,10 +71,21 @@ public enum CommitGraph {
         rows.reserveCapacity(commits.count)
 
         for commit in commits {
-            // 1. Find the slot expecting this commit, or allocate a new one.
+            // 1. Find ALL slots expecting this commit. The lowest-index one
+            // gets the dot; any others are side-branch tails that meet this
+            // commit from elsewhere and need to be released here. Their lane
+            // indices are reported as `mergeInLanes` so the renderer can draw
+            // a curve from each tail into the dot at this row.
+            let matching = slots.indices.filter { slots[$0]?.expectedOID == commit.oid }
             let lane: Int
-            if let existing = slots.firstIndex(where: { $0?.expectedOID == commit.oid }) {
-                lane = existing
+            let mergeInLanes: [Int]
+            if let first = matching.first {
+                lane = first
+                let extras = Array(matching.dropFirst())
+                for extra in extras {
+                    slots[extra] = nil
+                }
+                mergeInLanes = extras
             } else {
                 let newSlot = Slot(expectedOID: commit.oid, identity: tipIdentities[commit.oid])
                 if let freeIndex = slots.firstIndex(where: { $0 == nil }) {
@@ -78,6 +95,7 @@ public enum CommitGraph {
                     slots.append(newSlot)
                     lane = slots.count - 1
                 }
+                mergeInLanes = []
             }
 
             // Capture identities BEFORE we mutate slots for this row.
@@ -131,7 +149,7 @@ public enum CommitGraph {
                 slots.removeLast()
             }
 
-            let laneCount = max(slots.count, (parentLanes + [lane]).max().map { $0 + 1 } ?? 1)
+            let laneCount = max(slots.count, (parentLanes + [lane] + mergeInLanes).max().map { $0 + 1 } ?? 1)
 
             rows.append(CommitGraphRow(
                 commit: commit,
@@ -139,6 +157,7 @@ public enum CommitGraph {
                 parentLanes: parentLanes,
                 laneCount: laneCount,
                 throughLanes: throughLanes,
+                mergeInLanes: mergeInLanes,
                 laneIdentities: identities
             ))
         }
