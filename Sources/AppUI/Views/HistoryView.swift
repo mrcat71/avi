@@ -321,6 +321,10 @@ private struct HistoryRowView: View {
                 pasteboard.setString(row.commit.subject, forType: .string)
             }
             Divider()
+            Button("Add Tag…") {
+                NotificationCenter.default.post(name: .aviCreateTag, object: row.commit.oid)
+            }
+            Divider()
             aiContextMenuSection
         }
     }

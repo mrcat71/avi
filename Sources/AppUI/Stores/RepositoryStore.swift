@@ -289,6 +289,18 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
+    public func createTag(name: String, targetOID: String, message: String?) async {
+        await perform {
+            try await $0.createTag(name: name, targetOID: targetOID, message: message, in: $1)
+        }
+    }
+
+    public func pushTag(name: String, remote: String? = nil) async {
+        await performRemoteOperation {
+            try await $0.pushTag(name: name, remote: remote, in: $1)
+        }
+    }
+
     public func renameBranch(from oldName: String, to newName: String) async {
         await perform {
             try await $0.renameBranch(from: oldName, to: newName, in: $1)

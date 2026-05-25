@@ -13,6 +13,7 @@ struct RepositoryView: View {
     @State private var hasAppliedInitialSelection = false
     @State private var showingCreateBranch = false
     @State private var createBranchStartPoint: String? = nil
+    @State private var createTagTargetOID: String? = nil
     @State private var showingCommandPalette = false
 
     var body: some View {
@@ -60,6 +61,9 @@ struct RepositoryView: View {
             createBranchStartPoint = notification.object as? String
             showingCreateBranch = true
         }
+        .onReceive(NotificationCenter.default.publisher(for: .aviCreateTag)) { notification in
+            createTagTargetOID = notification.object as? String
+        }
         .onReceive(NotificationCenter.default.publisher(for: .aviOpenCommandPalette)) { _ in
             showingCommandPalette = true
         }
@@ -79,6 +83,12 @@ struct RepositoryView: View {
         }
         .sheet(isPresented: $showingCreateBranch, onDismiss: { createBranchStartPoint = nil }) {
             CreateBranchSheet(store: store, startPoint: createBranchStartPoint)
+        }
+        .sheet(item: Binding(
+            get: { createTagTargetOID.map { CreateTagSheet.Target(oid: $0) } },
+            set: { createTagTargetOID = $0?.oid }
+        )) { target in
+            CreateTagSheet(store: store, targetOID: target.oid)
         }
         .sheet(isPresented: $showingCommandPalette) {
             CommandPalette(
@@ -1099,6 +1109,84 @@ struct CreateBranchSheet: View {
         guard !cleaned.isEmpty else { return }
         Task {
             await store.createBranch(named: cleaned, startPoint: startPoint, checkout: checkout)
+            dismiss()
+        }
+    }
+}
+
+struct CreateTagSheet: View {
+    struct Target: Identifiable, Equatable {
+        let oid: String
+        var id: String {
+            oid
+        }
+    }
+
+    let store: RepositoryStore
+    let targetOID: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var message = ""
+    @State private var pushTag = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Create Tag")
+                .font(.system(size: 14, weight: .semibold))
+
+            Text("At \(String(targetOID.prefix(7)))")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            TextField("Name (e.g. v1.2.3)", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(create)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Message (optional)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $message)
+                    .font(.system(size: 12))
+                    .frame(minHeight: 60, maxHeight: 100)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                    )
+                Text(message.isEmpty ? "Lightweight tag" : "Annotated tag")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+
+            Toggle("Push tag to origin after creating", isOn: $pushTag)
+                .controlSize(.small)
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }
+                Button("Create", action: create)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(18)
+        .frame(width: 380)
+    }
+
+    private func create() {
+        let cleanedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedName.isEmpty else { return }
+        let cleanedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shouldPush = pushTag
+        Task {
+            await store.createTag(
+                name: cleanedName,
+                targetOID: targetOID,
+                message: cleanedMessage.isEmpty ? nil : cleanedMessage
+            )
+            if shouldPush {
+                await store.pushTag(name: cleanedName)
+            }
             dismiss()
         }
     }

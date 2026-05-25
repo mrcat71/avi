@@ -71,6 +71,15 @@ public protocol GitProviding: Sendable {
     /// Delete a local branch using Git's safe non-force delete.
     func deleteBranch(named name: String, in repository: URL) async throws
 
+    /// Create a tag at `targetOID`. When `message` is nil, creates a lightweight tag;
+    /// when non-nil, creates an annotated tag (`git tag -a <name> <oid> -m <message>`).
+    /// Throws if the tag already exists - callers should surface the error.
+    func createTag(name: String, targetOID: String, message: String?, in repository: URL) async throws
+
+    /// Push a single tag to `remote` (defaults to "origin" when nil).
+    /// Runs `git push <remote> refs/tags/<name>`.
+    func pushTag(name: String, remote: String?, in repository: URL) async throws -> GitRemoteOperationResult
+
     /// Fetch from one remote or all configured remotes when nil.
     func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult
 
