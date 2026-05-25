@@ -1,10 +1,20 @@
 import SwiftUI
 
+#if canImport(LaunchAtLogin)
+import LaunchAtLogin
+#endif
+
 struct GeneralSettingsView: View {
     @Bindable var store = ConfigStore.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            SettingsGroup("Startup") {
+                SettingsFormRow("Launch at login", description: "Open Avi automatically when you log in.") {
+                    launchAtLoginToggle
+                }
+            }
+
             SettingsGroup("Config File") {
                 SettingsFormRow("Status") {
                     statusBadge
@@ -27,6 +37,25 @@ struct GeneralSettingsView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var launchAtLoginToggle: some View {
+        #if canImport(LaunchAtLogin)
+        LaunchAtLogin.Toggle()
+            .toggleStyle(.switch)
+            .labelsHidden()
+        #else
+        HStack(spacing: 6) {
+            Toggle("", isOn: .constant(false))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .disabled(true)
+            Text("Unavailable in this build")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+        #endif
     }
 
     @ViewBuilder
