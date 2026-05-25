@@ -34,7 +34,8 @@ struct CommandPalette: View {
                                 let flatIndex = flatIndex(groupIndex: groupIndex, itemIndex: itemIndex)
                                 CommandRow(
                                     command: item,
-                                    isSelected: flatIndex == selectedIndex
+                                    isSelected: flatIndex == selectedIndex,
+                                    highlights: matchesByID[item.id] ?? []
                                 ) {
                                     run(item)
                                 }
@@ -84,14 +85,40 @@ struct CommandPalette: View {
         }
     }
 
-    private var filtered: [AppCommand] {
-        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !needle.isEmpty else { return commands }
-        return commands.filter { c in
-            c.title.lowercased().contains(needle) ||
-                c.group.lowercased().contains(needle) ||
-                (c.subtitle?.lowercased().contains(needle) ?? false)
+    /// Filtered + scored commands. Each entry carries the matched-character
+    /// indexes in the command's title so the row can highlight them.
+    private var scored: [(command: AppCommand, matches: [String.Index])] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else {
+            return commands.map { ($0, []) }
         }
+        var results: [(AppCommand, [String.Index], Int)] = []
+        for c in commands {
+            // Title weight 1.5x, subtitle 1.0x, group 0.6x.
+            let titleScore = FuzzyMatch.score(needle: needle, haystack: c.title)
+            let subtitleScore = c.subtitle.flatMap { FuzzyMatch.score(needle: needle, haystack: $0) }
+            let groupScore = FuzzyMatch.score(needle: needle, haystack: c.group)
+            let combined =
+                Int(Double(titleScore?.score ?? Int.min / 4) * 1.5) +
+                (subtitleScore?.score ?? Int.min / 4) +
+                Int(Double(groupScore?.score ?? Int.min / 4) * 0.6)
+            let anyMatch = titleScore != nil || subtitleScore != nil || groupScore != nil
+            guard anyMatch else { continue }
+            results.append((c, titleScore?.matchedIndexes ?? [], combined))
+        }
+        results.sort { lhs, rhs in
+            if lhs.2 != rhs.2 { return lhs.2 > rhs.2 }
+            return lhs.0.title.localizedCaseInsensitiveCompare(rhs.0.title) == .orderedAscending
+        }
+        return results.map { ($0.0, $0.1) }
+    }
+
+    private var filtered: [AppCommand] {
+        scored.map(\.command)
+    }
+
+    private var matchesByID: [String: [String.Index]] {
+        Dictionary(uniqueKeysWithValues: scored.map { ($0.command.id, $0.matches) })
     }
 
     private var grouped: [(name: String, items: [AppCommand])] {
@@ -146,6 +173,7 @@ struct CommandPalette: View {
 private struct CommandRow: View {
     let command: AppCommand
     let isSelected: Bool
+    var highlights: [String.Index] = []
     let action: () -> Void
 
     @State private var isHovering = false
@@ -158,7 +186,7 @@ private struct CommandRow: View {
                     .foregroundStyle(isSelected ? Color.white : .secondary)
                     .frame(width: 18)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(command.title)
+                    highlightedTitle
                         .font(.system(size: 13))
                         .foregroundStyle(isSelected ? Color.white : .primary)
                     if let subtitle = command.subtitle, !subtitle.isEmpty {
@@ -177,5 +205,21 @@ private struct CommandRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+    }
+
+    /// Renders the command title with matched characters in bold + accent color
+    /// (or white when the row is selected, so the highlight still reads).
+    private var highlightedTitle: Text {
+        guard !highlights.isEmpty else { return Text(command.title) }
+        let matchSet = Set(highlights.map { command.title.distance(from: command.title.startIndex, to: $0) })
+        var result = Text("")
+        for (i, ch) in command.title.enumerated() {
+            var piece = Text(String(ch))
+            if matchSet.contains(i) {
+                piece = piece.bold().foregroundColor(isSelected ? .white : .accentColor)
+            }
+            result = result + piece
+        }
+        return result
     }
 }
