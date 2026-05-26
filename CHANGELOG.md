@@ -6,6 +6,15 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-26
+
+### Added
+- Local changes view now uses two resizable panes (Unstaged on top, Staged on bottom) with clearly labeled "Stage" and "Unstage" buttons in each header.
+- Protected branch (detected from `origin/HEAD`, with a `main`/`master` fallback) is now always pinned to the top of the local branches list.
+
+### Changed
+- "Create Branch" sheet now replaces spaces with hyphens as you type, so branch names stay valid without surprise rejections from git.
+
 ## [0.1.1] - 2026-05-26
 
 ### Added
