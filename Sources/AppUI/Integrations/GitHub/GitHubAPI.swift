@@ -65,4 +65,17 @@ struct GitHubAPI {
         let encoded = branch.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? branch
         return URL(string: "https://github.com/\(owner)/\(repo)/tree/\(encoded)")
     }
+
+    /// "New pull request" compare page with pre-filled title.
+    /// Caller passes the branch name as `title` so the form opens ready to submit.
+    static func compareWebURL(owner: String, repo: String, base: String, head: String, title: String) -> URL? {
+        let baseEncoded = base.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? base
+        let headEncoded = head.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? head
+        var components = URLComponents(string: "https://github.com/\(owner)/\(repo)/compare/\(baseEncoded)...\(headEncoded)")
+        components?.queryItems = [
+            URLQueryItem(name: "expand", value: "1"),
+            URLQueryItem(name: "title", value: title)
+        ]
+        return components?.url
+    }
 }

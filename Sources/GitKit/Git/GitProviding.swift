@@ -3,9 +3,9 @@ import Foundation
 /// Filtering options for `history(in:limit:filter:)`.
 public struct HistoryFilter: Sendable, Equatable {
     public enum Scope: Sendable, Equatable {
-        /// Default: only the current branch and its ancestors.
+        /// Only the current branch and its ancestors.
         case currentBranch
-        /// `git log --all`: every ref.
+        /// Default: `git log --all`, every ref.
         case allBranches
         /// Single ref name (branch / remote / tag) used as the log root.
         case ref(String)
@@ -14,7 +14,7 @@ public struct HistoryFilter: Sendable, Equatable {
     public var scope: Scope
     public var hideMerges: Bool
 
-    public init(scope: Scope = .currentBranch, hideMerges: Bool = false) {
+    public init(scope: Scope = .allBranches, hideMerges: Bool = false) {
         self.scope = scope
         self.hideMerges = hideMerges
     }
@@ -46,6 +46,10 @@ public protocol GitProviding: Sendable {
 
     /// Configured Git remotes.
     func remotes(in repository: URL) async throws -> [GitRemote]
+
+    /// The default branch advertised by `remote` (resolved from `refs/remotes/<remote>/HEAD`).
+    /// Returns `nil` when the remote's HEAD is not set locally (caller decides the fallback).
+    func defaultBranch(remote: String, in repository: URL) async throws -> String?
 
     /// Files changed by `commitOID`.
     func changedFiles(in commitOID: String, in repository: URL) async throws -> [CommitFileChange]

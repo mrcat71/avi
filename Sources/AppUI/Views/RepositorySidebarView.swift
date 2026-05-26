@@ -484,6 +484,10 @@ private struct LocalBranchRow: View {
             Task { await store.pull(branch: ref.name) }
         }
         .disabled(ref.upstream == nil)
+        Button(pushAndOpenPRLabel) {
+            Task { await store.pushAndOpenPullRequestPage(branch: ref.name) }
+        }
+        .disabled(store.remotes.isEmpty)
         Divider()
         Button(ref.upstream == nil ? "Set Upstream…" : "Change Upstream…") {
             upstreamValue = ref.upstream ?? "origin/\(ref.name)"
@@ -499,6 +503,26 @@ private struct LocalBranchRow: View {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(ref.name, forType: .string)
+        }
+    }
+
+    private var pushAndOpenPRLabel: String {
+        // Prefer the branch's upstream remote, else origin, else the first remote.
+        let remoteName: String? = {
+            if let upstream = ref.upstream,
+               let head = upstream.split(separator: "/", maxSplits: 1).first {
+                return String(head)
+            }
+            if store.remotes.contains(where: { $0.name == "origin" }) { return "origin" }
+            return store.remotes.first?.name
+        }()
+        guard let remoteName, let remote = store.remotes.first(where: { $0.name == remoteName }) else {
+            return "Push and Open PR Page…"
+        }
+        switch RemoteURLParser.hint(from: remote) {
+        case .github: return "Push and Open Pull Request…"
+        case .gitlab: return "Push and Open Merge Request…"
+        case .unknown: return "Push and Open PR Page…"
         }
     }
 

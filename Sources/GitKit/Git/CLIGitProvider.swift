@@ -107,6 +107,19 @@ public struct CLIGitProvider: GitProviding {
         return RemoteParser.parse(result.stdoutString)
     }
 
+    public func defaultBranch(remote: String, in repository: URL) async throws -> String? {
+        let result = try await run(
+            ["symbolic-ref", "--short", "refs/remotes/\(remote)/HEAD"],
+            in: repository,
+            allowedExitCodes: [0, 1, 128]
+        )
+        guard result.exitCode == 0 else { return nil }
+        let value = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = "\(remote)/"
+        guard value.hasPrefix(prefix) else { return value.isEmpty ? nil : value }
+        return String(value.dropFirst(prefix.count))
+    }
+
     public func changedFiles(in commitOID: String, in repository: URL) async throws -> [CommitFileChange] {
         let result = try await run([
             "diff-tree",
