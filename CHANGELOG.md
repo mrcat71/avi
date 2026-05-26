@@ -6,6 +6,20 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-26
+
+### Added
+- Sidebar "Stashes" section listing all stashes, with right-click menu for Apply, Pop (apply and drop), and Drop (with confirmation).
+- Right-click "Push and Open Pull Request" / "Push and Open Merge Request" on local branches: pushes the branch (setting upstream when needed) and opens the GitHub/GitLab compare page with the title pre-filled.
+
+### Changed
+- History scope now defaults to "All branches" so newly opened repositories show the full graph. The filter menu still lets you switch back to current-branch scope.
+- AI commit menu uses a neutral `character.bubble` icon instead of the sparkles/wand "magic" iconography.
+- Removed the duplicate branch status pill from the repository action toolbar; the sidebar branches list is the single source of truth.
+
+### Fixed
+- Default Codex command template now includes `--skip-git-repo-check`, so AI commit generation works in newly opened repositories without per-repo trust configuration.
+
 ## [0.1.0] - 2026-05-22
 
 ### Added

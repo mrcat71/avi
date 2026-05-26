@@ -178,6 +178,18 @@ public protocol GitProviding: Sendable {
 
     /// True iff `.git/rebase-merge` or `.git/rebase-apply` exists.
     func isRebaseInProgress(in repository: URL) async -> Bool
+
+    /// All stashes, newest first.
+    func stashes(in repository: URL) async throws -> [StashEntry]
+
+    /// `git stash apply <ref>`. Keeps the stash in the stack.
+    func applyStash(ref: String, in repository: URL) async throws
+
+    /// `git stash pop <ref>`. Applies and then drops the stash.
+    func popStash(ref: String, in repository: URL) async throws
+
+    /// `git stash drop <ref>`. Deletes the stash without applying it.
+    func dropStash(ref: String, in repository: URL) async throws
 }
 
 public enum GitResetMode: String, Sendable {

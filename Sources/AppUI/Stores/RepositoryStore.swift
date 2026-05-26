@@ -20,6 +20,7 @@ public final class RepositoryStore: Identifiable {
     public private(set) var selectedCommitPath: String?
     public private(set) var commitDiff: FileDiff?
     public private(set) var refs: RepositoryRefs = .empty
+    public private(set) var stashes: [StashEntry] = []
     public private(set) var remotes: [GitRemote] = []
     public private(set) var remoteOutput: String?
     public private(set) var lastFetched: Date?
@@ -109,6 +110,7 @@ public final class RepositoryStore: Identifiable {
             selectedPath = nil
             diff = nil
             refs = .empty
+            stashes = []
             remotes = []
             remoteOutput = nil
             clearHistorySelection()
@@ -206,8 +208,10 @@ public final class RepositoryStore: Identifiable {
             if !status.branch.isUnborn {
                 await refreshRefs()
                 await refreshHistory()
+                await refreshStashes()
             } else {
                 refs = .empty
+                stashes = []
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -263,6 +267,30 @@ public final class RepositoryStore: Identifiable {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    public func refreshStashes() async {
+        guard let root else { return }
+        do {
+            stashes = try await git.stashes(in: root)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func applyStash(ref: String) async {
+        await perform { try await $0.applyStash(ref: ref, in: $1) }
+        await refreshStashes()
+    }
+
+    public func popStash(ref: String) async {
+        await perform { try await $0.popStash(ref: ref, in: $1) }
+        await refreshStashes()
+    }
+
+    public func dropStash(ref: String) async {
+        await perform { try await $0.dropStash(ref: ref, in: $1) }
+        await refreshStashes()
     }
 
     public func checkout(_ ref: GitReference) async {

@@ -591,6 +591,70 @@ public struct CLIGitProvider: GitProviding {
         return candidates.contains { FileManager.default.fileExists(atPath: $0.path) }
     }
 
+    // MARK: - Stashes
+
+    public func stashes(in repository: URL) async throws -> [StashEntry] {
+        // %x1f is unit-separator; %x1e is record-separator. Both are
+        // illegal in refs and unlikely in a reflog subject, so splitting
+        // is unambiguous.
+        let result = try await run(
+            ["stash", "list", "--format=%gd%x1f%H%x1f%gs%x1f%cI%x1e"],
+            in: repository
+        )
+        let raw = result.stdoutString.trimmingCharacters(in: CharacterSet(charactersIn: "\u{1e}\n"))
+        guard !raw.isEmpty else { return [] }
+
+        let iso = ISO8601DateFormatter()
+        return raw.split(separator: "\u{1e}").compactMap { record -> StashEntry? in
+            let line = record.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { return nil }
+            let parts = line.split(separator: "\u{1f}", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count == 4 else { return nil }
+            let ref = parts[0]
+            let oid = parts[1]
+            let subject = parts[2]
+            let date = iso.date(from: parts[3])
+
+            // Parse "stash@{N}" -> N
+            var index = 0
+            if let braceStart = ref.firstIndex(of: "{"),
+               let braceEnd = ref.firstIndex(of: "}"),
+               braceEnd > braceStart {
+                let inside = ref[ref.index(after: braceStart)..<braceEnd]
+                index = Int(inside) ?? 0
+            }
+
+            // Parse "WIP on <branch>: ..." or "On <branch>: ..." prefix.
+            let branch: String?
+            if let colon = subject.firstIndex(of: ":") {
+                let prefix = subject[..<colon]
+                if prefix.hasPrefix("WIP on ") {
+                    branch = String(prefix.dropFirst("WIP on ".count))
+                } else if prefix.hasPrefix("On ") {
+                    branch = String(prefix.dropFirst("On ".count))
+                } else {
+                    branch = nil
+                }
+            } else {
+                branch = nil
+            }
+
+            return StashEntry(ref: ref, index: index, oid: oid, subject: subject, branch: branch, date: date)
+        }
+    }
+
+    public func applyStash(ref: String, in repository: URL) async throws {
+        try await run(["stash", "apply", ref], in: repository)
+    }
+
+    public func popStash(ref: String, in repository: URL) async throws {
+        try await run(["stash", "pop", ref], in: repository)
+    }
+
+    public func dropStash(ref: String, in repository: URL) async throws {
+        try await run(["stash", "drop", ref], in: repository)
+    }
+
     // MARK: - Internal helpers
 
     /// Returns the upstream of HEAD as `<remote>/<branch>` (e.g. `origin/main`),

@@ -10,6 +10,7 @@ struct RepositorySidebarView: View {
     @State private var branchesExpanded = true
     @State private var remoteBranchesExpanded = true
     @State private var tagsExpanded = true
+    @State private var stashesExpanded = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,6 +25,7 @@ struct RepositorySidebarView: View {
                     branchesSection
                     remoteBranchesSection
                     tagsSection
+                    stashesSection
                 }
                 .padding(.bottom, 12)
             }
@@ -227,6 +229,41 @@ struct RepositorySidebarView: View {
                 }
                 .padding(.horizontal, 8)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var stashesSection: some View {
+        if !store.stashes.isEmpty {
+            SidebarSectionHeader(
+                title: "Stashes",
+                count: store.stashes.count,
+                isExpanded: $stashesExpanded
+            )
+
+            if stashesExpanded {
+                VStack(spacing: 1) {
+                    ForEach(filteredStashes) { entry in
+                        StashRow(entry: entry, store: store)
+                    }
+                    if filteredStashes.isEmpty {
+                        EmptySectionRow(
+                            text: filter.isEmpty ? "No stashes" : "No matches",
+                            action: filter.isEmpty ? nil : { filter = "" }
+                        )
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
+        }
+    }
+
+    private var filteredStashes: [StashEntry] {
+        let needle = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return store.stashes }
+        return store.stashes.filter { entry in
+            entry.subject.localizedCaseInsensitiveContains(needle)
+                || entry.ref.localizedCaseInsensitiveContains(needle)
         }
     }
 
@@ -885,5 +922,93 @@ struct TagPopover: View {
                 .font(.system(size: 11, design: key == "Commit" ? .monospaced : .default))
                 .textSelection(.enabled)
         }
+    }
+}
+
+private struct StashRow: View {
+    let entry: StashEntry
+    let store: RepositoryStore
+
+    @State private var isHovering = false
+    @State private var confirmingDrop = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "tray")
+                .font(.system(size: 10))
+                .frame(width: 12)
+                .foregroundStyle(.secondary)
+
+            Text("{\(entry.index)}")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 22, alignment: .leading)
+
+            Text(displayMessage)
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 4)
+
+            if let date = entry.date {
+                Text(relative(date))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 22)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovering ? Color.primary.opacity(0.06) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .help(entry.subject)
+        .contextMenu {
+            Button("Apply") {
+                Task { await store.applyStash(ref: entry.ref) }
+            }
+            Button("Pop (apply and drop)") {
+                Task { await store.popStash(ref: entry.ref) }
+            }
+            Divider()
+            Button("Drop…", role: .destructive) {
+                confirmingDrop = true
+            }
+            Divider()
+            Button("Copy Stash Ref") {
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(entry.ref, forType: .string)
+            }
+        }
+        .confirmationDialog("Drop \(entry.ref)?", isPresented: $confirmingDrop, titleVisibility: .visible) {
+            Button("Drop", role: .destructive) {
+                Task { await store.dropStash(ref: entry.ref) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes the stash. It cannot be undone from inside Avi.")
+        }
+    }
+
+    private var displayMessage: String {
+        // The reflog subject typically looks like "WIP on main: abc1234 actual commit message"
+        // or "On feature/x: user-supplied message". Strip the prefix so the row shows
+        // the meaningful part.
+        if let colon = entry.subject.firstIndex(of: ":") {
+            let after = entry.subject[entry.subject.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            if !after.isEmpty { return after }
+        }
+        return entry.subject
+    }
+
+    private func relative(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
