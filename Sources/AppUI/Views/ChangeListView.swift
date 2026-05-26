@@ -113,12 +113,17 @@ struct ChangeListView: View {
         } else {
             VSplitView {
                 unstagedPane
-                    .frame(minHeight: 120, idealHeight: 240)
+                    .frame(minHeight: unstagedMinHeight, idealHeight: unstagedIdealHeight)
                 stagedPane
-                    .frame(minHeight: 100, idealHeight: 200)
+                    .frame(minHeight: stagedMinHeight, idealHeight: stagedIdealHeight)
             }
         }
     }
+
+    private var unstagedMinHeight: CGFloat { store.unstagedEntries.isEmpty ? 34 : 120 }
+    private var unstagedIdealHeight: CGFloat { store.unstagedEntries.isEmpty ? 34 : 240 }
+    private var stagedMinHeight: CGFloat { store.stagedEntries.isEmpty ? 34 : 100 }
+    private var stagedIdealHeight: CGFloat { store.stagedEntries.isEmpty ? 34 : 200 }
 
     private var unstagedPane: some View {
         VStack(spacing: 0) {
@@ -127,9 +132,14 @@ struct ChangeListView: View {
                 count: store.unstagedEntries.count,
                 actionLabel: "Stage",
                 actionTint: .accentColor,
-                actionEnabled: store.canStageAll
+                actionEnabled: !selectedUnstagedFiles.isEmpty
             ) {
-                Task { await store.stageAll() }
+                let files = selectedUnstagedFiles
+                Task {
+                    for file in files {
+                        await store.stage(file)
+                    }
+                }
             }
             Divider()
             paneList(entries: store.unstagedEntries, staged: false, emptyText: "Nothing to stage")
@@ -143,13 +153,28 @@ struct ChangeListView: View {
                 count: store.stagedEntries.count,
                 actionLabel: "Unstage",
                 actionTint: .secondary,
-                actionEnabled: store.canUnstageAll
+                actionEnabled: !selectedStagedFiles.isEmpty
             ) {
-                Task { await store.unstageAll() }
+                let files = selectedStagedFiles
+                Task {
+                    for file in files {
+                        await store.unstage(file)
+                    }
+                }
             }
             Divider()
             paneList(entries: store.stagedEntries, staged: true, emptyText: "Nothing staged")
         }
+    }
+
+    /// Files currently selected in the unstaged pane. Folder ids in `multiSelection`
+    /// (from tree mode) are filtered out by intersecting with the entries array.
+    private var selectedUnstagedFiles: [FileStatus] {
+        store.unstagedEntries.filter { multiSelection.contains($0.path) }
+    }
+
+    private var selectedStagedFiles: [FileStatus] {
+        store.stagedEntries.filter { multiSelection.contains($0.path) }
     }
 
     @ViewBuilder

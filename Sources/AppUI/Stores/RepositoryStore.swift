@@ -48,7 +48,11 @@ public final class RepositoryStore: Identifiable {
     public var isAIWorking: Bool = false
     public var rebaseInProgress: Bool = false
     private var aiTask: Task<Void, Never>?
-    private var pendingDefaultExpand: Bool = false
+    /// Folder ids we've seen at least once during this session. Used to decide
+    /// which folders are "new" on a refresh so we can auto-expand them. Never
+    /// shrinks during a session, so a folder whose only file is staged out and
+    /// later re-modified is NOT treated as new again (the user's collapse sticks).
+    private var lastSeenFolderIds: Set<String> = []
 
     public var commitMessage: String {
         let trimmedSummary = commitSummary.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -116,9 +120,8 @@ public final class RepositoryStore: Identifiable {
             defaultBranchName = nil
             remoteOutput = nil
             clearHistorySelection()
-            let saved = loadExpandedFolders(for: resolved)
-            expandedFolders = saved ?? []
-            pendingDefaultExpand = (saved == nil)
+            expandedFolders = []
+            lastSeenFolderIds = []
             startWatching(resolved)
             RecentRepositories.add(resolved)
             await refresh()
@@ -133,9 +136,6 @@ public final class RepositoryStore: Identifiable {
         } else {
             expandedFolders.insert(path)
         }
-        if let root {
-            saveExpandedFolders(for: root)
-        }
     }
 
     public func setFolderExpanded(_ path: String, expanded: Bool) {
@@ -144,40 +144,14 @@ public final class RepositoryStore: Identifiable {
         } else {
             expandedFolders.remove(path)
         }
-        if let root {
-            saveExpandedFolders(for: root)
-        }
     }
 
     public func expandAllFolders() {
         expandedFolders = FileTreeBuilder.allFolderIds(for: entries)
-        if let root {
-            saveExpandedFolders(for: root)
-        }
     }
 
     public func collapseAllFolders() {
         expandedFolders.removeAll()
-        if let root {
-            saveExpandedFolders(for: root)
-        }
-    }
-
-    private func expandedFoldersKey(for root: URL) -> String {
-        "avi.expandedFolders.\(root.standardizedFileURL.path)"
-    }
-
-    /// Returns the persisted set if the key exists, or `nil` to signal the repo has no
-    /// prior expansion state yet. Callers can then apply a default (expand all).
-    private func loadExpandedFolders(for root: URL) -> Set<String>? {
-        let key = expandedFoldersKey(for: root)
-        guard UserDefaults.standard.object(forKey: key) != nil else { return nil }
-        let raw = UserDefaults.standard.stringArray(forKey: key) ?? []
-        return Set(raw)
-    }
-
-    private func saveExpandedFolders(for root: URL) {
-        UserDefaults.standard.set(Array(expandedFolders), forKey: expandedFoldersKey(for: root))
     }
 
     public func refresh() async {
@@ -188,11 +162,12 @@ public final class RepositoryStore: Identifiable {
             let status = try await git.status(in: root)
             branch = status.branch
             entries = status.entries
-            if pendingDefaultExpand, !entries.isEmpty {
-                pendingDefaultExpand = false
-                expandedFolders = FileTreeBuilder.allFolderIds(for: entries)
-                saveExpandedFolders(for: root)
+            let currentFolderIds = FileTreeBuilder.allFolderIds(for: entries)
+            let newFolders = currentFolderIds.subtracting(lastSeenFolderIds)
+            if !newFolders.isEmpty {
+                expandedFolders.formUnion(newFolders)
             }
+            lastSeenFolderIds.formUnion(currentFolderIds)
             if status.branch.isUnborn {
                 amend = false
                 historyRows = []
