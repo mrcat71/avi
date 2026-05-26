@@ -22,6 +22,7 @@ public final class RepositoryStore: Identifiable {
     public private(set) var refs: RepositoryRefs = .empty
     public private(set) var stashes: [StashEntry] = []
     public private(set) var remotes: [GitRemote] = []
+    public private(set) var defaultBranchName: String?
     public private(set) var remoteOutput: String?
     public private(set) var lastFetched: Date?
     public private(set) var isLoading = false
@@ -112,6 +113,7 @@ public final class RepositoryStore: Identifiable {
             refs = .empty
             stashes = []
             remotes = []
+            defaultBranchName = nil
             remoteOutput = nil
             clearHistorySelection()
             let saved = loadExpandedFolders(for: resolved)
@@ -209,9 +211,11 @@ public final class RepositoryStore: Identifiable {
                 await refreshRefs()
                 await refreshHistory()
                 await refreshStashes()
+                await refreshDefaultBranch()
             } else {
                 refs = .empty
                 stashes = []
+                defaultBranchName = nil
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -275,6 +279,31 @@ public final class RepositoryStore: Identifiable {
             stashes = try await git.stashes(in: root)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Resolve the "protected" branch for sorting purposes: prefer the remote
+    /// HEAD (origin's default branch); fall back to a `main`/`master` heuristic.
+    public func refreshDefaultBranch() async {
+        guard let root else { return }
+        let remoteName: String? = {
+            if remotes.contains(where: { $0.name == "origin" }) { return "origin" }
+            return remotes.first?.name
+        }()
+        if let remoteName {
+            let detected = (try? await git.defaultBranch(remote: remoteName, in: root)) ?? nil
+            if let detected, !detected.isEmpty {
+                defaultBranchName = detected
+                return
+            }
+        }
+        let localNames = Set(refs.localBranches.map(\.name))
+        if localNames.contains("main") {
+            defaultBranchName = "main"
+        } else if localNames.contains("master") {
+            defaultBranchName = "master"
+        } else {
+            defaultBranchName = nil
         }
     }
 
