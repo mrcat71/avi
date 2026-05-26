@@ -430,8 +430,6 @@ private struct RepositoryActionToolbarView: View {
             }
 
             Spacer()
-
-            SyncStatusPill(store: store)
         }
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity)
@@ -585,107 +583,6 @@ struct ToolbarPillButton: View {
         .animation(Glass.Motion.snappy, value: isHovering)
         .help(helpText ?? title)
         .accessibilityLabel(helpText ?? title)
-    }
-}
-
-private struct SyncStatusPill: View {
-    let store: RepositoryStore
-    @State private var showingPicker = false
-    @State private var isHovering = false
-
-    var body: some View {
-        Button {
-            showingPicker = true
-        } label: {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 6, height: 6)
-
-                Text(branchName)
-                    .font(.system(size: 12, weight: .semibold))
-
-                if let upstream = store.branch?.upstream {
-                    Text("·")
-                        .foregroundStyle(.tertiary)
-                    Text(upstream)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                if let aheadBehind = aheadBehindText {
-                    Text("·")
-                        .foregroundStyle(.tertiary)
-                    Text(aheadBehind)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-
-                if store.entries.count > 0 {
-                    Text("·")
-                        .foregroundStyle(.tertiary)
-                    Text("\(store.entries.count) dirty")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                }
-
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 2)
-            }
-            .padding(.horizontal, 9)
-            .frame(height: 24)
-            .background(
-                Capsule().fill(isHovering ? Color.primary.opacity(0.10) : Color.primary.opacity(0.06))
-            )
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .help(tooltip)
-        .popover(isPresented: $showingPicker, arrowEdge: .bottom) {
-            BranchSwitcherPopover(store: store, isPresented: $showingPicker)
-        }
-    }
-
-    private var branchName: String {
-        if let name = store.branch?.name { return name }
-        if store.branch?.isDetached == true { return "Detached HEAD" }
-        if store.branch?.isUnborn == true { return "No commits" }
-        return store.branch == nil ? "Loading" : "Unknown"
-    }
-
-    private var statusColor: Color {
-        guard let branch = store.branch else { return .gray }
-        if branch.isDetached { return .red }
-        if store.entries.count > 0 { return .orange }
-        return .green
-    }
-
-    private var aheadBehindText: String? {
-        guard let branch = store.branch else { return nil }
-        var parts: [String] = []
-        if branch.ahead > 0 { parts.append("↑\(branch.ahead)") }
-        if branch.behind > 0 { parts.append("↓\(branch.behind)") }
-        if parts.isEmpty { return nil }
-        return parts.joined(separator: " ")
-    }
-
-    private var tooltip: String {
-        var parts = [branchName]
-        if let upstream = store.branch?.upstream {
-            parts.append("tracks \(upstream)")
-        }
-        if let branch = store.branch {
-            if branch.ahead > 0 { parts.append("ahead \(branch.ahead)") }
-            if branch.behind > 0 { parts.append("behind \(branch.behind)") }
-        }
-        if store.entries.count > 0 {
-            parts.append("\(store.entries.count) uncommitted change\(store.entries.count == 1 ? "" : "s")")
-        }
-        return parts.joined(separator: " · ")
     }
 }
 
