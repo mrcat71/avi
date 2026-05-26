@@ -272,7 +272,11 @@ struct RepositorySidebarView: View {
     }
 
     private var filteredLocalBranches: [GitReference] {
+        let defaultName = store.defaultBranchName
         let sorted = store.refs.localBranches.sorted { lhs, rhs in
+            let lhsIsDefault = lhs.name == defaultName
+            let rhsIsDefault = rhs.name == defaultName
+            if lhsIsDefault != rhsIsDefault { return lhsIsDefault }
             if lhs.isCurrent != rhs.isCurrent { return lhs.isCurrent }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
