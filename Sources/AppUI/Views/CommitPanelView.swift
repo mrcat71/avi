@@ -111,7 +111,7 @@ struct CommitPanelView: View {
                 Button {
                     store.generateCommitMessage(config: config.config.ai)
                 } label: {
-                    Label("Generate Commit Message", systemImage: "wand.and.stars")
+                    Label("Generate Commit Message", systemImage: "character.bubble")
                 }
                 .disabled(store.entries.isEmpty)
 
@@ -127,7 +127,7 @@ struct CommitPanelView: View {
                 if store.isGeneratingCommitMessage || store.isAIWorking {
                     ProgressView().controlSize(.mini)
                 } else {
-                    Image(systemName: "sparkles")
+                    Image(systemName: "character.bubble")
                         .font(.system(size: 10, weight: .medium))
                 }
                 Text("AI")
@@ -340,7 +340,7 @@ private struct AIPreviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                Image(systemName: "wand.and.stars")
+                Image(systemName: "character.bubble")
                     .font(.system(size: 10))
                     .foregroundStyle(Color.accentColor)
                 Text("Generated commit message")
