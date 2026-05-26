@@ -364,6 +364,65 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
+    /// Push `branch` (setting upstream if needed) and open the provider's
+    /// new-PR/MR compare page in the browser, with title pre-filled to the branch name.
+    public func pushAndOpenPullRequestPage(branch: String) async {
+        guard let root else { return }
+        errorMessage = nil
+
+        let resolvedRemoteName = resolveRemoteName(forBranch: branch)
+        guard let remoteName = resolvedRemoteName else {
+            errorMessage = "No remote configured for this repository."
+            return
+        }
+        guard let gitRemote = remotes.first(where: { $0.name == remoteName }) else {
+            errorMessage = "Remote '\(remoteName)' not found."
+            return
+        }
+
+        await push(branch: branch, remote: remoteName, force: false, pushTags: false)
+        // performRemoteOperation surfaces failures via errorMessage; bail if push failed.
+        if errorMessage != nil { return }
+
+        let hint = RemoteURLParser.hint(from: gitRemote)
+        let detected = (try? await git.defaultBranch(remote: remoteName, in: root)) ?? nil
+        let base: String
+        if let detected, !detected.isEmpty {
+            base = detected
+        } else {
+            base = "main"
+        }
+
+        let url: URL?
+        switch hint {
+        case .github(let owner, let repo):
+            url = GitHubAPI.compareWebURL(owner: owner, repo: repo, base: base, head: branch, title: branch)
+        case .gitlab(let host, let projectPath):
+            url = GitLabAPI.newMergeRequestWebURL(host: host, projectPath: projectPath, sourceBranch: branch, targetBranch: base, title: branch)
+        case .unknown:
+            errorMessage = "Remote '\(remoteName)' is not GitHub or GitLab; cannot open PR page."
+            return
+        }
+
+        guard let url else {
+            errorMessage = "Failed to build PR page URL."
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Pick the remote name to use when pushing `branch`: prefer the branch's upstream remote,
+    /// else "origin" if configured, else the first remote. Returns `nil` when no remotes exist.
+    private func resolveRemoteName(forBranch branch: String) -> String? {
+        if let ref = refs.localBranches.first(where: { $0.name == branch }),
+           let upstream = ref.upstream,
+           let head = upstream.split(separator: "/", maxSplits: 1).first {
+            return String(head)
+        }
+        if remotes.contains(where: { $0.name == "origin" }) { return "origin" }
+        return remotes.first?.name
+    }
+
     public func setHistoryFilter(_ filter: HistoryFilter) async {
         historyFilter = filter
         await refreshHistory()

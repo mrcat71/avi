@@ -79,4 +79,22 @@ struct GitLabAPI {
         let encoded = branch.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? branch
         return URL(string: "https://\(host)/\(projectPath)/-/tree/\(encoded)")
     }
+
+    /// "New merge request" page with pre-filled source, target, and title.
+    /// Caller passes the branch name as `title` so the form opens ready to submit.
+    static func newMergeRequestWebURL(
+        host: String,
+        projectPath: String,
+        sourceBranch: String,
+        targetBranch: String,
+        title: String
+    ) -> URL? {
+        var components = URLComponents(string: "https://\(host)/\(projectPath)/-/merge_requests/new")
+        components?.queryItems = [
+            URLQueryItem(name: "merge_request[source_branch]", value: sourceBranch),
+            URLQueryItem(name: "merge_request[target_branch]", value: targetBranch),
+            URLQueryItem(name: "merge_request[title]", value: title)
+        ]
+        return components?.url
+    }
 }
