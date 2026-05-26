@@ -141,7 +141,7 @@ struct AISettingsView: View {
                         "Command template",
                         description: "${prompt_file} is a temp file containing the rendered Prompt template configured below; the same content is piped on stdin. ${model} = the model field above. ${effort_kv} expands to codex's `-c model_reasoning_effort=<value>` flag when an effort is picked, or to an empty string when not. ${effort} is the raw value (use only if your CLI accepts it directly)."
                     ) {
-                        TextField("codex exec --model ${model} ${effort_kv}", text: bind(\.ai.commandTemplate))
+                        TextField("codex exec --skip-git-repo-check --model ${model} ${effort_kv}", text: bind(\.ai.commandTemplate))
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 400)
                             .font(.system(size: 12, design: .monospaced))

@@ -231,7 +231,7 @@ public struct AIConfig: Codable, Equatable, Sendable {
         subjectSoftLimit: Int = 50,
         subjectHardLimit: Int = 72,
         bodyWrap: Int = 72,
-        commandTemplate: String = "codex exec --model ${model} ${effort_kv}",
+        commandTemplate: String = "codex exec --skip-git-repo-check --model ${model} ${effort_kv}",
         openAIBaseURL: String = "https://api.openai.com/v1",
         openAIKeychainItem: String = "avi.openai.apiKey",
         timeoutSeconds: Int = 120,
