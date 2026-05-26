@@ -13,6 +13,9 @@ All notable changes to Avi are documented here. The format is based on
 - Protected branch (detected from `origin/HEAD`, with a `main`/`master` fallback) is now always pinned to the top of the local branches list.
 
 ### Changed
+- Stage and Unstage buttons act on the files selected in their pane and are disabled until you select something. The old "stage everything" fallback is gone — explicit selection only.
+- Whichever pane has no files (e.g. Staged when you haven't staged anything yet) now collapses to a thin header strip so the populated pane gets the full height.
+- In tree mode, all folders default to expanded. Collapses you make stick for the rest of the session; folders that appear later (new directory of changes) are auto-expanded too. Folder-expansion state is no longer persisted across launches.
 - "Create Branch" sheet now replaces spaces with hyphens as you type, so branch names stay valid without surprise rejections from git.
 
 ## [0.1.1] - 2026-05-26
