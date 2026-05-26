@@ -983,7 +983,7 @@ struct CreateBranchSheet: View {
                     .foregroundStyle(.secondary)
             }
 
-            TextField("Name", text: $name)
+            TextField("Name", text: sanitizedName)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(create)
 
@@ -1009,6 +1009,15 @@ struct CreateBranchSheet: View {
             await store.createBranch(named: cleaned, startPoint: startPoint, checkout: checkout)
             dismiss()
         }
+    }
+
+    private var sanitizedName: Binding<String> {
+        Binding(
+            get: { name },
+            set: { newValue in
+                name = newValue.replacingOccurrences(of: " ", with: "-")
+            }
+        )
     }
 }
 
