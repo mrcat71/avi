@@ -107,4 +107,54 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func stagedDiff(in _: URL) async throws -> String {
         ""
     }
+
+    public func defaultBranch(remote _: String, in _: URL) async throws -> String? {
+        nil
+    }
+
+    public func createTag(name _: String, targetOID _: String, message _: String?, in _: URL) async throws {}
+
+    public func pushTag(name _: String, remote _: String?, in _: URL) async throws -> GitRemoteOperationResult {
+        GitRemoteOperationResult(output: "ok")
+    }
+
+    public func commitMessage(for _: String, in _: URL) async throws -> String? {
+        nil
+    }
+
+    public func commitDiff(for _: String, in _: URL) async throws -> String {
+        ""
+    }
+
+    public func commitRangeDiff(oldest _: String, newest _: String, in _: URL) async throws -> String {
+        ""
+    }
+
+    public func reset(mode _: GitResetMode, target _: String?, in _: URL) async throws {}
+
+    public func rebaseSingle(commit _: String, action _: SingleCommitRebaseAction, in _: URL) async throws {}
+
+    public func rebaseRangeEdit(oldest _: String, newest _: String, in _: URL) async throws {}
+
+    public func rebaseContinue(in _: URL) async throws -> GitRemoteOperationResult {
+        GitRemoteOperationResult(output: "ok")
+    }
+
+    public func rebaseAbort(in _: URL) async throws {}
+
+    public func isRebaseInProgress(in _: URL) async -> Bool {
+        false
+    }
+
+    public func push(branch _: String?, remote _: String?, force _: Bool, pushTags _: Bool, in _: URL) async throws -> GitRemoteOperationResult {
+        GitRemoteOperationResult(output: "ok")
+    }
+
+    public func stashes(in _: URL) async throws -> [StashEntry] {
+        []
+    }
+
+    public func applyStash(ref _: String, in _: URL) async throws {}
+    public func popStash(ref _: String, in _: URL) async throws {}
+    public func dropStash(ref _: String, in _: URL) async throws {}
 }
