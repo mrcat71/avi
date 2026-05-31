@@ -608,7 +608,7 @@ private struct CommitFileListView: View {
     }
 }
 
-private struct CommitFileRow: View {
+struct CommitFileRow: View {
     let file: CommitFileChange
 
     var body: some View {

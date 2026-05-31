@@ -119,11 +119,20 @@ public protocol GitProviding: Sendable {
     /// Stage `path` (`git add`).
     func stage(path: String, in repository: URL) async throws
 
+    /// Stage multiple paths in a single `git add` invocation. Has a default
+    /// implementation that loops the single-path variant; the CLI provider
+    /// overrides it with one batched call.
+    func stage(paths: [String], in repository: URL) async throws
+
     /// Stage all tracked and untracked working-copy changes.
     func stageAll(in repository: URL) async throws
 
     /// Unstage `path`, keeping working-tree changes (`git restore --staged`).
     func unstage(path: String, in repository: URL) async throws
+
+    /// Unstage multiple paths in a single `git restore --staged` invocation.
+    /// Defaults to looping the single-path variant; CLI provider batches.
+    func unstage(paths: [String], in repository: URL) async throws
 
     /// Unstage all staged changes, keeping working-tree changes.
     func unstageAll(in repository: URL) async throws
@@ -190,6 +199,13 @@ public protocol GitProviding: Sendable {
 
     /// `git stash drop <ref>`. Deletes the stash without applying it.
     func dropStash(ref: String, in repository: URL) async throws
+
+    /// Files changed by a stash, diffed against its first parent (`<ref>^1 <ref>`).
+    /// A stash is a merge commit, so the plain commit helpers can't be reused.
+    func stashChangedFiles(ref: String, in repository: URL) async throws -> [CommitFileChange]
+
+    /// Unified diff for one file inside a stash (`<ref>^1 <ref> -- <path>`).
+    func stashDiff(ref: String, path: String, in repository: URL) async throws -> FileDiff
 }
 
 public enum GitResetMode: String, Sendable {
@@ -222,5 +238,20 @@ public extension GitProviding {
         in repository: URL
     ) async throws -> GitRemoteOperationResult {
         try await push(branch: branch, in: repository)
+    }
+
+    /// Default: stage paths one at a time. The CLI provider overrides this with a
+    /// single batched `git add` so large multi-selections don't spawn N processes.
+    func stage(paths: [String], in repository: URL) async throws {
+        for path in paths {
+            try await stage(path: path, in: repository)
+        }
+    }
+
+    /// Default: unstage paths one at a time. The CLI provider batches.
+    func unstage(paths: [String], in repository: URL) async throws {
+        for path in paths {
+            try await unstage(path: path, in: repository)
+        }
     }
 }

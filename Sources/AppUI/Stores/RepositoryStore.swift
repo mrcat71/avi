@@ -19,6 +19,11 @@ public final class RepositoryStore: Identifiable {
     public private(set) var commitFiles: [CommitFileChange] = []
     public private(set) var selectedCommitPath: String?
     public private(set) var commitDiff: FileDiff?
+    public private(set) var selectedStashRef: String?
+    public private(set) var stashFiles: [CommitFileChange] = []
+    public private(set) var selectedStashPath: String?
+    public private(set) var stashFileDiff: FileDiff?
+    public private(set) var isStashLoading = false
     public private(set) var refs: RepositoryRefs = .empty
     public private(set) var stashes: [StashEntry] = []
     public private(set) var remotes: [GitRemote] = []
@@ -87,6 +92,10 @@ public final class RepositoryStore: Identifiable {
 
     public var selectedCommitFile: CommitFileChange? {
         commitFiles.first { $0.path == selectedCommitPath }
+    }
+
+    public var selectedStashFile: CommitFileChange? {
+        stashFiles.first { $0.path == selectedStashPath }
     }
 
     public var canAmend: Bool {
@@ -230,6 +239,48 @@ public final class RepositoryStore: Identifiable {
 
     public func unstageAll() async {
         await perform { try await $0.unstageAll(in: $1) }
+    }
+
+    /// Stage `files` in one batched `git add`, refresh once, then advance the
+    /// selection to the next file in `visibleOrder` (the unstaged pane's visible
+    /// order captured before the action). The view supplies the order because
+    /// tree-mode ordering depends on folder-expansion state the store doesn't track.
+    public func stage(_ files: [FileStatus], advancingFrom visibleOrder: [String]) async {
+        guard !files.isEmpty, let root else { return }
+        let acted = Set(files.map(\.path))
+        do {
+            try await git.stage(paths: files.map(\.path), in: root)
+            await refresh()
+            await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(unstagedEntries.map(\.path)))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Unstage `files` in one batched `git restore --staged`, refresh once, then
+    /// advance the selection to the next file in the staged pane's `visibleOrder`.
+    public func unstage(_ files: [FileStatus], advancingFrom visibleOrder: [String]) async {
+        guard !files.isEmpty, let root else { return }
+        let acted = Set(files.map(\.path))
+        do {
+            try await git.unstage(paths: files.map(\.path), in: root)
+            await refresh()
+            await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(stagedEntries.map(\.path)))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Pick the next file to select after a batched stage/unstage. Setting
+    /// `selectedPath` drives the change list's highlight + diff via its existing
+    /// `onChange(of: store.selectedPath)` sync.
+    private func advanceSelection(visibleOrder: [String], acted: Set<String>, surviving: Set<String>) async {
+        if let next = nextSelection(visibleOrder: visibleOrder, acted: acted, surviving: surviving),
+           let file = entries.first(where: { $0.path == next }) {
+            await select(file)
+        } else {
+            await select(nil)
+        }
     }
 
     public func discard(_ file: FileStatus) async {
@@ -558,6 +609,50 @@ public final class RepositoryStore: Identifiable {
             errorMessage = error.localizedDescription
             commitDiff = nil
         }
+    }
+
+    /// Load a stash's changed files and select the first one. Mirrors `selectCommit`.
+    public func selectStash(ref: String?) async {
+        guard let root, let ref else {
+            clearStashSelection()
+            return
+        }
+        selectedStashRef = ref
+        stashFiles = []
+        selectedStashPath = nil
+        stashFileDiff = nil
+        isStashLoading = true
+        defer { isStashLoading = false }
+        do {
+            stashFiles = try await git.stashChangedFiles(ref: ref, in: root)
+            await selectStashFile(stashFiles.first)
+        } catch {
+            errorMessage = error.localizedDescription
+            stashFiles = []
+            stashFileDiff = nil
+        }
+    }
+
+    public func selectStashFile(_ file: CommitFileChange?) async {
+        guard let root, let selectedStashRef, let file else {
+            selectedStashPath = nil
+            stashFileDiff = nil
+            return
+        }
+        selectedStashPath = file.path
+        do {
+            stashFileDiff = try await git.stashDiff(ref: selectedStashRef, path: file.path, in: root)
+        } catch {
+            errorMessage = error.localizedDescription
+            stashFileDiff = nil
+        }
+    }
+
+    private func clearStashSelection() {
+        selectedStashRef = nil
+        stashFiles = []
+        selectedStashPath = nil
+        stashFileDiff = nil
     }
 
     public func commit() async {
@@ -1303,10 +1398,7 @@ public final class RepositoryStore: Identifiable {
 
     private func stageGroup(_ group: AICommitGroup, in root: URL) async throws {
         guard !group.files.isEmpty else { return }
-        // Use stageAll-style call per file; the existing API is per-path.
-        for path in group.files {
-            try await git.stage(path: path, in: root)
-        }
+        try await git.stage(paths: group.files, in: root)
     }
 
     private func handleAIError(_ err: AIEngineError) {

@@ -134,12 +134,7 @@ struct ChangeListView: View {
                 actionTint: .accentColor,
                 actionEnabled: !selectedUnstagedFiles.isEmpty
             ) {
-                let files = selectedUnstagedFiles
-                Task {
-                    for file in files {
-                        await store.stage(file)
-                    }
-                }
+                stageFiles(selectedUnstagedFiles)
             }
             Divider()
             paneList(entries: store.unstagedEntries, staged: false, emptyText: "Nothing to stage")
@@ -155,12 +150,7 @@ struct ChangeListView: View {
                 actionTint: .secondary,
                 actionEnabled: !selectedStagedFiles.isEmpty
             ) {
-                let files = selectedStagedFiles
-                Task {
-                    for file in files {
-                        await store.unstage(file)
-                    }
-                }
+                unstageFiles(selectedStagedFiles)
             }
             Divider()
             paneList(entries: store.stagedEntries, staged: true, emptyText: "Nothing staged")
@@ -177,6 +167,34 @@ struct ChangeListView: View {
         store.stagedEntries.filter { multiSelection.contains($0.path) }
     }
 
+    /// A pane's file paths in the order the user sees them: flat-list order, or
+    /// the flattened tree order honoring folder expansion. Passed to the store so
+    /// selection advances to the visually-next file after a stage/unstage.
+    private func visibleOrder(_ entries: [FileStatus]) -> [String] {
+        guard isTreeMode else { return entries.map(\.path) }
+        let tree = FileTreeBuilder.build(entries: entries)
+        return FileTreeBuilder.flatten(tree, expanded: store.expandedFolders).compactMap { node in
+            if case let .file(file) = node.payload { return file.path }
+            return nil
+        }
+    }
+
+    /// Stage `files` as a single batch and advance selection to the next unstaged
+    /// file. Every stage entry point (pane button, row "+", context menu) funnels
+    /// through here.
+    private func stageFiles(_ files: [FileStatus]) {
+        guard !files.isEmpty else { return }
+        let order = visibleOrder(store.unstagedEntries)
+        Task { await store.stage(files, advancingFrom: order) }
+    }
+
+    /// Unstage `files` as a single batch and advance selection to the next staged file.
+    private func unstageFiles(_ files: [FileStatus]) {
+        guard !files.isEmpty else { return }
+        let order = visibleOrder(store.stagedEntries)
+        Task { await store.unstage(files, advancingFrom: order) }
+    }
+
     @ViewBuilder
     private func paneList(entries: [FileStatus], staged: Bool, emptyText: String) -> some View {
         ScrollViewReader { proxy in
@@ -191,9 +209,15 @@ struct ChangeListView: View {
                     treeRows(for: entries, staged: staged)
                 } else {
                     ForEach(entries) { file in
-                        ChangeRow(file: file, staged: staged, store: store)
-                            .tag(file.path)
-                            .id(file.path)
+                        ChangeRow(
+                            file: file,
+                            staged: staged,
+                            store: store,
+                            onStage: { stageFiles([$0]) },
+                            onUnstage: { unstageFiles([$0]) }
+                        )
+                        .tag(file.path)
+                        .id(file.path)
                     }
                 }
             }
@@ -265,9 +289,15 @@ struct ChangeListView: View {
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
             case .file(let file):
-                ChangeRow(file: file, staged: staged, store: store)
-                    .tag(file.path)
-                    .padding(.leading, CGFloat(node.depth + 1) * 12)
+                ChangeRow(
+                    file: file,
+                    staged: staged,
+                    store: store,
+                    onStage: { stageFiles([$0]) },
+                    onUnstage: { unstageFiles([$0]) }
+                )
+                .tag(file.path)
+                .padding(.leading, CGFloat(node.depth + 1) * 12)
             }
         }
     }
@@ -380,6 +410,8 @@ private struct ChangeRow: View {
     let file: FileStatus
     let staged: Bool
     let store: RepositoryStore
+    let onStage: (FileStatus) -> Void
+    let onUnstage: (FileStatus) -> Void
     @State private var confirmingDiscard = false
 
     var body: some View {
@@ -394,11 +426,11 @@ private struct ChangeRow: View {
             Spacer(minLength: 6)
             if staged {
                 inlineAction("minus.circle", help: "Unstage") {
-                    Task { await store.unstage(file) }
+                    onUnstage(file)
                 }
             } else {
                 inlineAction("plus.circle", help: "Stage") {
-                    Task { await store.stage(file) }
+                    onStage(file)
                 }
                 inlineAction("arrow.uturn.backward.circle", help: "Discard") {
                     confirmingDiscard = true
@@ -428,11 +460,11 @@ private struct ChangeRow: View {
     private var fileContextMenu: some View {
         if staged {
             Button("Unstage") {
-                Task { await store.unstage(file) }
+                onUnstage(file)
             }
         } else {
             Button("Stage") {
-                Task { await store.stage(file) }
+                onStage(file)
             }
             Button("Discard…", role: .destructive) {
                 confirmingDiscard = true
