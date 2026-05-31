@@ -57,6 +57,13 @@ struct RepositoryView: View {
         .onChange(of: store.entries.isEmpty) { _, _ in
             applyInitialSelectionIfNeeded()
         }
+        .onChange(of: store.stashes) { _, stashes in
+            // If the open stash was popped or dropped, fall back to local changes
+            // so the workspace doesn't point at a stash that no longer exists.
+            if case let .stash(ref)? = selection, !stashes.contains(where: { $0.ref == ref }) {
+                selection = .localChanges
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .aviCreateBranch)) { notification in
             createBranchStartPoint = notification.object as? String
             showingCreateBranch = true
@@ -203,6 +210,8 @@ struct RepositoryView: View {
                 store: store,
                 switchToAllCommits: { selection = .allCommits }
             )
+        case let .stash(ref):
+            StashContentsWorkspaceView(store: store, ref: ref)
         case .allCommits, .branch, .remoteBranch, .tag:
             HistoryWorkspaceView(store: store)
         }
@@ -245,11 +254,13 @@ enum RepositorySelection: Hashable {
     case branch(name: String)
     case remoteBranch(name: String)
     case tag(name: String)
+    case stash(ref: String)
 
     var persisted: PersistedView? {
         switch self {
         case .localChanges: return .localChanges
         case .allCommits, .branch, .remoteBranch, .tag: return .allCommits
+        case .stash: return nil
         }
     }
 }

@@ -6,6 +6,14 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Click a stash in the sidebar to open its contents - the changed files and each file's diff - in the main pane, mirroring the commit detail view.
+- The commit panel now shows a clear "Generating commit message..." indicator with a Cancel button while an AI commit message is being generated.
+
+### Changed
+- Staging or unstaging several selected files now runs a single git command and one status refresh instead of one per file, so large selections are no longer slow.
+- After staging or unstaging (from the pane button, the per-row +/- button, or the right-click menu), the selection moves to the next file in the list so you can keep working without re-selecting.
+
 ## [0.1.2] - 2026-05-26
 
 ### Added

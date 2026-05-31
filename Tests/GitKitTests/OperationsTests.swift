@@ -35,6 +35,58 @@ struct OperationsTests {
         }
     }
 
+    @Test func stagePathsStagesEverySelectedFileInOneCall() async throws {
+        try await withTempRepo { repo in
+            try repo.write("a.txt", "1\n")
+            try repo.write("b.txt", "2\n")
+            try repo.write("c.txt", "3\n")
+
+            try await provider(repo).stage(paths: ["a.txt", "b.txt", "c.txt"], in: repo.url)
+
+            let staged = try await provider(repo).status(in: repo.url)
+                .entries.filter(\.isStaged).map(\.path).sorted()
+            #expect(staged == ["a.txt", "b.txt", "c.txt"])
+        }
+    }
+
+    @Test func unstagePathsUnstagesEverySelectedFile() async throws {
+        try await withTempRepo { repo in
+            try repo.write("a.txt", "v1\n")
+            try repo.write("b.txt", "v1\n")
+            try await repo.git("add", "a.txt", "b.txt")
+            try await repo.git("commit", "-q", "-m", "init")
+            try repo.write("a.txt", "v2\n")
+            try repo.write("b.txt", "v2\n")
+            try await repo.git("add", "a.txt", "b.txt")
+
+            try await provider(repo).unstage(paths: ["a.txt", "b.txt"], in: repo.url)
+
+            let status = try await provider(repo).status(in: repo.url)
+            for path in ["a.txt", "b.txt"] {
+                let entry = try #require(status.entries.first { $0.path == path })
+                #expect(entry.index == .unmodified)
+                #expect(entry.worktree == .modified)
+            }
+        }
+    }
+
+    @Test func stashContentsListAndDiffChangedFiles() async throws {
+        try await withTempRepo { repo in
+            try repo.write("a.txt", "v1\n")
+            try await repo.git("add", "a.txt")
+            try await repo.git("commit", "-q", "-m", "init")
+            try repo.write("a.txt", "v2\n")
+            try await repo.git("stash", "push", "-m", "wip")
+
+            let files = try await provider(repo).stashChangedFiles(ref: "stash@{0}", in: repo.url)
+            #expect(files.map(\.path) == ["a.txt"])
+
+            let diff = try await provider(repo).stashDiff(ref: "stash@{0}", path: "a.txt", in: repo.url)
+            #expect(!diff.isBinary)
+            #expect(!diff.hunks.isEmpty)
+        }
+    }
+
     @Test func unstageKeepsWorkingTreeChange() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
