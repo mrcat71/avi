@@ -416,8 +416,8 @@ private struct ChangeRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: badge.symbol)
-                .font(.system(size: 10, weight: .semibold))
+            Text(badge.letter)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .foregroundStyle(badge.color)
                 .frame(width: 12)
             Text(displayName)
@@ -509,15 +509,18 @@ private struct ChangeRow: View {
         return file.path
     }
 
-    private var badge: (symbol: String, color: Color) {
+    /// Git-style status letter for the file's change kind (M/A/D/R/C/T/U),
+    /// rendered as text in the row instead of an SF Symbol glyph.
+    private var badge: (letter: String, color: Color) {
         switch staged ? file.index : file.worktree {
-        case .added, .untracked: ("plus", .green)
-        case .modified, .typeChanged: ("pencil", .orange)
-        case .deleted: ("minus", .red)
-        case .renamed: ("arrow.right", .blue)
-        case .copied: ("doc.on.doc", .blue)
-        case .updatedButUnmerged: ("exclamationmark.triangle", .yellow)
-        case .unmodified, .ignored: ("circle", .gray)
+        case .added, .untracked: ("A", .green)
+        case .modified: ("M", .orange)
+        case .typeChanged: ("T", .orange)
+        case .deleted: ("D", .red)
+        case .renamed: ("R", .blue)
+        case .copied: ("C", .blue)
+        case .updatedButUnmerged: ("U", .yellow)
+        case .unmodified, .ignored: (".", .gray)
         }
     }
 }
