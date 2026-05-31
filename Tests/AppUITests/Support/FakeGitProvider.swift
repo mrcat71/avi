@@ -13,6 +13,12 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public var commitFiles: [String: [CommitFileChange]]
     public var lastCommit: String?
 
+    /// Recorded calls for batched staging assertions in tests.
+    public private(set) var stagePathsCalls: [[String]] = []
+    public private(set) var unstagePathsCalls: [[String]] = []
+    /// Stash changed-files keyed by stash ref, for stash-content tests.
+    public var stashChanges: [String: [CommitFileChange]] = [:]
+
     public init(
         status: WorkingCopyStatus,
         refs: RepositoryRefs = .empty,
@@ -94,8 +100,10 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     }
 
     public func stage(path _: String, in _: URL) async throws {}
+    public func stage(paths: [String], in _: URL) async throws { stagePathsCalls.append(paths) }
     public func stageAll(in _: URL) async throws {}
     public func unstage(path _: String, in _: URL) async throws {}
+    public func unstage(paths: [String], in _: URL) async throws { unstagePathsCalls.append(paths) }
     public func unstageAll(in _: URL) async throws {}
     public func discard(_: FileStatus, in _: URL) async throws {}
     public func commit(message _: String, in _: URL) async throws {}
@@ -157,4 +165,12 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func applyStash(ref _: String, in _: URL) async throws {}
     public func popStash(ref _: String, in _: URL) async throws {}
     public func dropStash(ref _: String, in _: URL) async throws {}
+
+    public func stashChangedFiles(ref: String, in _: URL) async throws -> [CommitFileChange] {
+        stashChanges[ref] ?? []
+    }
+
+    public func stashDiff(ref _: String, path: String, in _: URL) async throws -> FileDiff {
+        fileDiffs[path] ?? FileDiff(hunks: [], isBinary: false)
+    }
 }

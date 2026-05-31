@@ -244,7 +244,12 @@ struct RepositorySidebarView: View {
             if stashesExpanded {
                 VStack(spacing: 1) {
                     ForEach(filteredStashes) { entry in
-                        StashRow(entry: entry, store: store)
+                        StashRow(
+                            entry: entry,
+                            store: store,
+                            isSelected: selection == .stash(ref: entry.ref),
+                            select: { selection = .stash(ref: entry.ref) }
+                        )
                     }
                     if filteredStashes.isEmpty {
                         EmptySectionRow(
@@ -932,6 +937,8 @@ struct TagPopover: View {
 private struct StashRow: View {
     let entry: StashEntry
     let store: RepositoryStore
+    let isSelected: Bool
+    let select: () -> Void
 
     @State private var isHovering = false
     @State private var confirmingDrop = false
@@ -941,15 +948,16 @@ private struct StashRow: View {
             Image(systemName: "tray")
                 .font(.system(size: 10))
                 .frame(width: 12)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isSelected ? Color.white.opacity(0.9) : .secondary)
 
             Text("{\(entry.index)}")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isSelected ? Color.white.opacity(0.9) : .secondary)
                 .frame(minWidth: 22, alignment: .leading)
 
             Text(displayMessage)
                 .font(.system(size: 12))
+                .foregroundStyle(isSelected ? .white : .primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
@@ -958,7 +966,7 @@ private struct StashRow: View {
             if let date = entry.date {
                 Text(relative(date))
                     .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.white.opacity(0.75)) : AnyShapeStyle(.tertiary))
                     .lineLimit(1)
             }
         }
@@ -966,9 +974,10 @@ private struct StashRow: View {
         .frame(height: 22)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isHovering ? Color.primary.opacity(0.06) : Color.clear)
+                .fill(rowFill)
         )
         .contentShape(Rectangle())
+        .onTapGesture(perform: select)
         .onHover { isHovering = $0 }
         .help(entry.subject)
         .contextMenu {
@@ -997,6 +1006,12 @@ private struct StashRow: View {
         } message: {
             Text("This permanently deletes the stash. It cannot be undone from inside Avi.")
         }
+    }
+
+    private var rowFill: Color {
+        if isSelected { return Color.accentColor }
+        if isHovering { return Color.primary.opacity(0.05) }
+        return Color.clear
     }
 
     private var displayMessage: String {

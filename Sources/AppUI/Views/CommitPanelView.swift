@@ -14,6 +14,10 @@ struct CommitPanelView: View {
             VStack(alignment: .leading, spacing: 6) {
                 header
 
+                if store.isGeneratingCommitMessage {
+                    generatingBanner
+                }
+
                 if let preview = store.aiPendingPreview {
                     AIPreviewCard(preview: preview, store: store, config: config.config.ai)
                 }
@@ -44,6 +48,7 @@ struct CommitPanelView: View {
             }
             .animation(Glass.Motion.snappy, value: store.aiDebugDrawerVisible)
             .animation(Glass.Motion.snappy, value: store.aiDebugMinimized)
+            .animation(Glass.Motion.snappy, value: store.isGeneratingCommitMessage)
             .task(id: store.amend) {
                 await store.prepareAmendIfNeeded()
             }
@@ -97,6 +102,30 @@ struct CommitPanelView: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
+    }
+
+    /// Prominent in-panel indicator so the user can see AI generation is running
+    /// without opening the AI menu or the debug drawer. Styled like AIPreviewCard.
+    private var generatingBanner: some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Generating commit message…")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Cancel") {
+                store.cancelCommitMessageGeneration()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.accentColor.opacity(0.08))
+        )
     }
 
     /// Single AI menu - explicit actions, no auto-magic. The user picks what
