@@ -1,5 +1,16 @@
 import Foundation
 
+private extension Array {
+    /// Split into consecutive chunks of at most `size` elements. Used to keep
+    /// batched `git` argument lists under the OS argument-length limit.
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0 ..< Swift.min($0 + size, count)])
+        }
+    }
+}
+
 /// `GitProviding` implementation that shells out to the `git` CLI.
 public struct CLIGitProvider: GitProviding {
     public let gitURL: URL
@@ -342,12 +353,30 @@ public struct CLIGitProvider: GitProviding {
         try await run(["add", "--", path], in: repository)
     }
 
+    public func stage(paths: [String], in repository: URL) async throws {
+        guard !paths.isEmpty else { return }
+        // One `git add` per chunk keeps the argument list well under ARG_MAX for
+        // very large multi-selections, while still avoiding the per-file
+        // subprocess (and per-file status refresh) that made staging many files
+        // slow.
+        for chunk in paths.chunked(into: 256) {
+            try await run(["add", "--"] + chunk, in: repository)
+        }
+    }
+
     public func stageAll(in repository: URL) async throws {
         try await run(["add", "--all"], in: repository)
     }
 
     public func unstage(path: String, in repository: URL) async throws {
         try await run(["restore", "--staged", "--", path], in: repository)
+    }
+
+    public func unstage(paths: [String], in repository: URL) async throws {
+        guard !paths.isEmpty else { return }
+        for chunk in paths.chunked(into: 256) {
+            try await run(["restore", "--staged", "--"] + chunk, in: repository)
+        }
     }
 
     public func unstageAll(in repository: URL) async throws {
@@ -653,6 +682,38 @@ public struct CLIGitProvider: GitProviding {
 
     public func dropStash(ref: String, in repository: URL) async throws {
         try await run(["stash", "drop", ref], in: repository)
+    }
+
+    public func stashChangedFiles(ref: String, in repository: URL) async throws -> [CommitFileChange] {
+        // A stash commit has multiple parents (base, index, optionally untracked),
+        // so `diff-tree`/`show` on it prints nothing by default. Diff the stash
+        // against its first parent - the commit it was taken from - to list the
+        // files it carries. Untracked-only entries (parent `^3`) aren't covered.
+        let result = try await run([
+            "diff",
+            "--name-status",
+            "-z",
+            "-M",
+            "-C",
+            "\(ref)^1",
+            ref
+        ], in: repository)
+        return try CommitFileChangeParser.parse(result.stdout)
+    }
+
+    public func stashDiff(ref: String, path: String, in repository: URL) async throws -> FileDiff {
+        let result = try await run([
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "-M",
+            "-C",
+            "\(ref)^1",
+            ref,
+            "--",
+            path
+        ], in: repository)
+        return DiffParser.parse(result.stdoutString)
     }
 
     // MARK: - Internal helpers
