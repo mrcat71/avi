@@ -419,13 +419,17 @@ public final class RepositoryStore: Identifiable {
 
     public func pull() async {
         await performRemoteOperation {
-            try await $0.pull(in: $1)
+            // Fetch (all remotes, pruned) before pulling so remote-tracking refs
+            // and the sidebar - ahead/behind and "gone" branches - are current.
+            _ = try await $0.fetch(remote: nil, in: $1)
+            return try await $0.pull(in: $1)
         }
     }
 
     public func pull(branch: String?) async {
         await performRemoteOperation {
-            try await $0.pull(branch: branch, in: $1)
+            _ = try await $0.fetch(remote: nil, in: $1)
+            return try await $0.pull(branch: branch, in: $1)
         }
     }
 
