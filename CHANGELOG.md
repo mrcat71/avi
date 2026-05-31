@@ -6,6 +6,8 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-31
+
 ### Added
 - Click a stash in the sidebar to open its contents - the changed files and each file's diff - in the main pane, mirroring the commit detail view.
 - The commit panel now shows a clear "Generating commit message..." indicator with a Cancel button while an AI commit message is being generated.
@@ -13,6 +15,9 @@ All notable changes to Avi are documented here. The format is based on
 ### Changed
 - Staging or unstaging several selected files now runs a single git command and one status refresh instead of one per file, so large selections are no longer slow.
 - After staging or unstaging (from the pane button, the per-row +/- button, or the right-click menu), the selection moves to the next file in the list so you can keep working without re-selecting.
+- Pull now fetches all remotes (with prune) before merging, so remote-tracking refs, ahead/behind counts, and deleted-on-remote ("gone") branches stay current.
+- Branches whose upstream was deleted on the remote are flagged with a red icon and a red "GONE" badge instead of subtle orange text.
+- The changed-files list uses git status letters (M, A, D, R) instead of pencil/plus/minus icons.
 
 ## [0.1.2] - 2026-05-26
 
