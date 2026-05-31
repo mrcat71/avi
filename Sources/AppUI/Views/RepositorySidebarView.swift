@@ -574,19 +574,31 @@ private struct LocalBranchRow: View {
 
     @ViewBuilder
     private func upstreamChip(upstream: String) -> some View {
-        let tint = ref.isUpstreamGone ? Color.orange : Color.secondary
-        Text(ref.isUpstreamGone ? "\(upstream) gone" : upstream)
-            .font(.system(size: 10))
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(tint.opacity(0.15))
-            )
-            .foregroundStyle(isSelected ? Color.white.opacity(0.85) : tint)
-            .layoutPriority(-1)
+        if ref.isUpstreamGone {
+            // Upstream was deleted on the remote: a bold red filled badge so it
+            // is obvious the branch can be cleaned up. Upstream name is in the tooltip.
+            Text("gone")
+                .font(.system(size: 9, weight: .bold))
+                .textCase(.uppercase)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(Capsule().fill(Color.red))
+                .foregroundStyle(.white)
+                .layoutPriority(-1)
+        } else {
+            Text(upstream)
+                .font(.system(size: 10))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.secondary.opacity(0.15))
+                )
+                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
+                .layoutPriority(-1)
+        }
     }
 
     @ViewBuilder
@@ -616,6 +628,7 @@ private struct LocalBranchRow: View {
 
     private var iconColor: Color {
         if isSelected { return .white }
+        if ref.isUpstreamGone { return .red }
         return ref.isCurrent ? Color.accentColor : .blue
     }
 
