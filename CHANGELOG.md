@@ -6,6 +6,11 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-02
+
+### Fixed
+- Git operations could intermittently fail with "Unable to create '.git/index.lock': File exists" (or "another git process seems to be running") when an automatic refresh, the repository picker, overlapping keyboard shortcuts, or an AI commit apply ran two git commands against the same repository at once. All git commands for a given repository are now serialized, so these spurious lock errors no longer occur; different repositories still run concurrently.
+
 ## [0.1.3] - 2026-05-31
 
 ### Added
