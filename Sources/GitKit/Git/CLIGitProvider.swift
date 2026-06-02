@@ -77,12 +77,7 @@ public struct CLIGitProvider: GitProviding {
             arguments.append(name)
         }
 
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: arguments,
-            workingDirectory: repository,
-            environment: gitEnvironment()
-        )
+        let result = try await execute(arguments, in: repository)
 
         if result.exitCode != 0 {
             let stderr = result.stderrString
@@ -406,12 +401,7 @@ public struct CLIGitProvider: GitProviding {
 
     public func lastCommitMessage(in repository: URL) async throws -> String? {
         // Tolerates the unborn-branch case (no commits): git log exits non-zero.
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: ["log", "-1", "--pretty=%B"],
-            workingDirectory: repository,
-            environment: gitEnvironment()
-        )
+        let result = try await execute(["log", "-1", "--pretty=%B"], in: repository)
         guard result.exitCode == 0 else { return nil }
         let message = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
         return message.isEmpty ? nil : message
@@ -423,12 +413,7 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func commitMessage(for oid: String, in repository: URL) async throws -> String? {
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: ["log", "-1", "--format=%B", oid],
-            workingDirectory: repository,
-            environment: gitEnvironment()
-        )
+        let result = try await execute(["log", "-1", "--format=%B", oid], in: repository)
         guard result.exitCode == 0 else { return nil }
         let message = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
         return message.isEmpty ? nil : message
@@ -497,12 +482,7 @@ public struct CLIGitProvider: GitProviding {
         }
 
         let rebaseBase = "\(oid)^"
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: ["rebase", "-i", "--autostash", rebaseBase],
-            workingDirectory: repository,
-            environment: env
-        )
+        let result = try await execute(["rebase", "-i", "--autostash", rebaseBase], in: repository, environment: env)
         switch action {
         case .reword:
             // Reword must run to completion (no pause).
@@ -530,12 +510,7 @@ public struct CLIGitProvider: GitProviding {
     public func rebaseRangeEdit(oldest: String, newest: String, in repository: URL) async throws {
         // Fetch the OIDs to be replayed, oldest-first, so we know which line
         // in the todo needs `edit`.
-        let listResult = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: ["rev-list", "--reverse", "\(oldest)^..HEAD"],
-            workingDirectory: repository,
-            environment: gitEnvironment()
-        )
+        let listResult = try await execute(["rev-list", "--reverse", "\(oldest)^..HEAD"], in: repository)
         guard listResult.exitCode == 0 else {
             throw GitError.commandFailed(
                 command: "git rev-list --reverse \(oldest)^..HEAD",
@@ -568,12 +543,7 @@ public struct CLIGitProvider: GitProviding {
         env["GIT_EDITOR"] = "/usr/bin/true"
 
         let rebaseBase = "\(oldest)^"
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: ["rebase", "-i", "--autostash", rebaseBase],
-            workingDirectory: repository,
-            environment: env
-        )
+        let result = try await execute(["rebase", "-i", "--autostash", rebaseBase], in: repository, environment: env)
         guard result.exitCode == 0 else {
             throw GitError.commandFailed(
                 command: "git rebase -i \(rebaseBase) (range edit)",
@@ -589,12 +559,7 @@ public struct CLIGitProvider: GitProviding {
         // semantics by setting GIT_EDITOR to true (the user already set messages
         // via per-group commits before continuing).
         env["GIT_EDITOR"] = "/usr/bin/true"
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: ["rebase", "--continue"],
-            workingDirectory: repository,
-            environment: env
-        )
+        let result = try await execute(["rebase", "--continue"], in: repository, environment: env)
         guard result.exitCode == 0 else {
             throw GitError.commandFailed(
                 command: "git rebase --continue",
@@ -722,24 +687,14 @@ public struct CLIGitProvider: GitProviding {
     /// or `nil` when HEAD has no upstream configured or is detached. Uses
     /// `git rev-parse` so missing-upstream produces a clean nil rather than a throw.
     private func upstreamRef(in repository: URL) async throws -> String? {
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "HEAD@{u}"],
-            workingDirectory: repository,
-            environment: gitEnvironment()
-        )
+        let result = try await execute(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "HEAD@{u}"], in: repository)
         guard result.exitCode == 0 else { return nil }
         let name = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.isEmpty ? nil : name
     }
 
     private func subjectOf(commit oid: String, in repository: URL) async throws -> String {
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: ["log", "-1", "--format=%s", oid],
-            workingDirectory: repository,
-            environment: gitEnvironment()
-        )
+        let result = try await execute(["log", "-1", "--format=%s", oid], in: repository)
         return result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -755,12 +710,7 @@ public struct CLIGitProvider: GitProviding {
         in repository: URL,
         allowedExitCodes: Set<Int32> = [0]
     ) async throws -> ProcessResult {
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: arguments,
-            workingDirectory: repository,
-            environment: gitEnvironment()
-        )
+        let result = try await execute(arguments, in: repository)
         guard allowedExitCodes.contains(result.exitCode) else {
             throw GitError.commandFailed(
                 command: (["git"] + arguments).joined(separator: " "),
@@ -769,6 +719,28 @@ public struct CLIGitProvider: GitProviding {
             )
         }
         return result
+    }
+
+    /// Single funnel for every git subprocess. Serializes execution per repository
+    /// through `GitCommandQueue` so two commands never contend for `.git/index.lock`
+    /// ("another git process seems to be running"). Pass a custom `environment` for
+    /// editor-driven commands like interactive rebase; otherwise the standard git
+    /// environment is used.
+    private func execute(
+        _ arguments: [String],
+        in repository: URL,
+        environment: [String: String]? = nil
+    ) async throws -> ProcessResult {
+        let executable = gitURL
+        let env = environment ?? gitEnvironment()
+        return try await GitCommandQueue.shared.run(repository: repository) {
+            try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                workingDirectory: repository,
+                environment: env
+            )
+        }
     }
 
     private func gitEnvironment() -> [String: String] {

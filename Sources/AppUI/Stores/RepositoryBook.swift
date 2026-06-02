@@ -111,15 +111,21 @@ public final class RepositoryBook {
     private static func readDirty(at url: URL) async -> (Bool, Int) {
         let env = [
             "GIT_TERMINAL_PROMPT": "0",
+            // Read-only status must not take .git/index.lock for an opportunistic
+            // index refresh, so a picker scan never collides with the open repo's
+            // git operations.
+            "GIT_OPTIONAL_LOCKS": "0",
             "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/local/bin"
         ]
         do {
-            let result = try await ProcessRunner.run(
-                executable: URL(fileURLWithPath: "/usr/bin/env"),
-                arguments: ["git", "status", "--porcelain=v1", "-uall"],
-                workingDirectory: url,
-                environment: env
-            )
+            let result = try await GitCommandQueue.shared.run(repository: url) {
+                try await ProcessRunner.run(
+                    executable: URL(fileURLWithPath: "/usr/bin/env"),
+                    arguments: ["git", "status", "--porcelain=v1", "-uall"],
+                    workingDirectory: url,
+                    environment: env
+                )
+            }
             guard result.exitCode == 0 else { return (false, 0) }
             let lines = result.stdoutString.split(separator: "\n", omittingEmptySubsequences: true)
             return (!lines.isEmpty, lines.count)
