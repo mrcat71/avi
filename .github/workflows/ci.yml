@@ -19,7 +19,7 @@ jobs:
     runs-on: macos-15
     steps:
       - name: Check out
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Cache SwiftPM
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5 # renovate will pin this to a SHA on first run
         with:
@@ -41,7 +41,7 @@ jobs:
     runs-on: macos-15
     steps:
       - name: Check out
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Install SwiftFormat
         run: brew install --quiet swiftformat
       - name: SwiftFormat lint
@@ -53,7 +53,7 @@ jobs:
     needs: build-test
     steps:
       - name: Check out
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Cache SwiftPM
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5 # renovate will pin this to a SHA on first run
         with:
