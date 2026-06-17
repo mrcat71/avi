@@ -14,7 +14,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.19.2"),
         .package(url: "https://github.com/airbnb/lottie-spm", from: "4.6.1"),
-        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0"),
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.0.1"),
         .package(url: "https://github.com/sindresorhus/LaunchAtLogin-Modern", from: "1.1.0")
     ],
     targets: [
