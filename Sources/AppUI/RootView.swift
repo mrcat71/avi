@@ -4,9 +4,16 @@ import SwiftUI
 /// Top-level view hosted by the app shell. Owns the open repository tabs and
 /// routes commands to the selected repository.
 public struct RootView: View {
-    @State private var repositories: [RepositoryStore] = []
-    @State private var selectedRepositoryID: RepositoryStore.ID?
-    @State private var openErrorMessage: String?
+    @State private var session = WorkspaceSession()
+    private var repositories: [RepositoryStore] {
+        session.repositories
+    }
+
+    private var openErrorMessage: String? {
+        get { session.errorMessage }
+        nonmutating set { session.errorMessage = newValue }
+    }
+
     @State private var showingPicker: Bool = false
     @State private var showingCloneSheet: Bool = false
 
@@ -18,10 +25,11 @@ public struct RootView: View {
                 RepositoryView(
                     store: selectedStore,
                     repositories: repositories,
-                    selectedRepositoryID: $selectedRepositoryID,
+                    selectedRepositoryID: Binding(get: { session.selectedRepositoryID }, set: { session.select($0) }),
                     openRepositoryPicker: openRepositoryPicker,
                     closeRepository: closeRepository
                 )
+                .id(selectedStore.id)
                 .sheet(isPresented: $showingPicker) {
                     RepositoryPickerView(
                         openRepository: { url in
@@ -80,17 +88,17 @@ public struct RootView: View {
     }
 
     private var selectedStore: RepositoryStore? {
-        if let selectedRepositoryID,
-           let store = repositories.first(where: { $0.id == selectedRepositoryID }) {
-            return store
-        }
-        return repositories.first
+        session.selectedRepository
     }
 
     private var openErrorPresented: Binding<Bool> {
         Binding(
             get: { openErrorMessage != nil },
-            set: { presented in if !presented { openErrorMessage = nil } }
+            set: {
+                presented in if !presented {
+                    openErrorMessage = nil
+                }
+            }
         )
     }
 
@@ -103,41 +111,10 @@ public struct RootView: View {
     }
 
     private func openRepository(_ url: URL) {
-        Task { @MainActor in
-            let candidate = RepositoryStore()
-            await candidate.open(url)
-
-            guard let root = candidate.root else {
-                openErrorMessage = candidate.errorMessage ?? "Not a git repository: \(url.path)"
-                return
-            }
-
-            if let existing = repositories.first(where: { store in
-                guard let existingRoot = store.root else { return false }
-                return sameRepository(existingRoot, root)
-            }) {
-                selectedRepositoryID = existing.id
-                return
-            }
-
-            repositories.append(candidate)
-            selectedRepositoryID = candidate.id
-        }
+        Task { await session.open(url) }
     }
 
     private func closeRepository(_ id: RepositoryStore.ID) {
-        guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
-        repositories.remove(at: index)
-
-        guard selectedRepositoryID == id else { return }
-        if repositories.indices.contains(index) {
-            selectedRepositoryID = repositories[index].id
-        } else {
-            selectedRepositoryID = repositories.last?.id
-        }
-    }
-
-    private func sameRepository(_ lhs: URL, _ rhs: URL) -> Bool {
-        lhs.standardizedFileURL.path == rhs.standardizedFileURL.path
+        session.close(id)
     }
 }
