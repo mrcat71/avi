@@ -288,7 +288,8 @@ private struct HistoryRowView: View {
                             badge: badge,
                             hasLocalChanges: !store.entries.isEmpty,
                             select: { Task { await store.selectCommit(row.commit) } },
-                            checkout: checkoutRef
+                            checkout: checkoutRef,
+                            store: store
                         )
                     }
 
@@ -399,9 +400,18 @@ private struct BadgePill: View {
     let hasLocalChanges: Bool
     let select: () -> Void
     let checkout: (GitReference) -> Void
+    let store: RepositoryStore
 
     var body: some View {
-        ReferenceActionButton(ref: badge.ref, hasLocalChanges: hasLocalChanges, select: select, checkout: checkout) {
+        ReferenceActionButton(
+            ref: badge.ref,
+            hasLocalChanges: hasLocalChanges,
+            select: select,
+            checkout: checkout,
+            pushRemote: store.defaultRemoteName,
+            pushTag: { tag in Task { await store.pushTag(name: tag.name) } },
+            deleteTag: { tag in Task { await store.deleteTag(named: tag.name) } }
+        ) {
             AviBadge(badgeKind, text: label)
         }
         .aviTooltip {

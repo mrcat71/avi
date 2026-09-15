@@ -35,6 +35,9 @@ public final class RepositoryStore: Identifiable {
     public private(set) var isStashLoading = false
     public private(set) var refs: RepositoryRefs = .empty
     public private(set) var stashes: [StashEntry] = []
+    /// Every worktree of this repository, main first. Empty until the first refresh.
+    public private(set) var worktrees: [Worktree] = []
+    public private(set) var location: RepositoryLocation?
     public private(set) var remotes: [GitRemote] = []
     public private(set) var defaultBranchName: String?
     public private(set) var remoteOutput: String?
@@ -145,13 +148,17 @@ public final class RepositoryStore: Identifiable {
             diff = nil
             refs = .empty
             stashes = []
+            worktrees = []
             remotes = []
             defaultBranchName = nil
             remoteOutput = nil
             clearHistorySelection()
             expandedFolders = []
             lastSeenFolderIds = []
-            startWatching(resolved)
+            // A linked worktree keeps its refs in the main repository, so the
+            // common dir has to be watched too or this tab never sees them change.
+            location = try? await git.location(of: resolved)
+            startWatching(resolved, commonDir: location?.commonDir)
             RecentRepositories.add(resolved)
             await refresh()
         } catch {
@@ -327,9 +334,31 @@ public final class RepositoryStore: Identifiable {
 
         do {
             refs = try await git.refs(in: root)
+            worktrees = try await git.worktrees(in: root)
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Worktree currently holding each branch, keyed by branch name. A branch in
+    /// this map cannot be checked out here until that worktree releases it.
+    public var branchHolders: [String: Worktree] {
+        // Falling back to `root` matters: without a current path every worktree,
+        // including this one, would look like it holds its branch elsewhere.
+        let current = (location?.workingTree ?? root)?.resolvingSymlinksInPath().standardizedFileURL.path
+        return worktrees.reduce(into: [:]) { result, worktree in
+            guard let branch = worktree.branch,
+                  worktree.path.resolvingSymlinksInPath().standardizedFileURL.path != current
+            else { return }
+            result[branch] = worktree
+        }
+    }
+
+    /// The worktree this store is open on, when it can be identified.
+    public var currentWorktree: Worktree? {
+        guard let path = (location?.workingTree ?? root)?.resolvingSymlinksInPath().standardizedFileURL.path
+        else { return nil }
+        return worktrees.first { $0.path.resolvingSymlinksInPath().standardizedFileURL.path == path }
     }
 
     public func refreshStashes() async {
@@ -441,6 +470,22 @@ public final class RepositoryStore: Identifiable {
         await performRemoteOperation {
             try await $0.pushTag(name: name, remote: remote, in: $1)
         }
+    }
+
+    /// Deletes the tag locally. A tag already on the remote stays there, so a
+    /// published release keeps the commit it was built from.
+    public func deleteTag(named name: String) async {
+        await perform {
+            try await $0.deleteTag(named: name, in: $1)
+        }
+    }
+
+    /// Remote used when nothing branch-specific applies, such as a tag push.
+    public var defaultRemoteName: String? {
+        if remotes.contains(where: { $0.name == "origin" }) {
+            return "origin"
+        }
+        return remotes.first?.name
     }
 
     public func renameBranch(from oldName: String, to newName: String) async {
@@ -567,10 +612,7 @@ public final class RepositoryStore: Identifiable {
            let head = upstream.split(separator: "/", maxSplits: 1).first {
             return String(head)
         }
-        if remotes.contains(where: { $0.name == "origin" }) {
-            return "origin"
-        }
-        return remotes.first?.name
+        return defaultRemoteName
     }
 
     public func setHistoryFilter(_ filter: HistoryFilter) async {
@@ -1103,7 +1145,12 @@ public final class RepositoryStore: Identifiable {
     }
 
     private func performRemoteOperation(_ action: (GitProviding, URL) async throws -> GitRemoteOperationResult) async {
-        guard let root, !isRemoteOperationRunning else { return }
+        guard let root else { return }
+        // Dropping the request silently reads as a dead button, so say why.
+        guard !isRemoteOperationRunning else {
+            errorMessage = "Another remote operation is still running. Wait for it to finish, then try again."
+            return
+        }
         isRemoteOperationRunning = true
         defer {
             isRemoteOperationRunning = false
@@ -1122,8 +1169,8 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
-    private func startWatching(_ url: URL) {
-        let watcher = RepositoryWatcher(url: url) { [weak self] in
+    private func startWatching(_ url: URL, commonDir: URL? = nil) {
+        let watcher = RepositoryWatcher(url: url, additionalPaths: [commonDir].compactMap(\.self)) { [weak self] in
             Task { @MainActor in
                 self?.scheduleAutoRefresh()
             }

@@ -3,13 +3,28 @@ import Foundation
 
 /// Watches a repository tree for filesystem changes and calls back after FSEvents fires.
 final class RepositoryWatcher {
-    private let url: URL
+    private let paths: [String]
     private let onChange: @Sendable () -> Void
     private var stream: FSEventStreamRef?
 
-    init(url: URL, onChange: @escaping @Sendable () -> Void) {
-        self.url = url
+    /// `additionalPaths` covers a linked worktree, whose refs live in the main
+    /// repository's common dir and so never produce events under its own root.
+    init(url: URL, additionalPaths: [URL] = [], onChange: @escaping @Sendable () -> Void) {
+        paths = Self.watchPaths(root: url, additional: additionalPaths)
         self.onChange = onChange
+    }
+
+    /// Drops any path already covered by the root, so the common dir of an
+    /// ordinary repository is not watched twice.
+    static func watchPaths(root: URL, additional: [URL]) -> [String] {
+        let rootPath = root.resolvingSymlinksInPath().standardizedFileURL.path
+        var result = [rootPath]
+        for url in additional {
+            let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+            guard path != rootPath, !path.hasPrefix(rootPath + "/"), !result.contains(path) else { continue }
+            result.append(path)
+        }
+        return result
     }
 
     deinit {
@@ -43,7 +58,7 @@ final class RepositoryWatcher {
             nil,
             callback,
             &context,
-            [url.path] as CFArray,
+            paths as CFArray,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
             0.5,
             flags
