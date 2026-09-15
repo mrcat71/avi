@@ -61,7 +61,9 @@ enum MiniTOML {
     private static func encodeKey(_ key: String) -> String {
         let bareCharSet = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
         let isBare = !key.isEmpty && key.unicodeScalars.allSatisfy { bareCharSet.contains($0) }
-        if isBare { return key }
+        if isBare {
+            return key
+        }
         return "\"\(escapeString(key))\""
     }
 
@@ -348,9 +350,13 @@ enum MiniTOML {
             }
             let raw = String(text[start ..< index]).replacingOccurrences(of: "_", with: "")
             if raw.contains(".") || raw.lowercased().contains("e") {
-                if let d = Double(raw) { return d }
+                if let d = Double(raw) {
+                    return d
+                }
             }
-            if let i = Int(raw) { return i }
+            if let i = Int(raw) {
+                return i
+            }
             throw ParseError.unexpected("invalid number '\(raw)'", line: line)
         }
 
