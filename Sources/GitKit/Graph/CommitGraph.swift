@@ -143,9 +143,9 @@ public enum CommitGraph {
                 }
             }
 
-            // 4. Trim trailing free slots so laneCount stays compact at the end.
-            // Only trim if no future row could revive them; here we just trim trailing nils each row.
-            while slots.last == nil, !slots.isEmpty {
+            // 4. Unwrap Array.last's outer optional before checking the slot.
+            // Trim only trailing holes so active lane indices remain stable.
+            while let lastSlot = slots.last, lastSlot == nil {
                 slots.removeLast()
             }
 

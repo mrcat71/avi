@@ -82,6 +82,22 @@ struct CommitGraphTests {
         #expect(rows[1].lane == 0)
     }
 
+    @Test func trailingFreeLanesShrinkWithoutShiftingActiveLanes() {
+        let rows = CommitGraph.assignRows(for: [
+            commit("merge", parents: ["a", "b", "c"]),
+            commit("c"),
+            commit("a"),
+            commit("b"),
+            commit("unrelated")
+        ])
+
+        // Keep room for each terminating dot, but not on subsequent rows.
+        // Releasing lane 0 must not move the still-active lane 1.
+        #expect(rows.map(\.lane) == [0, 2, 0, 1, 0])
+        #expect(rows.map(\.laneCount) == [3, 3, 2, 2, 1])
+        #expect(rows[2].throughLanes == [1])
+    }
+
     @Test func laneIdentitiesUseBranchTipNames() {
         let refs = RepositoryRefs(
             localBranches: [
@@ -131,6 +147,7 @@ struct CommitGraphTests {
         // the side branch (lane 1) is reported as a mergeInLane so the
         // renderer draws its tail-into-dot curve.
         #expect(rows[3].mergeInLanes == [1])
+        #expect(rows[3].laneCount == 2)
 
         // After `b`, no through-lane at slot 1 - the orphan tail is gone.
         #expect(rows[4].throughLanes.contains(1) == false)
