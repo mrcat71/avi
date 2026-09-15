@@ -16,6 +16,10 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     /// Recorded calls for batched staging assertions in tests.
     public private(set) var stagePathsCalls: [[String]] = []
     public private(set) var unstagePathsCalls: [[String]] = []
+    /// Branch names passed to `deleteBranch`, in call order.
+    public private(set) var deleteBranchCalls: [String] = []
+    /// Branches that `deleteBranch` refuses, mirroring `git branch -d` on unmerged work.
+    public var unmergedBranches: Set<String> = []
     /// Stash changed-files keyed by stash ref, for stash-content tests.
     public var stashChanges: [String: [CommitFileChange]] = [:]
 
@@ -78,7 +82,22 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func renameBranch(from _: String, to _: String, in _: URL) async throws {}
     public func setUpstream(branch _: String, upstream _: String, in _: URL) async throws {}
     public func unsetUpstream(branch _: String, in _: URL) async throws {}
-    public func deleteBranch(named _: String, in _: URL) async throws {}
+    public func deleteBranch(named name: String, in _: URL) async throws {
+        deleteBranchCalls.append(name)
+        if unmergedBranches.contains(name) {
+            throw GitError.commandFailed(
+                command: "git branch -d -- \(name)",
+                exitCode: 1,
+                stderr: "error: the branch '\(name)' is not fully merged"
+            )
+        }
+        refs = RepositoryRefs(
+            localBranches: refs.localBranches.filter { $0.name != name },
+            remoteBranches: refs.remoteBranches,
+            tags: refs.tags
+        )
+    }
+
     public func fetch(remote _: String?, in _: URL) async throws -> GitRemoteOperationResult {
         GitRemoteOperationResult(output: "ok")
     }

@@ -407,6 +407,30 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
+    /// Local branches whose upstream is gone from the remote. The current branch
+    /// is excluded because Git refuses to delete a checked-out branch.
+    public var goneBranches: [GitReference] {
+        refs.localBranches.filter { $0.isUpstreamGone && !$0.isCurrent }
+    }
+
+    /// Deletes every gone branch through Git's safe `branch -d`, which keeps any
+    /// branch still holding unmerged work. One refusal must not hide the others,
+    /// so every branch is attempted and the failures are reported together.
+    public func deleteGoneBranches() async {
+        guard let root else { return }
+        var failures: [String] = []
+        for branch in goneBranches {
+            do {
+                try await git.deleteBranch(named: branch.name, in: root)
+            } catch {
+                failures.append("\(branch.name): \(error.localizedDescription)")
+            }
+        }
+        await refresh()
+        guard !failures.isEmpty else { return }
+        errorMessage = "These branches were kept:\n\n" + failures.joined(separator: "\n\n")
+    }
+
     public func createTag(name: String, targetOID: String, message: String?) async {
         await perform {
             try await $0.createTag(name: name, targetOID: targetOID, message: message, in: $1)

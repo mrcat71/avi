@@ -11,6 +11,12 @@ struct RepositorySidebarView: View {
     @State private var remoteBranchesExpanded = true
     @State private var tagsExpanded = true
     @State private var stashesExpanded = true
+    @State private var confirmingGoneCleanup = false
+
+    private var goneCleanupTitle: String {
+        let count = store.goneBranches.count
+        return count == 1 ? "Delete 1 gone branch?" : "Delete \(count) gone branches?"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -138,7 +144,31 @@ struct RepositorySidebarView: View {
             title: "Branches",
             count: store.refs.localBranches.count,
             isExpanded: $branchesExpanded
-        )
+        ) {
+            if !store.goneBranches.isEmpty {
+                Button {
+                    confirmingGoneCleanup = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: DS.IconScale.xs, weight: .semibold))
+                        .foregroundStyle(DS.Palette.textSecondary)
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(goneCleanupTitle)
+                .accessibilityLabel(goneCleanupTitle)
+                .accessibilityIdentifier("branches.deleteGone")
+            }
+        }
+        .confirmationDialog(goneCleanupTitle, isPresented: $confirmingGoneCleanup, titleVisibility: .visible) {
+            Button("Delete Branches", role: .destructive) {
+                Task { await store.deleteGoneBranches() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Their upstream branch no longer exists on the remote. Git keeps any branch that still holds unmerged work.")
+        }
 
         if branchesExpanded {
             VStack(spacing: 1) {
@@ -388,13 +418,20 @@ private struct PrimarySidebarRow: View {
     }
 }
 
-private struct SidebarSectionHeader: View {
+private struct SidebarSectionHeader<Trailing: View>: View {
     let title: String
     let count: Int
     @Binding var isExpanded: Bool
+    @ViewBuilder let trailing: () -> Trailing
 
     var body: some View {
-        AviSectionHeader(title, count: count, isExpanded: $isExpanded)
+        AviSectionHeader(title, count: count, isExpanded: $isExpanded, trailing: trailing)
+    }
+}
+
+extension SidebarSectionHeader where Trailing == EmptyView {
+    init(title: String, count: Int, isExpanded: Binding<Bool>) {
+        self.init(title: title, count: count, isExpanded: isExpanded) { EmptyView() }
     }
 }
 
@@ -481,6 +518,11 @@ struct LocalBranchRow: View {
                 .fill(rowFill)
         )
         .contentShape(Rectangle())
+        // Registered before the single-tap gesture so the second click reaches it.
+        .onTapGesture(count: 2) {
+            guard !ref.isCurrent else { return }
+            checkout()
+        }
         .onTapGesture(perform: select)
         .onHover { isHovering = $0 }
         .help(tooltip)
