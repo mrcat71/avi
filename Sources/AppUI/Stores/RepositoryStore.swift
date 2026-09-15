@@ -13,7 +13,16 @@ public final class RepositoryStore: Identifiable {
     public private(set) var branch: BranchInfo?
     public private(set) var entries: [FileStatus] = []
     public private(set) var selectedPath: String?
+    public private(set) var selectedDiffSource: DiffSource = .unstaged
     public private(set) var diff: FileDiff?
+    public private(set) var diffError: String?
+    private var diffRequestID = UUID()
+    private var historyRequestID = UUID()
+    private var commitRequestID = UUID()
+    private var commitDiffRequestID = UUID()
+    public private(set) var isCommitLoading = false
+    public private(set) var commitDiffError: String?
+    var workspaceSelection: RepositorySelection?
     public private(set) var historyRows: [CommitGraphRow] = []
     public private(set) var selectedCommitOID: String?
     public private(set) var commitFiles: [CommitFileChange] = []
@@ -51,6 +60,7 @@ public final class RepositoryStore: Identifiable {
     public var aiRewordPreview: AIRewordPreview?
     public var aiSplitPreview: AISplitPreview?
     public var isAIWorking: Bool = false
+    public private(set) var isApplyingAISplit = false
     public var rebaseInProgress: Bool = false
     private var aiTask: Task<Void, Never>?
     /// Folder ids we've seen at least once during this session. Used to decide
@@ -62,16 +72,26 @@ public final class RepositoryStore: Identifiable {
     public var commitMessage: String {
         let trimmedSummary = commitSummary.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedBody = commitBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedBody.isEmpty { return trimmedSummary }
+        if trimmedBody.isEmpty {
+            return trimmedSummary
+        }
         return trimmedSummary + "\n\n" + trimmedBody
     }
 
     private let git: GitProviding
     private var watcher: RepositoryWatcher?
     private var autoRefreshTask: Task<Void, Never>?
+    private var refreshPending = false
+    private let refreshCoordinator = RefreshCoordinator()
 
     public init(git: GitProviding = CLIGitProvider()) {
         self.git = git
+    }
+
+    func stopBackgroundObservation() {
+        autoRefreshTask?.cancel()
+        autoRefreshTask = nil
+        watcher = nil
     }
 
     public var stagedEntries: [FileStatus] {
@@ -164,11 +184,22 @@ public final class RepositoryStore: Identifiable {
     }
 
     public func refresh() async {
+        await refreshCoordinator.run { [self] in await refreshSnapshot() }
+    }
+
+    private func refreshSnapshot() async {
         guard let root else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            if refreshPending {
+                refreshPending = false
+                scheduleAutoRefresh()
+            }
+        }
         do {
             let status = try await git.status(in: root)
+            guard self.root == root else { return }
             branch = status.branch
             entries = status.entries
             let currentFolderIds = FileTreeBuilder.allFolderIds(for: entries)
@@ -216,12 +247,14 @@ public final class RepositoryStore: Identifiable {
         lastFetched = attributes?[.modificationDate] as? Date
     }
 
-    public func select(_ file: FileStatus?) async {
+    public func select(_ file: FileStatus?, source: DiffSource? = nil) async {
+        diffRequestID = UUID()
         selectedPath = file?.path
+        diff = nil
+        diffError = nil
         if let file {
+            selectedDiffSource = source ?? (file.isUntracked ? .untracked : (file.hasUnstagedChanges ? .unstaged : .staged))
             await loadDiff(for: file)
-        } else {
-            diff = nil
         }
     }
 
@@ -251,7 +284,7 @@ public final class RepositoryStore: Identifiable {
         do {
             try await git.stage(paths: files.map(\.path), in: root)
             await refresh()
-            await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(unstagedEntries.map(\.path)))
+            await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(unstagedEntries.map(\.path)), source: .unstaged)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -265,7 +298,7 @@ public final class RepositoryStore: Identifiable {
         do {
             try await git.unstage(paths: files.map(\.path), in: root)
             await refresh()
-            await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(stagedEntries.map(\.path)))
+            await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(stagedEntries.map(\.path)), source: .staged)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -274,10 +307,10 @@ public final class RepositoryStore: Identifiable {
     /// Pick the next file to select after a batched stage/unstage. Setting
     /// `selectedPath` drives the change list's highlight + diff via its existing
     /// `onChange(of: store.selectedPath)` sync.
-    private func advanceSelection(visibleOrder: [String], acted: Set<String>, surviving: Set<String>) async {
+    private func advanceSelection(visibleOrder: [String], acted: Set<String>, surviving: Set<String>, source: DiffSource) async {
         if let next = nextSelection(visibleOrder: visibleOrder, acted: acted, surviving: surviving),
            let file = entries.first(where: { $0.path == next }) {
-            await select(file)
+            await select(file, source: file.isUntracked ? .untracked : source)
         } else {
             await select(nil)
         }
@@ -313,11 +346,13 @@ public final class RepositoryStore: Identifiable {
     public func refreshDefaultBranch() async {
         guard let root else { return }
         let remoteName: String? = {
-            if remotes.contains(where: { $0.name == "origin" }) { return "origin" }
+            if remotes.contains(where: { $0.name == "origin" }) {
+                return "origin"
+            }
             return remotes.first?.name
         }()
         if let remoteName {
-            let detected = (try? await git.defaultBranch(remote: remoteName, in: root)) ?? nil
+            let detected = await (try? git.defaultBranch(remote: remoteName, in: root)) ?? nil
             if let detected, !detected.isEmpty {
                 defaultBranchName = detected
                 return
@@ -469,10 +504,12 @@ public final class RepositoryStore: Identifiable {
 
         await push(branch: branch, remote: remoteName, force: false, pushTags: false)
         // performRemoteOperation surfaces failures via errorMessage; bail if push failed.
-        if errorMessage != nil { return }
+        if errorMessage != nil {
+            return
+        }
 
         let hint = RemoteURLParser.hint(from: gitRemote)
-        let detected = (try? await git.defaultBranch(remote: remoteName, in: root)) ?? nil
+        let detected = await (try? git.defaultBranch(remote: remoteName, in: root)) ?? nil
         let base: String
         if let detected, !detected.isEmpty {
             base = detected
@@ -506,7 +543,9 @@ public final class RepositoryStore: Identifiable {
            let head = upstream.split(separator: "/", maxSplits: 1).first {
             return String(head)
         }
-        if remotes.contains(where: { $0.name == "origin" }) { return "origin" }
+        if remotes.contains(where: { $0.name == "origin" }) {
+            return "origin"
+        }
         return remotes.first?.name
     }
 
@@ -517,8 +556,15 @@ public final class RepositoryStore: Identifiable {
 
     public func refreshHistory(limit: Int = 200) async {
         guard let root else { return }
+        let requestID = UUID()
+        historyRequestID = requestID
+        let filter = historyFilter
         isHistoryLoading = true
-        defer { isHistoryLoading = false }
+        defer {
+            if historyRequestID == requestID {
+                isHistoryLoading = false
+            }
+        }
 
         do {
             // Fetch the requested window. If the resulting commits reference
@@ -527,11 +573,13 @@ public final class RepositoryStore: Identifiable {
             // larger windows so the graph never dangles a lane into empty
             // space. Capped so a pathological branch can't blow the budget.
             var effectiveLimit = limit
-            var commits = try await git.history(in: root, limit: effectiveLimit, filter: historyFilter)
+            var commits = try await git.history(in: root, limit: effectiveLimit, filter: filter)
+            guard historyRequestID == requestID, self.root == root else { return }
             var extensions = 0
             while extensions < Self.maxAutoExtendSteps, !orphanParents(in: commits).isEmpty {
                 let nextLimit = effectiveLimit + Self.autoExtendStep
-                let next = try await git.history(in: root, limit: nextLimit, filter: historyFilter)
+                let next = try await git.history(in: root, limit: nextLimit, filter: filter)
+                guard historyRequestID == requestID, self.root == root else { return }
                 if next.count <= commits.count {
                     // Repo is shorter than the new limit; further extensions won't help.
                     break
@@ -545,11 +593,16 @@ public final class RepositoryStore: Identifiable {
 
             if let selectedCommitOID,
                let row = historyRows.first(where: { $0.commit.oid == selectedCommitOID }) {
-                await selectCommit(row.commit)
+                // Commit objects are immutable. Preserve file selection and scroll
+                // position when a status refresh returns the same selected commit.
+                if commitDiffError != nil {
+                    await selectCommit(row.commit)
+                }
             } else {
                 await selectCommit(historyRows.first?.commit)
             }
         } catch {
+            guard historyRequestID == requestID, self.root == root else { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -584,22 +637,40 @@ public final class RepositoryStore: Identifiable {
             return
         }
 
+        let requestID = UUID()
+        commitRequestID = requestID
+        commitDiffRequestID = UUID()
+        isCommitLoading = true
+        commitDiffError = nil
+        defer {
+            if commitRequestID == requestID {
+                isCommitLoading = false
+            }
+        }
         selectedCommitOID = commit.oid
         commitFiles = []
         selectedCommitPath = nil
         commitDiff = nil
 
         do {
-            commitFiles = try await git.changedFiles(in: commit.oid, in: root)
+            let files = try await git.changedFiles(in: commit.oid, in: root)
+            guard commitRequestID == requestID, self.root == root else { return }
+            commitFiles = files
             await selectCommitFile(commitFiles.first)
         } catch {
+            guard commitRequestID == requestID, self.root == root else { return }
             errorMessage = error.localizedDescription
+            commitDiffError = error.localizedDescription
             commitFiles = []
             commitDiff = nil
         }
     }
 
     public func selectCommitFile(_ file: CommitFileChange?) async {
+        let requestID = UUID()
+        commitDiffRequestID = requestID
+        commitDiff = nil
+        commitDiffError = nil
         guard let root, let selectedCommitOID, let file else {
             selectedCommitPath = nil
             commitDiff = nil
@@ -608,9 +679,12 @@ public final class RepositoryStore: Identifiable {
 
         selectedCommitPath = file.path
         do {
-            commitDiff = try await git.diff(commitOID: selectedCommitOID, path: file.path, in: root)
+            let result = try await git.diff(commitOID: selectedCommitOID, path: file.path, in: root)
+            guard commitDiffRequestID == requestID, self.selectedCommitOID == selectedCommitOID, self.root == root else { return }
+            commitDiff = result
         } catch {
-            errorMessage = error.localizedDescription
+            guard commitDiffRequestID == requestID, self.selectedCommitOID == selectedCommitOID, self.root == root else { return }
+            commitDiffError = error.localizedDescription
             commitDiff = nil
         }
     }
@@ -711,7 +785,9 @@ public final class RepositoryStore: Identifiable {
 
             // Pre-flight validation so we never hang waiting on a broken setup.
             let report = await AICLIValidator.validate(config)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
             if !report.isValid {
                 aiErrorDetail = AIErrorDetail(
                     title: "AI setup not ready",
@@ -723,7 +799,9 @@ public final class RepositoryStore: Identifiable {
 
             do {
                 let diff = try await git.stagedDiff(in: root)
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     aiErrorDetail = AIErrorDetail(
                         title: "Nothing staged",
@@ -752,7 +830,9 @@ public final class RepositoryStore: Identifiable {
                     maxTokens: config.maxTokens,
                     reasoningEffort: config.reasoningEffort
                 )
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 let (subject, body) = splitGeneratedMessage(text)
                 let runResult = AIRunResult(
                     provider: config.backend,
@@ -778,7 +858,9 @@ public final class RepositoryStore: Identifiable {
                 }
                 // Success: do NOT auto-open the drawer. Respect prior user state.
             } catch let err as AIEngineError {
-                if case .cancelled = err { return }
+                if case .cancelled = err {
+                    return
+                }
                 self.aiErrorDetail = AIErrorDetail(
                     title: errorTitle(for: err),
                     message: err.errorDescription ?? "AI error",
@@ -838,8 +920,12 @@ public final class RepositoryStore: Identifiable {
     /// unread error after dismissing the drawer.
     public var aiDebugHasUnreadError: Bool {
         guard let run = aiDebugLatestRun else { return false }
-        if run.timedOut { return true }
-        if let exit = run.exitCode, exit != 0 { return true }
+        if run.timedOut {
+            return true
+        }
+        if let exit = run.exitCode, exit != 0 {
+            return true
+        }
         return false
     }
 
@@ -939,11 +1025,23 @@ public final class RepositoryStore: Identifiable {
 
     private func loadDiff(for file: FileStatus) async {
         guard let root else { return }
-        let source: DiffSource = file.isUntracked ? .untracked : (file.hasUnstagedChanges ? .unstaged : .staged)
+        let requestID = UUID()
+        diffRequestID = requestID
+        let source: DiffSource
+        if selectedDiffSource == .staged, file.isStaged {
+            source = .staged
+        } else {
+            source = file.isUntracked ? .untracked : (file.hasUnstagedChanges ? .unstaged : .staged)
+        }
+        selectedDiffSource = source
+        diffError = nil
         do {
-            diff = try await git.diff(path: file.path, source: source, in: root)
+            let result = try await git.diff(path: file.path, source: source, in: root)
+            guard diffRequestID == requestID, selectedPath == file.path, self.root == root else { return }
+            diff = result
         } catch {
-            errorMessage = error.localizedDescription
+            guard diffRequestID == requestID, selectedPath == file.path, self.root == root else { return }
+            diffError = error.localizedDescription
             diff = nil
         }
     }
@@ -967,7 +1065,9 @@ public final class RepositoryStore: Identifiable {
     private func preserveSelection(priorPath: String?, priorEntries: [FileStatus]) async {
         guard let priorPath else { return }
         let survives = entries.contains { $0.path == priorPath }
-        if survives { return }
+        if survives {
+            return
+        }
         guard let priorIndex = priorEntries.firstIndex(where: { $0.path == priorPath }) else { return }
         let livingPaths = Set(entries.map(\.path))
         let forward = priorEntries.suffix(from: priorIndex + 1).first { livingPaths.contains($0.path) }
@@ -979,9 +1079,15 @@ public final class RepositoryStore: Identifiable {
     }
 
     private func performRemoteOperation(_ action: (GitProviding, URL) async throws -> GitRemoteOperationResult) async {
-        guard let root else { return }
+        guard let root, !isRemoteOperationRunning else { return }
         isRemoteOperationRunning = true
-        defer { isRemoteOperationRunning = false }
+        defer {
+            isRemoteOperationRunning = false
+            if refreshPending {
+                refreshPending = false
+                scheduleAutoRefresh()
+            }
+        }
 
         do {
             let result = try await action(git, root)
@@ -1003,7 +1109,11 @@ public final class RepositoryStore: Identifiable {
     }
 
     private func scheduleAutoRefresh() {
-        guard root != nil, !isLoading, !isRemoteOperationRunning else { return }
+        guard root != nil else { return }
+        if isLoading || isRemoteOperationRunning {
+            refreshPending = true
+            return
+        }
         autoRefreshTask?.cancel()
         autoRefreshTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
@@ -1013,6 +1123,10 @@ public final class RepositoryStore: Identifiable {
     }
 
     private func clearHistorySelection() {
+        commitRequestID = UUID()
+        commitDiffRequestID = UUID()
+        isCommitLoading = false
+        commitDiffError = nil
         selectedCommitOID = nil
         commitFiles = []
         selectedCommitPath = nil
@@ -1033,7 +1147,9 @@ public final class RepositoryStore: Identifiable {
             defer { self.isAIWorking = false }
 
             let report = await AICLIValidator.validate(config)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
             if !report.isValid {
                 aiErrorDetail = AIErrorDetail(
                     title: "AI setup not ready",
@@ -1070,7 +1186,9 @@ public final class RepositoryStore: Identifiable {
                     maxTokens: config.maxTokens,
                     reasoningEffort: config.reasoningEffort
                 )
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 let proposed = Self.cleanRewordResponse(raw)
                 aiDebugLatestRun = AIRunResult(
                     provider: config.backend,
@@ -1089,7 +1207,9 @@ public final class RepositoryStore: Identifiable {
                     proposed: proposed
                 )
             } catch let err as AIEngineError {
-                if case .cancelled = err { return }
+                if case .cancelled = err {
+                    return
+                }
                 aiErrorDetail = AIErrorDetail(
                     title: errorTitle(for: err),
                     message: err.errorDescription ?? "AI error",
@@ -1118,12 +1238,7 @@ public final class RepositoryStore: Identifiable {
         aiRewordPreview = nil
         Task { @MainActor in
             do {
-                let headOID = await currentHeadOID() ?? ""
-                if preview.oid == "HEAD" || preview.oid == headOID {
-                    try await git.amend(message: edited, in: root)
-                } else {
-                    try await git.rebaseSingle(commit: preview.oid, action: .reword(newMessage: edited), in: root)
-                }
+                try await git.rebaseSingle(commit: preview.oid, action: .reword(newMessage: edited), in: root)
                 rebaseInProgress = await git.isRebaseInProgress(in: root)
                 await refresh()
                 await refreshHistory()
@@ -1146,7 +1261,9 @@ public final class RepositoryStore: Identifiable {
             defer { self.isAIWorking = false }
 
             let report = await AICLIValidator.validate(config)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
             if !report.isValid {
                 aiErrorDetail = AIErrorDetail(
                     title: "AI setup not ready",
@@ -1225,7 +1342,9 @@ public final class RepositoryStore: Identifiable {
             defer { self.isAIWorking = false }
 
             let report = await AICLIValidator.validate(config)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
             if !report.isValid {
                 aiErrorDetail = AIErrorDetail(
                     title: "AI setup not ready",
@@ -1265,7 +1384,9 @@ public final class RepositoryStore: Identifiable {
             defer { self.isAIWorking = false }
 
             let report = await AICLIValidator.validate(config)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                return
+            }
             if !report.isValid {
                 aiErrorDetail = AIErrorDetail(
                     title: "AI setup not ready",
@@ -1297,18 +1418,22 @@ public final class RepositoryStore: Identifiable {
     }
 
     public func applyAISplitPreview() {
-        guard let preview = aiSplitPreview, let root else { return }
+        guard !isApplyingAISplit, let preview = aiSplitPreview, let root else { return }
         let groups = preview.groups
         guard !groups.isEmpty else { return }
+        isApplyingAISplit = true
+        // Consume the preview before suspending; partial failures must not be replayed.
+        aiSplitPreview = nil
         Task { @MainActor in
+            defer { isApplyingAISplit = false }
             do {
                 switch preview.source {
                 case .staged:
-                    try await git.unstageAll(in: root)
-                    for group in groups {
-                        try await stageGroup(group, in: root)
-                        try await git.commit(message: group.message, in: root)
-                    }
+                    let plan = StagedCommitPlan(
+                        groups: groups.map { .init(files: $0.files, message: $0.message) },
+                        expectedDiff: preview.sourceDiff
+                    )
+                    try await git.splitStagedChanges(plan, in: root)
                 case .oldCommit(let oid):
                     try await git.rebaseSingle(commit: oid, action: .edit, in: root)
                     try await git.reset(mode: .mixed, target: "HEAD^", in: root)
@@ -1328,13 +1453,14 @@ public final class RepositoryStore: Identifiable {
                     }
                     _ = try await git.rebaseContinue(in: root)
                 }
-                aiSplitPreview = nil
                 rebaseInProgress = await git.isRebaseInProgress(in: root)
                 await refresh()
                 await refreshHistory()
             } catch {
-                errorMessage = error.localizedDescription
+                let failure = error.localizedDescription
                 rebaseInProgress = await git.isRebaseInProgress(in: root)
+                await refresh()
+                errorMessage = failure
             }
         }
     }
@@ -1389,7 +1515,8 @@ public final class RepositoryStore: Identifiable {
         )
         do {
             let groups = try AISplitParser.parse(raw)
-            aiSplitPreview = AISplitPreview(source: source, groups: groups)
+            try Task.checkCancellation()
+            aiSplitPreview = AISplitPreview(source: source, sourceDiff: diff, groups: groups)
         } catch let err as AISplitParseError {
             aiErrorDetail = AIErrorDetail(
                 title: "Could not parse AI response",
@@ -1406,7 +1533,9 @@ public final class RepositoryStore: Identifiable {
     }
 
     private func handleAIError(_ err: AIEngineError) {
-        if case .cancelled = err { return }
+        if case .cancelled = err {
+            return
+        }
         aiErrorDetail = AIErrorDetail(
             title: errorTitle(for: err),
             message: err.errorDescription ?? "AI error",
@@ -1416,10 +1545,6 @@ public final class RepositoryStore: Identifiable {
             aiDebugLatestRun = r
             openAIDebugDrawer()
         }
-    }
-
-    private func currentHeadOID() async -> String? {
-        historyRows.first?.commit.oid
     }
 
     /// Strip surrounding triple-backtick fencing and trim whitespace from a
@@ -1455,5 +1580,6 @@ public struct AISplitPreview: Equatable, Sendable {
     }
 
     public let source: Source
+    public let sourceDiff: String
     public var groups: [AICommitGroup]
 }
