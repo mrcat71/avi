@@ -2,8 +2,8 @@ import Foundation
 
 /// Parses NUL-record, unit-separator-field output from `git for-each-ref`.
 ///
-/// Expected format string (8 fields):
-/// `%(refname)<US>%(objectname)<US>%(upstream:short)<US>%(upstream:track)<US>%(HEAD)<US>%(subject)<US>%(taggerdate:iso-strict)<US>%(contents:subject)<NUL>`
+/// Expected format string (9 fields):
+/// `%(refname)<US>%(objectname)<US>%(upstream:short)<US>%(upstream:track)<US>%(HEAD)<US>%(subject)<US>%(taggerdate:iso-strict)<US>%(*objectname)<US>%(contents:subject)<NUL>`
 public enum RefParser {
     private static let fieldSeparator = Character("\u{1F}")
     private static let trackingRegex = try! NSRegularExpression(
@@ -25,8 +25,8 @@ public enum RefParser {
             let text = rawText.trimmingCharacters(in: .newlines)
             guard !text.isEmpty else { continue }
 
-            let fields = text.split(separator: fieldSeparator, maxSplits: 7, omittingEmptySubsequences: false)
-            guard fields.count == 8 else {
+            let fields = text.split(separator: fieldSeparator, maxSplits: 8, omittingEmptySubsequences: false)
+            guard fields.count == 9 else {
                 throw GitError.parseFailed(text)
             }
 
@@ -37,7 +37,8 @@ public enum RefParser {
             let isCurrent = String(fields[4]) == "*"
             let subject = String(fields[5]).nilIfEmpty
             let taggerDateText = String(fields[6])
-            let annotatedSubject = String(fields[7]).nilIfEmpty
+            let peeledOID = String(fields[7]).nilIfEmpty
+            let annotatedSubject = String(fields[8]).nilIfEmpty
 
             let tracking = parseTracking(trackingText)
 
@@ -77,7 +78,8 @@ public enum RefParser {
                     isCurrent: false,
                     subject: subject,
                     taggerDate: isAnnotated ? parseIsoDate(taggerDateText) : nil,
-                    annotatedMessage: isAnnotated ? annotatedSubject : nil
+                    annotatedMessage: isAnnotated ? annotatedSubject : nil,
+                    peeledOID: peeledOID
                 ))
             }
         }

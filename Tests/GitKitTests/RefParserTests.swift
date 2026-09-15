@@ -9,7 +9,7 @@ struct RefParserTests {
             record("refs/heads/feature", "2222", "", "", "", "feature subject", "", ""),
             record("refs/remotes/origin/HEAD", "1111", "", "", "", "origin head", "", ""),
             record("refs/remotes/origin/main", "1111", "", "", "", "origin main", "", ""),
-            record("refs/tags/v1.0.0", "3333", "", "", "", "release", "2024-01-01T12:00:00+00:00", "release notes"),
+            record("refs/tags/v1.0.0", "3333", "", "", "", "release", "2024-01-01T12:00:00+00:00", "4444", "release notes"),
             ""
         ].joined(separator: "\u{0}")
 
@@ -28,6 +28,10 @@ struct RefParserTests {
         let tag = refs.tags.first
         #expect(tag?.annotatedMessage == "release notes")
         #expect(tag?.taggerDate != nil)
+        #expect(tag?.oid == "3333")
+        #expect(tag?.peeledOID == "4444")
+        #expect(tag?.targetOID == "4444")
+        #expect(main?.targetOID == main?.oid)
     }
 
     @Test func parsesGoneUpstream() throws {
@@ -69,6 +73,8 @@ struct RefParserTests {
         let tag = refs.tags.first
         #expect(tag?.taggerDate == nil)
         #expect(tag?.annotatedMessage == nil)
+        #expect(tag?.peeledOID == nil)
+        #expect(tag?.targetOID == "1111")
     }
 
     @Test func parsesEmptyTracking() throws {
@@ -85,6 +91,10 @@ struct RefParserTests {
     }
 
     private func record(_ fields: String...) -> String {
-        fields.joined(separator: "\u{1F}")
+        var fields = fields
+        if fields.count == 8 {
+            fields.insert("", at: 7)
+        }
+        return fields.joined(separator: "\u{1F}")
     }
 }
