@@ -32,6 +32,13 @@ public protocol GitProviding: Sendable {
     /// Top-level directory of the repository containing `url`. Throws if `url` is not in a repo.
     func repositoryRoot(for url: URL) async throws -> URL
 
+    /// Working tree, git dir, and common dir for `repository`. A linked worktree
+    /// reports a git dir under the main repository's `worktrees/` directory.
+    func location(of repository: URL) async throws -> RepositoryLocation
+
+    /// Every worktree attached to this repository, main worktree first.
+    func worktrees(in repository: URL) async throws -> [Worktree]
+
     /// Working-copy status of `repository`: current branch plus changed entries.
     func status(in repository: URL) async throws -> WorkingCopyStatus
 
@@ -86,6 +93,10 @@ public protocol GitProviding: Sendable {
     /// Push a single tag to `remote` (defaults to "origin" when nil).
     /// Runs `git push <remote> refs/tags/<name>`.
     func pushTag(name: String, remote: String?, in repository: URL) async throws -> GitRemoteOperationResult
+
+    /// Delete a tag from the local repository only. A tag already pushed stays
+    /// on the remote, because published tags are what releases are built from.
+    func deleteTag(named name: String, in repository: URL) async throws
 
     /// Fetch from one remote or all configured remotes when nil.
     func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult

@@ -29,6 +29,46 @@ public actor GitCommandQueue {
 
     public init() {}
 
+    /// Sibling worktrees have different working trees but one shared common dir
+    /// holding the refs, so they must queue against each other. Resolved from the
+    /// filesystem rather than `git rev-parse`: computing the key must never
+    /// enqueue a command on the queue it is computing the key for.
+    ///
+    /// A linked worktree's `.git` is a file reading `gitdir: <main>/.git/worktrees/<name>`.
+    /// Anything unexpected falls back to the working tree path, which is the
+    /// behaviour of an ordinary single-worktree repository.
+    static func queueKey(for repository: URL) -> String {
+        let root = repository.resolvingSymlinksInPath().standardizedFileURL
+        guard let commonDir = linkedWorktreeCommonDir(for: root) else { return root.path }
+        // Key on the main repository's root, which is the key an ordinary
+        // repository already produces, so both sides of the pair agree.
+        let main = commonDir.lastPathComponent == ".git"
+            ? commonDir.deletingLastPathComponent()
+            : commonDir
+        return main.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    /// Common dir of the repository `root` is linked to, or nil when `root` is an
+    /// ordinary working tree whose `.git` is a directory.
+    private static func linkedWorktreeCommonDir(for root: URL) -> URL? {
+        let dotGit = root.appendingPathComponent(".git")
+        guard let contents = try? String(contentsOf: dotGit, encoding: .utf8),
+              let gitDirLine = contents.split(separator: "\n").first(where: { $0.hasPrefix("gitdir:") })
+        else { return nil }
+
+        let rawPath = gitDirLine.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+        guard !rawPath.isEmpty else { return nil }
+        let gitDir = rawPath.hasPrefix("/")
+            ? URL(fileURLWithPath: rawPath)
+            : root.appendingPathComponent(rawPath)
+        let standardized = gitDir.standardizedFileURL
+        // <common dir>/worktrees/<name>
+        guard standardized.deletingLastPathComponent().lastPathComponent == "worktrees" else {
+            return nil
+        }
+        return standardized.deletingLastPathComponent().deletingLastPathComponent()
+    }
+
     /// Runs `operation` once all previously enqueued operations for `repository`
     /// have finished. The operation's result (or thrown error) is delivered to its
     /// own caller; a failure does not stall later operations in the chain.
@@ -37,7 +77,7 @@ public actor GitCommandQueue {
         _ operation: @Sendable @escaping () async throws -> T
     ) async throws -> T {
         try Task.checkCancellation()
-        let key = repository.resolvingSymlinksInPath().standardizedFileURL.path
+        let key = Self.queueKey(for: repository)
         let previous = tails[key]?.completion
         let id = UUID()
 

@@ -24,6 +24,12 @@ struct PushSheet: View {
                 remotePicker
             }
 
+            Text(outcomeDescription)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 130)
+
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("Push all tags", isOn: $pushAllTags)
                     .toggleStyle(.checkbox)
@@ -137,6 +143,34 @@ struct PushSheet: View {
 
     private var currentBranchName: String? {
         store.branch?.name
+    }
+
+    /// Spells out whether the push updates a remote branch or creates one, so
+    /// pushing never silently publishes a new name.
+    static func outcome(branch: String?, remote: String, upstream: String?, remoteBranches: [String]) -> String {
+        guard let branch else {
+            return "HEAD is detached, so there is no branch to push."
+        }
+        guard !remote.isEmpty else {
+            return "Choose a remote to push to."
+        }
+        let target = "\(remote)/\(branch)"
+        if upstream == target {
+            return "Updates \(target), the upstream of \(branch)."
+        }
+        if remoteBranches.contains(target) {
+            return "Updates the existing \(target) and makes it the upstream of \(branch)."
+        }
+        return "Creates \(target) and makes it the upstream of \(branch)."
+    }
+
+    private var outcomeDescription: String {
+        Self.outcome(
+            branch: currentBranchName,
+            remote: selectedRemote,
+            upstream: store.branch?.upstream,
+            remoteBranches: store.refs.remoteBranches.map(\.name)
+        )
     }
 
     private var availableRemotes: [String] {

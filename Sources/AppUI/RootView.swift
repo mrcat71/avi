@@ -61,8 +61,14 @@ public struct RootView: View {
         } message: {
             Text(openErrorMessage ?? "")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .aviOpenRepository)) { _ in
-            openRepositoryPicker()
+        .onReceive(NotificationCenter.default.publisher(for: .aviOpenRepository)) { notification in
+            // A URL means "open this path", such as a sibling worktree. The
+            // menu command carries nothing and still opens the picker.
+            if let url = notification.object as? URL {
+                openRepository(url)
+            } else {
+                openRepositoryPicker()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviRefreshRepository)) { _ in
             Task { await selectedStore?.refresh() }

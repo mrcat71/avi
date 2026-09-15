@@ -10,6 +10,10 @@ extension GitError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .commandFailed(command, exitCode, stderr):
+            if let worktree = GitError.worktreeHoldingBranch(stderr) {
+                return "That branch is checked out in another worktree (\(worktree)). "
+                    + "Switch to that worktree, or check out a different branch here."
+            }
             if GitError.indicatesLockContention(stderr) {
                 return "Git could not acquire a repository lock. Wait for other Git operations "
                     + "to finish, then retry. Do not remove a lock while another process may be using it.\n\n"
@@ -32,6 +36,19 @@ extension GitError {
     /// client (IDE, terminal, another GUI) can still hold `.git/index.lock`.
     /// Used to retry briefly (see `CLIGitProvider`) and to surface a clearer
     /// message instead of a raw `fatal:`.
+    /// Path from git's refusal to check out a branch another worktree holds:
+    /// "fatal: 'x' is already used by worktree at '/path'". nil for anything else.
+    static func worktreeHoldingBranch(_ stderr: String) -> String? {
+        guard stderr.contains("is already used by worktree at") else { return nil }
+        guard let start = stderr.range(of: "is already used by worktree at ") else { return nil }
+        let tail = stderr[start.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        let unquoted = tail.hasPrefix("'")
+            ? tail.dropFirst().prefix { $0 != "'" }
+            : tail.prefix { !$0.isNewline }
+        let path = String(unquoted)
+        return path.isEmpty ? nil : path
+    }
+
     static func indicatesLockContention(_ stderr: String) -> Bool {
         // index.lock: "Another git process seems to be running in this repository"
         // ref/index .lock: "... Unable to create '/path/X.lock': File exists."

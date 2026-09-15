@@ -11,6 +11,7 @@ struct RepositorySidebarView: View {
     @State private var remoteBranchesExpanded = true
     @State private var tagsExpanded = true
     @State private var stashesExpanded = true
+    @State private var worktreesExpanded = true
     @State private var confirmingGoneCleanup = false
 
     private var goneCleanupTitle: String {
@@ -32,6 +33,7 @@ struct RepositorySidebarView: View {
                     remoteBranchesSection
                     tagsSection
                     stashesSection
+                    worktreesSection
                 }
                 .padding(.bottom, 12)
             }
@@ -176,6 +178,7 @@ struct RepositorySidebarView: View {
                     LocalBranchRow(
                         ref: ref,
                         store: store,
+                        heldBy: store.branchHolders[ref.name],
                         isSelected: selection == .branch(name: ref.name),
                         select: {
                             selection = .branch(name: ref.name)
@@ -251,7 +254,8 @@ struct RepositorySidebarView: View {
                             },
                             checkout: { tag in
                                 Task { await store.checkout(tag) }
-                            }
+                            },
+                            store: store
                         )
                     }
                     if filteredTags.isEmpty {
@@ -263,6 +267,47 @@ struct RepositorySidebarView: View {
                 }
                 .padding(.horizontal, 8)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var worktreesSection: some View {
+        // Only worth a section once this repository actually has linked worktrees.
+        if store.worktrees.count > 1 {
+            SidebarSectionHeader(
+                title: "Worktrees",
+                count: store.worktrees.count,
+                isExpanded: $worktreesExpanded
+            )
+
+            if worktreesExpanded {
+                VStack(spacing: 1) {
+                    ForEach(filteredWorktrees) { worktree in
+                        WorktreeRow(
+                            worktree: worktree,
+                            isCurrent: worktree.path.standardizedFileURL == store.currentWorktree?.path.standardizedFileURL,
+                            open: {
+                                NotificationCenter.default.post(name: .aviOpenRepository, object: worktree.path)
+                            }
+                        )
+                    }
+                    if filteredWorktrees.isEmpty {
+                        EmptySectionRow(
+                            text: filter.isEmpty ? "No worktrees" : "No matches",
+                            action: filter.isEmpty ? nil : { filter = "" }
+                        )
+                    }
+                }
+                .padding(.horizontal, 8)
+            }
+        }
+    }
+
+    private var filteredWorktrees: [Worktree] {
+        guard !filter.isEmpty else { return store.worktrees }
+        return store.worktrees.filter {
+            $0.path.lastPathComponent.localizedCaseInsensitiveContains(filter)
+                || ($0.branch?.localizedCaseInsensitiveContains(filter) ?? false)
         }
     }
 
@@ -312,14 +357,13 @@ struct RepositorySidebarView: View {
 
     private var filteredLocalBranches: [GitReference] {
         let defaultName = store.defaultBranchName
+        // Only the default branch is pinned. Everything else stays in plain name
+        // order, so a checkout never reshuffles the list under the pointer.
         let sorted = store.refs.localBranches.sorted { lhs, rhs in
             let lhsIsDefault = lhs.name == defaultName
             let rhsIsDefault = rhs.name == defaultName
             if lhsIsDefault != rhsIsDefault {
                 return lhsIsDefault
-            }
-            if lhs.isCurrent != rhs.isCurrent {
-                return lhs.isCurrent
             }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
@@ -460,6 +504,9 @@ private struct EmptySectionRow: View {
 struct LocalBranchRow: View {
     let ref: GitReference
     let store: RepositoryStore
+    /// Worktree that already has this branch checked out, if any. Git refuses a
+    /// second checkout of the same branch, so the row says so instead.
+    var heldBy: Worktree?
     let isSelected: Bool
     let select: () -> Void
     let checkout: () -> Void
@@ -491,9 +538,11 @@ struct LocalBranchRow: View {
 
             aheadBehindChip
 
+            heldByIndicator
+
             Spacer(minLength: 4)
 
-            if !ref.isCurrent, isHovering || isSelected {
+            if showsCheckoutButton {
                 Button(action: checkout) {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.system(size: 10, weight: .medium))
@@ -520,7 +569,7 @@ struct LocalBranchRow: View {
         .contentShape(Rectangle())
         // Registered before the single-tap gesture so the second click reaches it.
         .onTapGesture(count: 2) {
-            guard !ref.isCurrent else { return }
+            guard !ref.isCurrent, heldBy == nil else { return }
             checkout()
         }
         .onTapGesture(perform: select)
@@ -561,9 +610,29 @@ struct LocalBranchRow: View {
         }
     }
 
+    private var showsCheckoutButton: Bool {
+        !ref.isCurrent && heldBy == nil && (isHovering || isSelected)
+    }
+
+    @ViewBuilder
+    private var heldByIndicator: some View {
+        if let heldBy {
+            let name = heldBy.path.lastPathComponent
+            Image(systemName: "square.split.2x1")
+                .font(.system(size: 9))
+                .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.secondary)
+                .help("Checked out in \(name)")
+                .accessibilityLabel("Checked out in worktree \(name)")
+        }
+    }
+
     @ViewBuilder
     private var branchContextMenu: some View {
-        if !ref.isCurrent {
+        if let heldBy {
+            Button("Checked Out in \(heldBy.path.lastPathComponent)") {
+                NotificationCenter.default.post(name: .aviOpenRepository, object: heldBy.path)
+            }
+        } else if !ref.isCurrent {
             Button("Checkout", action: checkout)
         }
         Button("Create Branch From Here") {
@@ -730,6 +799,9 @@ struct LocalBranchRow: View {
         }
         if ref.isUpstreamGone {
             parts.append("upstream gone")
+        }
+        if let heldBy {
+            parts.append("checked out in \(heldBy.path.lastPathComponent)")
         }
         return parts.joined(separator: " · ")
     }
@@ -904,18 +976,125 @@ private struct RemoteBranchRow: View {
     }
 }
 
+/// One linked worktree. Opening it adds a tab for that working tree; the
+/// worktree this tab already shows is not openable again.
+private struct WorktreeRow: View {
+    let worktree: Worktree
+    let isCurrent: Bool
+    let open: () -> Void
+
+    @Environment(\.aviDensity) private var density
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 6) {
+                Image(systemName: "square.split.2x1")
+                    .font(.system(size: 10))
+                    .frame(width: 12)
+                    .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
+
+                Text(worktree.path.lastPathComponent)
+                    .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(worktree.branch ?? (worktree.isBare ? "bare" : "detached"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if worktree.isLocked {
+                    badge("locked", color: .orange)
+                }
+                if worktree.isPrunable {
+                    badge("prunable", color: .red)
+                }
+
+                Spacer(minLength: 4)
+
+                if isCurrent {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(height: DS.compactRowHeight(for: density))
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovering && !isCurrent ? Color.primary.opacity(0.05) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isCurrent)
+        .onHover { isHovering = $0 }
+        .help(tooltip)
+        .accessibilityLabel(tooltip)
+        .contextMenu {
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: worktree.path.path)
+            }
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(worktree.path.path, forType: .string)
+            }
+        }
+    }
+
+    private func badge(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .bold))
+            .textCase(.uppercase)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(color))
+            .foregroundStyle(.white)
+    }
+
+    private var tooltip: String {
+        var parts = [worktree.path.path]
+        parts.append(worktree.branch.map { "on \($0)" } ?? (worktree.isBare ? "bare" : "detached HEAD"))
+        if isCurrent {
+            parts.append("this tab")
+        }
+        if let reason = worktree.lockReason {
+            parts.append("locked: \(reason)")
+        } else if worktree.isLocked {
+            parts.append("locked")
+        }
+        if let reason = worktree.prunableReason {
+            parts.append("prunable: \(reason)")
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
 private struct TagRow: View {
     let ref: GitReference
     let isSelected: Bool
     let hasLocalChanges: Bool
     let select: () -> Void
     let checkout: (GitReference) -> Void
+    let store: RepositoryStore
 
     @State private var isHovering = false
     @State private var showingPopover = false
 
     var body: some View {
-        ReferenceActionButton(ref: ref, hasLocalChanges: hasLocalChanges, select: select, checkout: checkout) {
+        ReferenceActionButton(
+            ref: ref,
+            hasLocalChanges: hasLocalChanges,
+            select: select,
+            checkout: checkout,
+            pushRemote: store.defaultRemoteName,
+            pushTag: { tag in Task { await store.pushTag(name: tag.name) } },
+            deleteTag: { tag in Task { await store.deleteTag(named: tag.name) } }
+        ) {
             rowLabel
         }
         .onHover { hovering in

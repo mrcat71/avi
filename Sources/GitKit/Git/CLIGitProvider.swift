@@ -27,6 +27,30 @@ public struct CLIGitProvider: GitProviding {
         return URL(fileURLWithPath: path, isDirectory: true)
     }
 
+    public func location(of repository: URL) async throws -> RepositoryLocation {
+        let result = try await run(
+            ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"],
+            in: repository
+        )
+        let paths = result.stdoutString
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard paths.count == 3 else {
+            throw GitError.parseFailed(result.stdoutString)
+        }
+        return RepositoryLocation(
+            workingTree: URL(fileURLWithPath: paths[0], isDirectory: true),
+            gitDir: URL(fileURLWithPath: paths[1], isDirectory: true),
+            commonDir: URL(fileURLWithPath: paths[2], isDirectory: true)
+        )
+    }
+
+    public func worktrees(in repository: URL) async throws -> [Worktree] {
+        let result = try await run(["worktree", "list", "--porcelain"], in: repository)
+        return try WorktreeParser.parse(result.stdoutString)
+    }
+
     public func status(in repository: URL) async throws -> WorkingCopyStatus {
         let result = try await run(["status", "--porcelain=v2", "--branch", "-z"], in: repository)
         return try StatusParser.parse(result.stdout)
@@ -211,6 +235,10 @@ public struct CLIGitProvider: GitProviding {
             args.append(contentsOf: [name, targetOID])
         }
         try await run(args, in: repository)
+    }
+
+    public func deleteTag(named name: String, in repository: URL) async throws {
+        try await run(["tag", "-d", "--", name], in: repository)
     }
 
     public func pushTag(name: String, remote: String?, in repository: URL) async throws -> GitRemoteOperationResult {
