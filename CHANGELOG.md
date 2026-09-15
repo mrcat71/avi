@@ -6,6 +6,29 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-14
+
+### Added
+- Native selectable diff text with Find support, horizontal scrolling, and separate old/new line-number gutters.
+- Explicit confirmation before checking out a tag. Clicking a sidebar reference inspects its commit without changing the working tree.
+
+### Changed
+- Refreshed the Changes and History workspaces with a compact toolbar, repository tabs, a resizable commit composer below the diff, and bounded file-list widths.
+- Repository sessions now deduplicate canonical paths, stop background observation when closed, and coalesce overlapping refresh requests.
+- AI staged splits validate the complete file partition and staged snapshot before applying, reject unsupported working-copy states, and execute as one queued operation. Partial failures are reported without automatic retry or rollback.
+- Single-commit rebases preserve descendant commits and reject non-linear history or a changed rebase plan.
+
+### Fixed
+- AI Reword now checks the actual HEAD instead of using the first all-branches history row. Rewording HEAD changes only its message without including staged files, and target checks and rewriting share one Git command queue slot.
+- Diff text could disappear beneath the line-number ruler or start horizontally clipped after opening a zero-sized pane or switching files.
+- History could collapse to a narrow column with no commit selected; commit details and the Changes composer could consume excessive space.
+- The history graph now releases trailing empty lanes after branches end or merge, while preserving active lane positions and incoming connections.
+- Staged and unstaged selections now retain their own diff source, and stale asynchronous diff/detail responses no longer replace a newer selection.
+- Annotated tags now navigate to and display their peeled commit rather than the tag object.
+- The GONE badge aligns with the branch name and stays on one line in narrow sidebars.
+- Zero-height history rows produced repeated AppKit warnings.
+- Git command queues now share canonical repository paths, clean up completed tasks, propagate queued cancellation, and limit lock retries to replay-safe commands.
+
 ## [0.1.4] - 2026-06-02
 
 ### Fixed
