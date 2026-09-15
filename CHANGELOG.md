@@ -6,6 +6,10 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Double-click a branch in the sidebar to check it out.
+- The Branches section header offers a cleanup action for local branches whose upstream is gone from the remote. It appears only when such branches exist, confirms first, and keeps the current branch plus anything Git reports as unmerged.
+
 ## [0.2.1] - 2026-09-15
 
 ### Fixed
