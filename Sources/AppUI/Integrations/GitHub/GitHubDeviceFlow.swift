@@ -150,7 +150,9 @@ struct GitHubDeviceFlowSheet: View {
             request.httpBody = body.data(using: .utf8)
             let (data, _) = try await URLSession.shared.data(for: request)
             let resp = try JSONDecoder().decode(TokenPollResponse.self, from: data)
-            if let token = resp.access_token { return token }
+            if let token = resp.access_token {
+                return token
+            }
             switch resp.error {
             case "authorization_pending":
                 continue

@@ -81,7 +81,9 @@ public enum GhCLI {
     public static func listRepos(login: String? = nil, limit: Int = 200) async throws -> [RemoteRepo] {
         guard let path = executablePath() else { return [] }
         var args = ["repo", "list"]
-        if let login, !login.isEmpty { args.append(login) }
+        if let login, !login.isEmpty {
+            args.append(login)
+        }
         args.append(contentsOf: [
             "--json", "name,nameWithOwner,description,sshUrl,url,defaultBranchRef,isPrivate,updatedAt",
             "--limit", String(limit)
@@ -229,7 +231,9 @@ public enum ProviderCLISupport {
             guard let asRange = lower.range(of: " as ") else { continue }
             let after = String(line[asRange.upperBound...])
             let token = after.split(whereSeparator: { $0.isWhitespace || $0 == "(" || $0 == ")" }).first
-            if let token { return String(token) }
+            if let token {
+                return String(token)
+            }
         }
         return nil
     }

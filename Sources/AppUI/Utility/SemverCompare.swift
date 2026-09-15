@@ -31,7 +31,9 @@ struct SemanticVersion: Equatable {
         for i in 0 ..< count {
             let l = i < lhs.components.count ? lhs.components[i] : 0
             let r = i < rhs.components.count ? rhs.components[i] : 0
-            if l != r { return l < r }
+            if l != r {
+                return l < r
+            }
         }
         // Equal numeric core: prerelease is older than release (1.0.0-rc < 1.0.0).
         switch (lhs.prerelease, rhs.prerelease) {

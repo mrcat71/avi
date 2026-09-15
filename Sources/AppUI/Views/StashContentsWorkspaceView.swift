@@ -69,7 +69,9 @@ struct StashContentsWorkspaceView: View {
         guard let subject = entry?.subject else { return ref }
         if let colon = subject.firstIndex(of: ":") {
             let after = subject[subject.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-            if !after.isEmpty { return after }
+            if !after.isEmpty {
+                return after
+            }
         }
         return subject
     }
@@ -107,7 +109,9 @@ private struct StashFileListView: View {
 
     private var filesSummary: String? {
         let n = store.stashFiles.count
-        if n == 0 { return nil }
+        if n == 0 {
+            return nil
+        }
         return n == 1 ? "1 file" : "\(n) files"
     }
 

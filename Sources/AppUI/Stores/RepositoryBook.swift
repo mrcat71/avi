@@ -36,7 +36,9 @@ public final class RepositoryBook {
 
     public func hydrate(_ url: URL) {
         let path = url.standardizedFileURL.path
-        if inFlight.contains(path) { return }
+        if inFlight.contains(path) {
+            return
+        }
         if let entry = entries[path], Date().timeIntervalSince(entry.fetchedAt) < ttl {
             cache[path] = entry.data
             return
@@ -104,7 +106,9 @@ public final class RepositoryBook {
             return refPath
         }
         // Detached HEAD - return short SHA.
-        if trimmed.count >= 7 { return "(\(trimmed.prefix(7)))" }
+        if trimmed.count >= 7 {
+            return "(\(trimmed.prefix(7)))"
+        }
         return nil
     }
 

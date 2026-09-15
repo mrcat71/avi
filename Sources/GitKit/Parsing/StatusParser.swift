@@ -76,8 +76,11 @@ public enum StatusParser {
             upstream = value
         case "branch.ab":
             for token in value.split(separator: " ") {
-                if token.hasPrefix("+") { ahead = Int(token.dropFirst()) ?? 0 }
-                else if token.hasPrefix("-") { behind = Int(token.dropFirst()) ?? 0 }
+                if token.hasPrefix("+") {
+                    ahead = Int(token.dropFirst()) ?? 0
+                } else if token.hasPrefix("-") {
+                    behind = Int(token.dropFirst()) ?? 0
+                }
             }
         default:
             break

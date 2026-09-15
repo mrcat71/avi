@@ -100,10 +100,16 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     }
 
     public func stage(path _: String, in _: URL) async throws {}
-    public func stage(paths: [String], in _: URL) async throws { stagePathsCalls.append(paths) }
+    public func stage(paths: [String], in _: URL) async throws {
+        stagePathsCalls.append(paths)
+    }
+
     public func stageAll(in _: URL) async throws {}
     public func unstage(path _: String, in _: URL) async throws {}
-    public func unstage(paths: [String], in _: URL) async throws { unstagePathsCalls.append(paths) }
+    public func unstage(paths: [String], in _: URL) async throws {
+        unstagePathsCalls.append(paths)
+    }
+
     public func unstageAll(in _: URL) async throws {}
     public func discard(_: FileStatus, in _: URL) async throws {}
     public func commit(message _: String, in _: URL) async throws {}

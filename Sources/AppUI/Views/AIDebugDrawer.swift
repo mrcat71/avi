@@ -112,7 +112,9 @@ private struct AIDebugResizeHandle: View {
                 DragGesture(coordinateSpace: .global)
                     .onChanged { value in
                         let start = dragStartHeight ?? store.aiDebugDrawerHeight
-                        if dragStartHeight == nil { dragStartHeight = start }
+                        if dragStartHeight == nil {
+                            dragStartHeight = start
+                        }
                         let proposed = start - value.translation.height
                         let maxAllowed = max(AIDebugDrawer.minHeight, containerHeight * 0.7)
                         store.aiDebugDrawerHeight = min(max(proposed, AIDebugDrawer.minHeight), maxAllowed)
@@ -189,8 +191,12 @@ private struct AIDebugDrawerToolbar: View {
     }
 
     private func chipStyle(for run: AIRunResult) -> (String, Color) {
-        if run.timedOut { return ("timeout · \(run.durationMS)ms", .orange) }
-        if let exit = run.exitCode, exit != 0 { return ("exit \(exit) · \(run.durationMS)ms", .red) }
+        if run.timedOut {
+            return ("timeout · \(run.durationMS)ms", .orange)
+        }
+        if let exit = run.exitCode, exit != 0 {
+            return ("exit \(exit) · \(run.durationMS)ms", .red)
+        }
         return ("ok · \(run.durationMS)ms", .green)
     }
 

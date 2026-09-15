@@ -115,7 +115,9 @@ struct GitHubSettingsView: View {
 
 private extension ProviderAccount {
     var statusDescription: String {
-        if lastValidatedISO.isEmpty { return "Never validated" }
+        if lastValidatedISO.isEmpty {
+            return "Never validated"
+        }
         return "Last validated \(lastValidatedISO)"
     }
 }
