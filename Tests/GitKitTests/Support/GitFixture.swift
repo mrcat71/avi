@@ -12,6 +12,8 @@ struct GitFixture {
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         let fixture = GitFixture(url: base)
         try await fixture.git("init", "-q")
+        // Also applies to CLIGitProvider calls in this fixture, without changing user hooks.
+        try await fixture.git("config", "--local", "core.hooksPath", "/dev/null")
         try await fixture.git("config", "user.email", "test@example.com")
         try await fixture.git("config", "user.name", "Avi Test")
         try await fixture.git("config", "commit.gpgsign", "false")

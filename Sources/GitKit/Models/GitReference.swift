@@ -14,6 +14,12 @@ public struct GitReference: Sendable, Equatable, Identifiable {
     public let name: String
     public let fullName: String
     public let oid: String
+    /// Target object for an annotated tag; nil for ordinary refs.
+    public let peeledOID: String?
+    public var targetOID: String {
+        peeledOID ?? oid
+    }
+
     public let kind: GitReferenceKind
     public let upstream: String?
     public let isCurrent: Bool
@@ -36,11 +42,13 @@ public struct GitReference: Sendable, Equatable, Identifiable {
         behind: Int? = nil,
         isUpstreamGone: Bool = false,
         taggerDate: Date? = nil,
-        annotatedMessage: String? = nil
+        annotatedMessage: String? = nil,
+        peeledOID: String? = nil
     ) {
         self.name = name
         self.fullName = fullName
         self.oid = oid
+        self.peeledOID = peeledOID
         self.kind = kind
         self.upstream = upstream
         self.isCurrent = isCurrent

@@ -14,6 +14,8 @@ private extension Array {
 /// `GitProviding` implementation that shells out to the `git` CLI.
 public struct CLIGitProvider: GitProviding {
     public let gitURL: URL
+    /// Only a private copy inside an existing queue slot may bypass re-enqueueing.
+    private var ownsCommandSlot = false
 
     public init(gitURL: URL = URL(fileURLWithPath: "/usr/bin/git")) {
         self.gitURL = gitURL
@@ -97,7 +99,7 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func refs(in repository: URL) async throws -> RepositoryRefs {
-        let format = "%(refname)%1f%(objectname)%1f%(upstream:short)%1f%(upstream:track)%1f%(HEAD)%1f%(subject)%1f%(taggerdate:iso-strict)%1f%(contents:subject)%00"
+        let format = "%(refname)%1f%(objectname)%1f%(upstream:short)%1f%(upstream:track)%1f%(HEAD)%1f%(subject)%1f%(taggerdate:iso-strict)%1f%(*objectname)%1f%(contents:subject)%00"
         let result = try await run([
             "for-each-ref",
             "--format=\(format)",
@@ -161,7 +163,8 @@ public struct CLIGitProvider: GitProviding {
         case .remoteBranch:
             try await run(["switch", "--track", ref.name], in: repository)
         case .tag:
-            try await run(["switch", "--detach", ref.name], in: repository)
+            // Use the reviewed object, not an ambiguous name or a tag moved since confirmation.
+            try await run(["switch", "--detach", "--", ref.targetOID], in: repository)
         }
     }
 
@@ -291,8 +294,12 @@ public struct CLIGitProvider: GitProviding {
         }
 
         var args = ["push"]
-        if pushTags { args.append("--tags") }
-        if force { args.append("--force-with-lease") }
+        if pushTags {
+            args.append("--tags")
+        }
+        if force {
+            args.append("--force-with-lease")
+        }
         if currentStatus.branch.upstream == nil {
             args.append("-u")
         }
@@ -408,8 +415,49 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func stagedDiff(in repository: URL) async throws -> String {
-        let result = try await run(["diff", "--cached", "--no-color", "--no-ext-diff"], in: repository)
+        let result = try await run(["diff", "--cached", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv"], in: repository)
         return result.stdoutString
+    }
+
+    public func splitStagedChanges(_ plan: StagedCommitPlan, in repository: URL) async throws {
+        try await GitCommandQueue.shared.run(repository: repository) {
+            var scoped = self
+            scoped.ownsCommandSlot = true
+            let status = try await scoped.status(in: repository)
+            let diff = try await scoped.stagedDiff(in: repository)
+            try plan.validate(status: status, currentDiff: diff)
+            // An unfinished merge/rebase has commit semantics different from a normal split.
+            for ref in ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD"] {
+                let result = try await scoped.execute(["rev-parse", "--verify", "--quiet", ref], in: repository)
+                guard result.exitCode == 1 else {
+                    throw GitError.invalidInput("Finish or abort the current Git operation before splitting staged changes.")
+                }
+            }
+            for directory in ["rebase-merge", "rebase-apply", "sequencer"] {
+                let result = try await scoped.run(["rev-parse", "--git-path", directory], in: repository)
+                let path = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !path.isEmpty else { throw GitError.parseFailed("Missing Git operation path.") }
+                let url = URL(fileURLWithPath: path, relativeTo: repository).standardizedFileURL
+                guard !FileManager.default.fileExists(atPath: url.path) else {
+                    throw GitError.invalidInput("Finish or abort the current Git operation before splitting staged changes.")
+                }
+            }
+            var completed = 0
+            do {
+                try await scoped.unstageAll(in: repository)
+                for group in plan.groups {
+                    // Paths supplied by AI are literal filenames, never Git pathspecs.
+                    for paths in group.files.chunked(into: 200) {
+                        try await scoped.run(["--literal-pathspecs", "add", "--"] + paths, in: repository)
+                    }
+                    try await scoped.commit(message: group.message, in: repository)
+                    completed += 1
+                }
+            } catch {
+                // Never auto-reset or retry: hooks or Git may already have made progress.
+                throw GitError.invalidInput("Split stopped after \(completed) completed commit(s). Inspect history and staged changes before continuing. No automatic rollback was attempted.\n\n\(error.localizedDescription)")
+            }
+        }
     }
 
     public func commitMessage(for oid: String, in repository: URL) async throws -> String? {
@@ -437,7 +485,9 @@ public struct CLIGitProvider: GitProviding {
 
     public func reset(mode: GitResetMode, target: String?, in repository: URL) async throws {
         var args = ["reset", "--\(mode.rawValue)"]
-        if let target { args.append(target) }
+        if let target {
+            args.append(target)
+        }
         try await run(args, in: repository)
     }
 
@@ -446,8 +496,44 @@ public struct CLIGitProvider: GitProviding {
         action: SingleCommitRebaseAction,
         in repository: URL
     ) async throws {
-        // Resolve the commit's short subject so the todo file looks like git's own.
-        let subject: String = await (try? subjectOf(commit: oid, in: repository)) ?? ""
+        guard LinearRebasePlan.isOID(oid) else {
+            throw GitError.invalidInput("Rewriting requires a full commit ID.")
+        }
+        if case let .reword(message) = action, message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw GitError.invalidInput("The commit message must not be empty.")
+        }
+        try await GitCommandQueue.shared.run(repository: repository) {
+            var scoped = self
+            scoped.ownsCommandSlot = true
+            try await scoped.performSingleCommitRebase(commit: oid, action: action, in: repository)
+        }
+    }
+
+    private func performSingleCommitRebase(
+        commit oid: String,
+        action: SingleCommitRebaseAction,
+        in repository: URL
+    ) async throws {
+        if case let .reword(message) = action {
+            let result = try await run(["rev-parse", "--verify", "HEAD^{commit}"], in: repository)
+            let headOID = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard LinearRebasePlan.isOID(headOID) else {
+                throw GitError.parseFailed("Missing or invalid HEAD commit ID.")
+            }
+            if oid == headOID {
+                // Reword changes only the message, including for root/empty commits.
+                // Never incorporate the user's staged changes into this amend.
+                try await run(["commit", "--amend", "--only", "--allow-empty", "-m", message], in: repository)
+                return
+            }
+        }
+        let verb: String
+        switch action {
+        case .edit: verb = "edit"
+        case .reword: verb = "reword"
+        }
+        let listing = try await run(["rev-list", "--reverse", "--topo-order", "--parents", "\(oid)^..HEAD"], in: repository)
+        let plan = try LinearRebasePlan(parentListing: listing.stdoutString, oldest: oid, target: oid, verb: verb)
 
         // Stage a working dir for the helper scripts and todo/message files.
         let workDir = FileManager.default.temporaryDirectory
@@ -455,20 +541,15 @@ public struct CLIGitProvider: GitProviding {
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: workDir) }
 
-        let verb: String
-        switch action {
-        case .edit: verb = "edit"
-        case .reword: verb = "reword"
-        }
-        let todoLine = "\(verb) \(oid) \(subject)\n"
         let todoURL = workDir.appendingPathComponent("todo")
-        try todoLine.write(to: todoURL, atomically: true, encoding: .utf8)
+        try plan.todo.write(to: todoURL, atomically: true, encoding: .utf8)
+        let sequenceEditorURL = workDir.appendingPathComponent("sequence-editor.sh")
+        try LinearRebasePlan.sequenceEditorScript.write(to: sequenceEditorURL, atomically: true, encoding: .utf8)
 
-        // Build env. GIT_SEQUENCE_EDITOR is invoked as `<editor> <todo-file>`
-        // by git; setting it to `cp <our-todo>` causes our content to overwrite
-        // the real todo file.
+        // Git appends its live todo path. Validate the replay sequence before
+        // replacing it so a stale plan cannot silently discard newer commits.
         var env = gitEnvironment()
-        env["GIT_SEQUENCE_EDITOR"] = "/bin/cp \(shellQuote(todoURL.path))"
+        env["GIT_SEQUENCE_EDITOR"] = "/bin/sh \(shellQuote(sequenceEditorURL.path)) \(shellQuote(todoURL.path))"
 
         if case .reword(let newMessage) = action {
             let messageURL = workDir.appendingPathComponent("message")
@@ -482,7 +563,7 @@ public struct CLIGitProvider: GitProviding {
         }
 
         let rebaseBase = "\(oid)^"
-        let result = try await execute(["rebase", "-i", "--autostash", rebaseBase], in: repository, environment: env)
+        let result = try await execute(["-c", "core.abbrev=\(oid.count)", "-c", "rebase.abbreviateCommands=false", "rebase", "-i", "--no-autosquash", "--no-rebase-merges", "--autostash", rebaseBase], in: repository, environment: env)
         switch action {
         case .reword:
             // Reword must run to completion (no pause).
@@ -508,9 +589,12 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func rebaseRangeEdit(oldest: String, newest: String, in repository: URL) async throws {
+        guard LinearRebasePlan.isOID(oldest), LinearRebasePlan.isOID(newest) else {
+            throw GitError.invalidInput("Rewriting requires full commit IDs.")
+        }
         // Fetch the OIDs to be replayed, oldest-first, so we know which line
         // in the todo needs `edit`.
-        let listResult = try await execute(["rev-list", "--reverse", "\(oldest)^..HEAD"], in: repository)
+        let listResult = try await execute(["rev-list", "--reverse", "--topo-order", "--parents", "\(oldest)^..HEAD"], in: repository)
         guard listResult.exitCode == 0 else {
             throw GitError.commandFailed(
                 command: "git rev-list --reverse \(oldest)^..HEAD",
@@ -518,10 +602,7 @@ public struct CLIGitProvider: GitProviding {
                 stderr: listResult.stderrString
             )
         }
-        let oids = listResult.stdoutString.split(separator: "\n").map(String.init)
-        guard !oids.isEmpty else {
-            throw GitError.invalidInput("Empty rebase range for \(oldest)..HEAD.")
-        }
+        let plan = try LinearRebasePlan(parentListing: listResult.stdoutString, oldest: oldest, target: newest, verb: "edit")
 
         // Build the todo file: every commit picks, except `newest` which edits.
         let workDir = FileManager.default.temporaryDirectory
@@ -529,21 +610,17 @@ public struct CLIGitProvider: GitProviding {
         try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: workDir) }
 
-        var todo = ""
-        for oid in oids {
-            let verb = (oid == newest) ? "edit" : "pick"
-            let subject = await (try? subjectOf(commit: oid, in: repository)) ?? ""
-            todo.append("\(verb) \(oid) \(subject)\n")
-        }
         let todoURL = workDir.appendingPathComponent("todo")
-        try todo.write(to: todoURL, atomically: true, encoding: .utf8)
+        try plan.todo.write(to: todoURL, atomically: true, encoding: .utf8)
+        let sequenceEditorURL = workDir.appendingPathComponent("sequence-editor.sh")
+        try LinearRebasePlan.sequenceEditorScript.write(to: sequenceEditorURL, atomically: true, encoding: .utf8)
 
         var env = gitEnvironment()
-        env["GIT_SEQUENCE_EDITOR"] = "/bin/cp \(shellQuote(todoURL.path))"
+        env["GIT_SEQUENCE_EDITOR"] = "/bin/sh \(shellQuote(sequenceEditorURL.path)) \(shellQuote(todoURL.path))"
         env["GIT_EDITOR"] = "/usr/bin/true"
 
         let rebaseBase = "\(oldest)^"
-        let result = try await execute(["rebase", "-i", "--autostash", rebaseBase], in: repository, environment: env)
+        let result = try await execute(["-c", "core.abbrev=\(oldest.count)", "-c", "rebase.abbreviateCommands=false", "rebase", "-i", "--no-autosquash", "--no-rebase-merges", "--autostash", rebaseBase], in: repository, environment: env)
         guard result.exitCode == 0 else {
             throw GitError.commandFailed(
                 command: "git rebase -i \(rebaseBase) (range edit)",
@@ -614,7 +691,7 @@ public struct CLIGitProvider: GitProviding {
             if let braceStart = ref.firstIndex(of: "{"),
                let braceEnd = ref.firstIndex(of: "}"),
                braceEnd > braceStart {
-                let inside = ref[ref.index(after: braceStart)..<braceEnd]
+                let inside = ref[ref.index(after: braceStart) ..< braceEnd]
                 index = Int(inside) ?? 0
             }
 
@@ -722,10 +799,12 @@ public struct CLIGitProvider: GitProviding {
     }
 
     /// Single funnel for every git subprocess. Serializes execution per repository
-    /// through `GitCommandQueue` so two commands never contend for `.git/index.lock`
-    /// ("another git process seems to be running"). Pass a custom `environment` for
-    /// editor-driven commands like interactive rebase; otherwise the standard git
-    /// environment is used.
+    /// through `GitCommandQueue` so two of avi's own commands never contend for
+    /// `.git/index.lock`. The queue is in-process only, though, so an external git
+    /// client (IDE, terminal, another GUI) can still hold the lock; `runWithLockRetry`
+    /// adds a short backoff so a transient external lock doesn't fail the command
+    /// outright. Pass a custom `environment` for editor-driven commands like
+    /// interactive rebase; otherwise the standard git environment is used.
     private func execute(
         _ arguments: [String],
         in repository: URL,
@@ -733,13 +812,59 @@ public struct CLIGitProvider: GitProviding {
     ) async throws -> ProcessResult {
         let executable = gitURL
         let env = environment ?? gitEnvironment()
-        return try await GitCommandQueue.shared.run(repository: repository) {
-            try await ProcessRunner.run(
-                executable: executable,
-                arguments: arguments,
-                workingDirectory: repository,
-                environment: env
-            )
+        let operation: @Sendable () async throws -> ProcessResult = {
+            // Compound commands can make partial progress before a lock failure.
+            // Replaying fetch, pull, push, rebase, or stash is not safe by default.
+            let retryableCommands: Set = ["status", "diff", "log", "show", "rev-parse", "rev-list", "ls-files", "add"]
+            let backoff = arguments.first.map { retryableCommands.contains($0) } == true ? Self.lockRetryBackoff : []
+            return try await Self.runWithLockRetry(backoff: backoff) {
+                try await ProcessRunner.run(
+                    executable: executable,
+                    arguments: arguments,
+                    workingDirectory: repository,
+                    environment: env
+                )
+            }
+        }
+        if ownsCommandSlot {
+            try Task.checkCancellation()
+            return try await operation()
+        }
+        return try await GitCommandQueue.shared.run(repository: repository, operation)
+    }
+
+    /// Backoff schedule for retrying a git command that failed because another
+    /// process holds the repo's index/ref lock. Kept short and bounded: total
+    /// added latency on contention is under 1s, and only when a lock error
+    /// actually occurs. Runs inside the per-repo `GitCommandQueue` slot, so it
+    /// never increases avi's own git concurrency.
+    static let lockRetryBackoff: [Duration] = [
+        .milliseconds(100),
+        .milliseconds(250),
+        .milliseconds(500)
+    ]
+
+    /// Runs `run`, and if it fails with a lock-contention error (see
+    /// `GitError.indicatesLockContention`) retries per `backoff`. Non-lock
+    /// failures and successes return immediately; once `backoff` is exhausted the
+    /// last (failing) result is returned so the normal exit-code handling and the
+    /// friendly `GitError` message still apply.
+    static func runWithLockRetry(
+        backoff: [Duration] = lockRetryBackoff,
+        _ run: @Sendable () async throws -> ProcessResult
+    ) async throws -> ProcessResult {
+        var attempt = 0
+        while true {
+            try Task.checkCancellation()
+            let result = try await run()
+            guard result.exitCode != 0,
+                  GitError.indicatesLockContention(result.stderrString),
+                  attempt < backoff.count
+            else {
+                return result
+            }
+            try await Task.sleep(for: backoff[attempt])
+            attempt += 1
         }
     }
 
