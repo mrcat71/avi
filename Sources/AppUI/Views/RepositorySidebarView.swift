@@ -30,7 +30,7 @@ struct RepositorySidebarView: View {
                 .padding(.bottom, 12)
             }
         }
-        .background(.thinMaterial)
+        .background(DS.Palette.surface)
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(Glass.edgeStroke)
@@ -214,9 +214,13 @@ struct RepositorySidebarView: View {
                         TagRow(
                             ref: ref,
                             isSelected: selection == .tag(name: ref.name),
+                            hasLocalChanges: !store.entries.isEmpty,
                             select: {
                                 selection = .tag(name: ref.name)
                                 Task { await store.selectCommit(commitForRef(ref)) }
+                            },
+                            checkout: { tag in
+                                Task { await store.checkout(tag) }
                             }
                         )
                     }
@@ -273,7 +277,7 @@ struct RepositorySidebarView: View {
     }
 
     private func commitForRef(_ ref: GitReference) -> CommitSummary? {
-        store.historyRows.first(where: { $0.commit.oid == ref.oid })?.commit
+        store.historyRows.first(where: { $0.commit.oid == ref.targetOID })?.commit
     }
 
     private var filteredLocalBranches: [GitReference] {
@@ -281,8 +285,12 @@ struct RepositorySidebarView: View {
         let sorted = store.refs.localBranches.sorted { lhs, rhs in
             let lhsIsDefault = lhs.name == defaultName
             let rhsIsDefault = rhs.name == defaultName
-            if lhsIsDefault != rhsIsDefault { return lhsIsDefault }
-            if lhs.isCurrent != rhs.isCurrent { return lhs.isCurrent }
+            if lhsIsDefault != rhsIsDefault {
+                return lhsIsDefault
+            }
+            if lhs.isCurrent != rhs.isCurrent {
+                return lhs.isCurrent
+            }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
         return filtered(sorted)
@@ -315,8 +323,12 @@ struct RepositorySidebarView: View {
     }
 
     private func branchLabel(_ branch: BranchInfo) -> String {
-        if let name = branch.name { return name }
-        if branch.isDetached { return "Detached HEAD" }
+        if let name = branch.name {
+            return name
+        }
+        if branch.isDetached {
+            return "Detached HEAD"
+        }
         return "No commits"
     }
 }
@@ -366,8 +378,12 @@ private struct PrimarySidebarRow: View {
     }
 
     private var rowFill: Color {
-        if isSelected { return Color.accentColor }
-        if isHovering { return DS.Color.rowHover }
+        if isSelected {
+            return Color.accentColor
+        }
+        if isHovering {
+            return DS.Color.rowHover
+        }
         return Color.clear
     }
 }
@@ -404,7 +420,7 @@ private struct EmptySectionRow: View {
     }
 }
 
-private struct LocalBranchRow: View {
+struct LocalBranchRow: View {
     let ref: GitReference
     let store: RepositoryStore
     let isSelected: Bool
@@ -420,7 +436,7 @@ private struct LocalBranchRow: View {
     @State private var confirmingDelete = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: ref.isCurrent ? "arrow.triangle.branch" : "arrow.triangle.branch")
                 .font(.system(size: 10, weight: ref.isCurrent ? .bold : .regular))
                 .frame(width: 12)
@@ -559,7 +575,9 @@ private struct LocalBranchRow: View {
                let head = upstream.split(separator: "/", maxSplits: 1).first {
                 return String(head)
             }
-            if store.remotes.contains(where: { $0.name == "origin" }) { return "origin" }
+            if store.remotes.contains(where: { $0.name == "origin" }) {
+                return "origin"
+            }
             return store.remotes.first?.name
         }()
         guard let remoteName, let remote = store.remotes.first(where: { $0.name == remoteName }) else {
@@ -580,11 +598,12 @@ private struct LocalBranchRow: View {
             Text("gone")
                 .font(.system(size: 9, weight: .bold))
                 .textCase(.uppercase)
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
                 .background(Capsule().fill(Color.red))
                 .foregroundStyle(.white)
-                .layoutPriority(-1)
         } else {
             Text(upstream)
                 .font(.system(size: 10))
@@ -627,20 +646,32 @@ private struct LocalBranchRow: View {
     }
 
     private var iconColor: Color {
-        if isSelected { return .white }
-        if ref.isUpstreamGone { return .red }
+        if isSelected {
+            return .white
+        }
+        if ref.isUpstreamGone {
+            return .red
+        }
         return ref.isCurrent ? Color.accentColor : .blue
     }
 
     private var textColor: Color {
-        if isSelected { return .white }
+        if isSelected {
+            return .white
+        }
         return ref.isCurrent ? Color.accentColor : .primary
     }
 
     private var rowFill: Color {
-        if isSelected { return Color.accentColor }
-        if ref.isCurrent { return Color.accentColor.opacity(0.10) }
-        if isHovering { return Color.primary.opacity(0.05) }
+        if isSelected {
+            return Color.accentColor
+        }
+        if ref.isCurrent {
+            return Color.accentColor.opacity(0.10)
+        }
+        if isHovering {
+            return Color.primary.opacity(0.05)
+        }
         return Color.clear
     }
 
@@ -649,9 +680,15 @@ private struct LocalBranchRow: View {
         if let upstream = ref.upstream {
             parts.append("→ \(upstream)")
         }
-        if let ahead = ref.ahead { parts.append("ahead \(ahead)") }
-        if let behind = ref.behind { parts.append("behind \(behind)") }
-        if ref.isUpstreamGone { parts.append("upstream gone") }
+        if let ahead = ref.ahead {
+            parts.append("ahead \(ahead)")
+        }
+        if let behind = ref.behind {
+            parts.append("behind \(behind)")
+        }
+        if ref.isUpstreamGone {
+            parts.append("upstream gone")
+        }
         return parts.joined(separator: " · ")
     }
 }
@@ -713,7 +750,7 @@ private struct RemoteGroupView: View {
     }
 
     private func commitForRef(_ ref: GitReference) -> CommitSummary? {
-        store.historyRows.first(where: { $0.commit.oid == ref.oid })?.commit
+        store.historyRows.first(where: { $0.commit.oid == ref.targetOID })?.commit
     }
 }
 
@@ -805,8 +842,12 @@ private struct RemoteBranchRow: View {
     }
 
     private var rowFill: Color {
-        if isSelected { return Color.accentColor }
-        if isHovering { return Color.primary.opacity(0.05) }
+        if isSelected {
+            return Color.accentColor
+        }
+        if isHovering {
+            return Color.primary.opacity(0.05)
+        }
         return Color.clear
     }
 
@@ -824,12 +865,36 @@ private struct RemoteBranchRow: View {
 private struct TagRow: View {
     let ref: GitReference
     let isSelected: Bool
+    let hasLocalChanges: Bool
     let select: () -> Void
+    let checkout: (GitReference) -> Void
 
     @State private var isHovering = false
     @State private var showingPopover = false
 
     var body: some View {
+        ReferenceActionButton(ref: ref, hasLocalChanges: hasLocalChanges, select: select, checkout: checkout) {
+            rowLabel
+        }
+        .onHover { hovering in
+            isHovering = hovering
+            if hovering {
+                Task {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if isHovering {
+                        showingPopover = true
+                    }
+                }
+            } else {
+                showingPopover = false
+            }
+        }
+        .popover(isPresented: $showingPopover, arrowEdge: .trailing) {
+            TagPopover(ref: ref)
+        }
+    }
+
+    private var rowLabel: some View {
         HStack(spacing: 6) {
             Image(systemName: "tag.fill")
                 .font(.system(size: 10))
@@ -862,40 +927,15 @@ private struct TagRow: View {
                 .fill(rowFill)
         )
         .contentShape(Rectangle())
-        .onTapGesture(perform: select)
-        .onHover { hovering in
-            isHovering = hovering
-            if hovering {
-                Task {
-                    try? await Task.sleep(for: .milliseconds(500))
-                    if isHovering { showingPopover = true }
-                }
-            } else {
-                showingPopover = false
-            }
-        }
-        .popover(isPresented: $showingPopover, arrowEdge: .trailing) {
-            TagPopover(ref: ref)
-        }
-        .contextMenu {
-            Button("Checkout (detach)", action: select)
-            Divider()
-            Button("Copy Tag Name") {
-                let pasteboard = NSPasteboard.general
-                pasteboard.clearContents()
-                pasteboard.setString(ref.name, forType: .string)
-            }
-            Button("Copy Commit SHA") {
-                let pasteboard = NSPasteboard.general
-                pasteboard.clearContents()
-                pasteboard.setString(ref.oid, forType: .string)
-            }
-        }
     }
 
     private var rowFill: Color {
-        if isSelected { return Color.accentColor }
-        if isHovering { return Color.primary.opacity(0.05) }
+        if isSelected {
+            return Color.accentColor
+        }
+        if isHovering {
+            return Color.primary.opacity(0.05)
+        }
         return Color.clear
     }
 }
@@ -907,7 +947,7 @@ struct TagPopover: View {
         VStack(alignment: .leading, spacing: 4) {
             row("Type", ref.annotatedMessage != nil ? "Annotated tag" : "Lightweight tag")
             row("Name", ref.name)
-            row("Commit", String(ref.oid.prefix(12)))
+            row("Commit", String(ref.targetOID.prefix(12)))
             if let date = ref.taggerDate {
                 row("Date", date.formatted(.dateTime.year().month().day().hour().minute()))
             }
@@ -1022,8 +1062,12 @@ private struct StashRow: View {
     }
 
     private var rowFill: Color {
-        if isSelected { return Color.accentColor }
-        if isHovering { return Color.primary.opacity(0.05) }
+        if isSelected {
+            return Color.accentColor
+        }
+        if isHovering {
+            return Color.primary.opacity(0.05)
+        }
         return Color.clear
     }
 
@@ -1033,7 +1077,9 @@ private struct StashRow: View {
         // the meaningful part.
         if let colon = entry.subject.firstIndex(of: ":") {
             let after = entry.subject[entry.subject.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-            if !after.isEmpty { return after }
+            if !after.isEmpty {
+                return after
+            }
         }
         return entry.subject
     }
