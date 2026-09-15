@@ -8,6 +8,7 @@ struct ChangeListView: View {
 
     @Bindable private var config = ConfigStore.shared
     @State private var multiSelection: Set<String> = []
+    @State private var activeStagedPane = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,6 +17,9 @@ struct ChangeListView: View {
             content
         }
         .background(selectAllShortcut)
+        .onChange(of: store.selectedDiffSource) { _, source in
+            activeStagedPane = source == .staged
+        }
         .onChange(of: store.selectedPath) { _, newValue in
             // Keep multi-selection in sync when the store changes the active file
             // (e.g. after a stage/unstage shuffle). Only collapse to single when
@@ -35,7 +39,7 @@ struct ChangeListView: View {
     /// the list has focus, without taking visible space.
     private var selectAllShortcut: some View {
         Button("Select All Files") {
-            multiSelection = Set(store.entries.map(\.path))
+            multiSelection = Set((activeStagedPane ? store.stagedEntries : store.unstagedEntries).map(\.path))
         }
         .keyboardShortcut("a", modifiers: .command)
         .opacity(0)
@@ -120,10 +124,21 @@ struct ChangeListView: View {
         }
     }
 
-    private var unstagedMinHeight: CGFloat { store.unstagedEntries.isEmpty ? 34 : 120 }
-    private var unstagedIdealHeight: CGFloat { store.unstagedEntries.isEmpty ? 34 : 240 }
-    private var stagedMinHeight: CGFloat { store.stagedEntries.isEmpty ? 34 : 100 }
-    private var stagedIdealHeight: CGFloat { store.stagedEntries.isEmpty ? 34 : 200 }
+    private var unstagedMinHeight: CGFloat {
+        store.unstagedEntries.isEmpty ? 34 : 120
+    }
+
+    private var unstagedIdealHeight: CGFloat {
+        store.unstagedEntries.isEmpty ? 34 : 240
+    }
+
+    private var stagedMinHeight: CGFloat {
+        store.stagedEntries.isEmpty ? 34 : 100
+    }
+
+    private var stagedIdealHeight: CGFloat {
+        store.stagedEntries.isEmpty ? 34 : 200
+    }
 
     private var unstagedPane: some View {
         VStack(spacing: 0) {
@@ -160,11 +175,11 @@ struct ChangeListView: View {
     /// Files currently selected in the unstaged pane. Folder ids in `multiSelection`
     /// (from tree mode) are filtered out by intersecting with the entries array.
     private var selectedUnstagedFiles: [FileStatus] {
-        store.unstagedEntries.filter { multiSelection.contains($0.path) }
+        activeStagedPane ? [] : store.unstagedEntries.filter { multiSelection.contains($0.path) }
     }
 
     private var selectedStagedFiles: [FileStatus] {
-        store.stagedEntries.filter { multiSelection.contains($0.path) }
+        activeStagedPane ? store.stagedEntries.filter { multiSelection.contains($0.path) } : []
     }
 
     /// A pane's file paths in the order the user sees them: flat-list order, or
@@ -174,7 +189,9 @@ struct ChangeListView: View {
         guard isTreeMode else { return entries.map(\.path) }
         let tree = FileTreeBuilder.build(entries: entries)
         return FileTreeBuilder.flatten(tree, expanded: store.expandedFolders).compactMap { node in
-            if case let .file(file) = node.payload { return file.path }
+            if case let .file(file) = node.payload {
+                return file.path
+            }
             return nil
         }
     }
@@ -198,7 +215,7 @@ struct ChangeListView: View {
     @ViewBuilder
     private func paneList(entries: [FileStatus], staged: Bool, emptyText: String) -> some View {
         ScrollViewReader { proxy in
-            List(selection: $multiSelection) {
+            List(selection: paneSelection(staged: staged)) {
                 if entries.isEmpty {
                     Text(emptyText)
                         .font(.system(size: 12))
@@ -224,9 +241,6 @@ struct ChangeListView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .animation(Glass.Motion.snappy, value: stagingAnimationKey)
-            .onChange(of: multiSelection) { _, newValue in
-                syncSingleSelectionToStore(newValue)
-            }
             .onChange(of: store.selectedPath) { _, newValue in
                 guard let newValue, entries.contains(where: { $0.path == newValue }) else { return }
                 withAnimation(Glass.Motion.snappy) {
@@ -240,10 +254,23 @@ struct ChangeListView: View {
     /// selected, load its diff. When 2+ rows or a folder is selected, leave the
     /// diff view on whatever was last shown (mirrors HistoryView's pattern).
     /// When selection is empty, clear the diff.
-    private func syncSingleSelectionToStore(_ selection: Set<String>) {
+    private func paneSelection(staged: Bool) -> Binding<Set<String>> {
+        Binding(
+            get: { activeStagedPane == staged ? multiSelection : [] },
+            set: { selection in
+                // Deselecting the inactive list must not clear the active pane.
+                guard !selection.isEmpty || activeStagedPane == staged else { return }
+                activeStagedPane = staged
+                multiSelection = selection
+                syncSingleSelectionToStore(selection, staged: staged)
+            }
+        )
+    }
+
+    private func syncSingleSelectionToStore(_ selection: Set<String>, staged: Bool) {
         if selection.count == 1, let id = selection.first,
            let file = store.entries.first(where: { $0.path == id }) {
-            Task { await store.select(file) }
+            Task { await store.select(file, source: staged ? .staged : (file.isUntracked ? .untracked : .unstaged)) }
         } else if selection.isEmpty {
             Task { await store.select(nil) }
         }
@@ -277,7 +304,6 @@ struct ChangeListView: View {
                     path: node.id,
                     depth: node.depth,
                     changedCount: node.changedCount,
-                    stagedCount: node.stagedCount,
                     isExpanded: store.expandedFolders.contains(node.id),
                     onToggle: { store.toggleFolderExpanded(node.id) }
                 )
@@ -292,6 +318,7 @@ struct ChangeListView: View {
                 ChangeRow(
                     file: file,
                     staged: staged,
+                    isTreeRow: true,
                     store: store,
                     onStage: { stageFiles([$0]) },
                     onUnstage: { unstageFiles([$0]) }
@@ -305,9 +332,15 @@ struct ChangeListView: View {
     private var summary: String {
         let staged = store.stagedEntries.count
         let unstaged = store.unstagedEntries.count
-        if staged == 0, unstaged == 0 { return "Clean" }
-        if staged == 0 { return "\(unstaged) changed" }
-        if unstaged == 0 { return "\(staged) staged" }
+        if staged == 0, unstaged == 0 {
+            return "Clean"
+        }
+        if staged == 0 {
+            return "\(unstaged) changed"
+        }
+        if unstaged == 0 {
+            return "\(staged) staged"
+        }
         return "\(staged) staged · \(unstaged) changed"
     }
 }
@@ -409,6 +442,7 @@ private struct CleanTreeCard: View {
 private struct ChangeRow: View {
     let file: FileStatus
     let staged: Bool
+    var isTreeRow = false
     let store: RepositoryStore
     let onStage: (FileStatus) -> Void
     let onUnstage: (FileStatus) -> Void
@@ -423,6 +457,8 @@ private struct ChangeRow: View {
             Text(displayName)
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .help(fullPathDescription)
+                .accessibilityLabel(fullPathDescription)
             Spacer(minLength: 6)
             if staged {
                 inlineAction("minus.circle", help: "Unstage") {
@@ -503,6 +539,18 @@ private struct ChangeRow: View {
     }
 
     private var displayName: String {
+        guard isTreeRow else { return fullPathDescription }
+        let name = URL(fileURLWithPath: file.path).lastPathComponent
+        if let original = file.originalPath {
+            let oldName = URL(fileURLWithPath: original).lastPathComponent
+            if oldName != name {
+                return "\(oldName) → \(name)"
+            }
+        }
+        return name
+    }
+
+    private var fullPathDescription: String {
         if let originalPath = file.originalPath {
             return "\(originalPath) → \(file.path)"
         }
@@ -530,7 +578,6 @@ private struct FolderTreeRow: View {
     let path: String
     let depth: Int
     let changedCount: Int
-    let stagedCount: Int
     let isExpanded: Bool
     let onToggle: () -> Void
 
@@ -555,11 +602,6 @@ private struct FolderTreeRow: View {
                 Text("\(changedCount)")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
-                if stagedCount > 0 {
-                    Text("(\(stagedCount) staged)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.green)
-                }
                 Spacer()
             }
             .padding(.leading, CGFloat(depth) * 12 + 8)
