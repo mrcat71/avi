@@ -266,7 +266,9 @@ private struct RepoListStep: View {
 
     private var filtered: [RemoteRepo] {
         let trimmed = query.trimmingCharacters(in: .whitespaces).lowercased()
-        if trimmed.isEmpty { return controller.repos }
+        if trimmed.isEmpty {
+            return controller.repos
+        }
         return controller.repos.filter {
             $0.nameWithOwner.lowercased().contains(trimmed) || $0.description.lowercased().contains(trimmed)
         }

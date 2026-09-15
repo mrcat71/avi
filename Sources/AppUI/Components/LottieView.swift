@@ -73,7 +73,9 @@ private struct LottieRepresentable: NSViewRepresentable {
     func updateNSView(_ nsView: LottieAnimationView, context _: Context) {
         nsView.loopMode = loopMode
         nsView.animationSpeed = CGFloat(speed)
-        if !nsView.isAnimationPlaying { nsView.play() }
+        if !nsView.isAnimationPlaying {
+            nsView.play()
+        }
     }
 }
 #endif

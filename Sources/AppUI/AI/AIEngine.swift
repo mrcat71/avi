@@ -313,7 +313,9 @@ final class CommandAIEngine: AIEngine {
             }
             i = input.index(after: i)
         }
-        if !current.isEmpty { result.append(current) }
+        if !current.isEmpty {
+            result.append(current)
+        }
         return result
     }
 }

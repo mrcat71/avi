@@ -155,7 +155,9 @@ struct PushSheet: View {
     }
 
     private func configureDefaultRemote() {
-        if !selectedRemote.isEmpty { return }
+        if !selectedRemote.isEmpty {
+            return
+        }
         if let upstreamRemote, availableRemotes.contains(upstreamRemote) {
             selectedRemote = upstreamRemote
         } else if let first = availableRemotes.first {

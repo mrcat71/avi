@@ -34,7 +34,9 @@ public enum DiffParser {
             }
 
             guard current != nil else {
-                if line.hasPrefix("Binary files") { isBinary = true }
+                if line.hasPrefix("Binary files") {
+                    isBinary = true
+                }
                 continue
             }
 
@@ -52,7 +54,9 @@ public enum DiffParser {
             default:
                 // Start of the next file's header block ends the current hunk.
                 finalize()
-                if line.hasPrefix("Binary files") { isBinary = true }
+                if line.hasPrefix("Binary files") {
+                    isBinary = true
+                }
             }
         }
         finalize()
