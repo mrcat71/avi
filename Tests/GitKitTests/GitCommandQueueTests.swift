@@ -1,5 +1,5 @@
-@testable import GitKit
 import Foundation
+@testable import GitKit
 import Testing
 
 /// Tracks how many operations are running at once so a test can assert the queue
@@ -68,5 +68,18 @@ struct GitCommandQueueTests {
         _ = try? await queue.run(repository: repo) { throw Boom() }
         let value = try await queue.run(repository: repo) { 7 }
         #expect(value == 7)
+    }
+
+    @Test func preCancelledWorkDoesNotExecute() async throws {
+        let queue = GitCommandQueue()
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await queue.run(repository: repo) { 1 }
+        }
+        do {
+            _ = try await task.value
+            Issue.record("Cancelled queued work must not run")
+        } catch is CancellationError {}
+        #expect(try await queue.run(repository: repo) { 2 } == 2)
     }
 }

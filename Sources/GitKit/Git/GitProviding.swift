@@ -26,6 +26,9 @@ public struct HistoryFilter: Sendable, Equatable {
 /// libgit2-backed implementation can be added later for hot-path reads and
 /// swapped in behind this protocol.
 public protocol GitProviding: Sendable {
+    /// Apply a validated file-level split without interleaving other Avi commands.
+    func splitStagedChanges(_ plan: StagedCommitPlan, in repository: URL) async throws
+
     /// Top-level directory of the repository containing `url`. Throws if `url` is not in a repo.
     func repositoryRoot(for url: URL) async throws -> URL
 
@@ -166,9 +169,9 @@ public protocol GitProviding: Sendable {
     /// `git reset --<mode> <target>`. Pass `target = nil` to reset against HEAD.
     func reset(mode: GitResetMode, target: String?, in repository: URL) async throws
 
-    /// Begin a one-commit-targeted interactive rebase. For `.edit` the rebase
-    /// pauses at `oid` and the method returns; for `.reword(newMessage:)` the
-    /// rebase runs to completion replacing only that commit's message.
+    /// Rewrite one full commit ID. For `.edit` an interactive rebase pauses
+    /// at `oid`; `.reword` completes the rewrite, using a message-only amend
+    /// when `oid` is HEAD and a validated rebase for an older commit.
     func rebaseSingle(commit oid: String, action: SingleCommitRebaseAction, in repository: URL) async throws
 
     /// Begin an interactive rebase that pauses just AFTER applying `newest`,
@@ -223,6 +226,10 @@ public enum SingleCommitRebaseAction: Sendable {
 }
 
 public extension GitProviding {
+    func splitStagedChanges(_: StagedCommitPlan, in _: URL) async throws {
+        throw GitError.invalidInput("This Git provider does not support safe staged splitting.")
+    }
+
     /// Default implementation forwards the simple `history` call to the filtered variant.
     func history(in repository: URL, limit: Int) async throws -> [CommitSummary] {
         try await history(in: repository, limit: limit, filter: .default)
