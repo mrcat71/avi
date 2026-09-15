@@ -58,8 +58,9 @@ script that bypasses `swift build`:
 ./build.sh run     # build + launch
 ```
 
-Tagged releases are built locally on a Mac with `swift build -c release` and
-packaged by `scripts/package-app.sh`. See
+Pushing a version tag triggers the GitHub Actions release workflow, which tests,
+builds, packages, and publishes the app. Local builds use the same SwiftPM and
+`scripts/package-app.sh` flow. See
 [`docs/RELEASE.md`](docs/RELEASE.md) for the full runbook.
 
 ## Configuration
