@@ -9,18 +9,34 @@ struct HistoryListView: View {
     @State private var multiSelection: Set<String> = []
 
     var body: some View {
-        VStack(spacing: 0) {
-            HistoryHeader(store: store)
-            Divider()
-            content
-        }
-        .onChange(of: store.selectedCommitOID) { _, newValue in
-            // Keep List in sync when the detail-view selection moves by code
-            // (initial load, command palette navigation, etc.).
-            if let newValue {
-                if multiSelection != [newValue] { multiSelection = [newValue] }
-            } else if !multiSelection.isEmpty {
-                multiSelection.removeAll()
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                HistoryHeader(store: store)
+                Divider()
+                HStack(spacing: 12) {
+                    Text("Commit").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Author").frame(width: 130, alignment: .leading)
+                    Text("SHA").frame(width: 65, alignment: .leading)
+                    Text("Date").frame(width: 120, alignment: .trailing)
+                }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .frame(height: 26)
+                .background(DS.Palette.surface)
+                Divider()
+                content
+            }
+            .onChange(of: store.selectedCommitOID, initial: true) { _, newValue in
+                // Reveal sidebar/palette navigation, without recentering ordinary row clicks.
+                if let newValue {
+                    if multiSelection != [newValue] {
+                        multiSelection = [newValue]
+                        proxy.scrollTo(newValue, anchor: .center)
+                    }
+                } else if !multiSelection.isEmpty {
+                    multiSelection.removeAll()
+                }
             }
         }
     }
@@ -44,6 +60,7 @@ struct HistoryListView: View {
                         isSelected: multiSelection.contains(row.commit.oid),
                         refBadges: refBadgesByOID[row.commit.oid] ?? [],
                         laneColors: laneColors,
+                        graphWidth: graphWidth,
                         store: store,
                         multiSelectionOIDs: multiSelection
                     ) { ref in
@@ -61,14 +78,18 @@ struct HistoryListView: View {
                 // Load the diff for the most recently single-selected commit;
                 // when 2+ are selected, leave the detail view as-is (we don't
                 // have a meaningful "combined diff" view yet).
-                if newValue.count == 1, let oid = newValue.first {
+                if newValue.count == 1, let oid = newValue.first, store.selectedCommitOID != oid {
                     let commit = store.historyRows.first { $0.commit.oid == oid }?.commit
                     Task { await store.selectCommit(commit) }
-                } else if newValue.isEmpty {
+                } else if newValue.isEmpty, store.selectedCommitOID != nil {
                     Task { await store.selectCommit(nil) }
                 }
             }
         }
+    }
+
+    private var graphWidth: CGFloat {
+        CGFloat(max(store.historyRows.map(\.laneCount).max() ?? 1, 1)) * 16 + 16
     }
 
     /// Maps lane index to a stable color derived from the branch that originates that lane.
@@ -177,7 +198,9 @@ private struct HistoryHeader: View {
 
     private var commitsLabel: String {
         let n = store.historyRows.count
-        if n == 0 { return "no commits" }
+        if n == 0 {
+            return "no commits"
+        }
         return n == 1 ? "1 commit" : "\(n) commits"
     }
 
@@ -244,6 +267,7 @@ private struct HistoryRowView: View {
     let isSelected: Bool
     let refBadges: [HistoryRefBadge]
     let laneColors: [Int: Color]
+    let graphWidth: CGFloat
     let store: RepositoryStore
     let multiSelectionOIDs: Set<String>
     let checkoutRef: (GitReference) -> Void
@@ -253,55 +277,54 @@ private struct HistoryRowView: View {
     private let maxVisibleBadges = 4
 
     var body: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 6) {
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
                 HistoryGraphView(row: row, isSelected: isSelected, laneColors: laneColors)
+                    .frame(width: graphWidth, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        ForEach(visibleBadges) { badge in
-                            BadgePill(badge: badge) {
-                                checkoutRef(badge.ref)
-                            }
-                        }
-
-                        if hiddenCount > 0 {
-                            Text("+\(hiddenCount)")
-                                .font(.system(size: 10, weight: .semibold))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.primary.opacity(0.10))
-                                )
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Text(row.commit.subject.isEmpty ? "(no subject)" : row.commit.subject)
-                            .font(.system(size: 13))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                HStack(spacing: 4) {
+                    ForEach(visibleBadges) { badge in
+                        BadgePill(
+                            badge: badge,
+                            hasLocalChanges: !store.entries.isEmpty,
+                            select: { Task { await store.selectCommit(row.commit) } },
+                            checkout: checkoutRef
+                        )
                     }
 
-                    HStack(spacing: 5) {
-                        Text(row.commit.authorName)
-                        Text("·")
-                            .foregroundStyle(.tertiary)
-                        Text(row.commit.shortOID)
-                            .font(.system(size: 10, design: .monospaced))
-                        Text("·")
-                            .foregroundStyle(.tertiary)
-                        Text(row.commit.authorDate, format: .dateTime.month().day().hour().minute())
+                    if hiddenCount > 0 {
+                        Text("+\(hiddenCount)")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.primary.opacity(0.10))
+                            )
+                            .foregroundStyle(.secondary)
                     }
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+
+                    Text(row.commit.subject.isEmpty ? "(no subject)" : row.commit.subject)
+                        .font(.system(size: 13))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
-            .padding(.leading, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
+            Text(row.commit.authorName)
+                .frame(width: 130, alignment: .leading)
+            Text(row.commit.shortOID)
+                .font(.system(size: 11, design: .monospaced))
+                .frame(width: 65, alignment: .leading)
+            Text(row.commit.authorDate, format: .dateTime.month().day().hour().minute())
+                .frame(width: 120, alignment: .trailing)
         }
-        .frame(height: density == .compact ? 28 : 36)
-        .background(isSelected ? Color.primary.opacity(0.08) : Color.clear)
+        .font(.system(size: 11))
+        .lineLimit(1)
+        .padding(.horizontal, 12)
+        .frame(height: density == .compact ? 24 : 28)
+        .background(isSelected ? DS.Palette.rowSelectedSoftFill : Color.clear)
         .contentShape(Rectangle())
         .help(fullMessage)
         .contextMenu {
@@ -373,17 +396,17 @@ private struct HistoryRowView: View {
 
 private struct BadgePill: View {
     let badge: HistoryRefBadge
-    let checkout: () -> Void
+    let hasLocalChanges: Bool
+    let select: () -> Void
+    let checkout: (GitReference) -> Void
 
     var body: some View {
-        Button(action: checkout) {
+        ReferenceActionButton(ref: badge.ref, hasLocalChanges: hasLocalChanges, select: select, checkout: checkout) {
             AviBadge(badgeKind, text: label)
         }
-        .buttonStyle(.plain)
         .aviTooltip {
             BadgePopover(badge: badge)
         }
-        .accessibilityLabel(accessibilityLabel)
     }
 
     private var badgeKind: AviBadge.Kind {
@@ -405,16 +428,6 @@ private struct BadgePill: View {
             return badge.ref.name
         }
     }
-
-    private var accessibilityLabel: String {
-        let kindWord: String
-        switch badge.ref.kind {
-        case .localBranch: kindWord = badge.ref.isCurrent ? "current branch" : "local branch"
-        case .remoteBranch: kindWord = "remote branch"
-        case .tag: kindWord = "tag"
-        }
-        return "\(kindWord) \(badge.ref.name)"
-    }
 }
 
 private struct BadgePopover: View {
@@ -424,7 +437,7 @@ private struct BadgePopover: View {
         VStack(alignment: .leading, spacing: 4) {
             row("Type", typeLabel)
             row("Name", badge.ref.name)
-            row("Commit", String(badge.ref.oid.prefix(12)))
+            row("Commit", String(badge.ref.targetOID.prefix(12)))
             if let upstream = badge.ref.upstream, badge.ref.kind != .tag {
                 row("Tracking", upstream)
             }
@@ -493,11 +506,16 @@ struct CommitDetailView: View {
                 Divider()
                 HSplitView {
                     CommitFileListView(store: store)
-                        .frame(minWidth: 220, idealWidth: 280)
+                        .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
 
                     if let file = store.selectedCommitFile {
-                        FileDiffView(title: file.displayPath, diff: store.commitDiff)
+                        FileDiffView(title: file.displayPath, diff: store.commitDiff, errorMessage: store.commitDiffError)
                             .frame(minWidth: 420)
+                    } else if let error = store.commitDiffError {
+                        ContentUnavailableView("Unable to Load Commit", systemImage: "exclamationmark.triangle", description: Text(error))
+                            .frame(minWidth: 420)
+                    } else if store.isCommitLoading {
+                        ProgressView().frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         ContentUnavailableView(
                             "No File Selected",
@@ -584,7 +602,7 @@ private struct CommitFileListView: View {
             }
             .scrollContentBackground(.hidden)
             .overlay {
-                if store.commitFiles.isEmpty, store.isHistoryLoading {
+                if store.commitFiles.isEmpty, store.isCommitLoading {
                     ProgressView()
                 }
             }
@@ -593,7 +611,9 @@ private struct CommitFileListView: View {
 
     private var filesSummary: String? {
         let n = store.commitFiles.count
-        if n == 0 { return nil }
+        if n == 0 {
+            return nil
+        }
         return n == 1 ? "1 file" : "\(n) files"
     }
 

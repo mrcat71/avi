@@ -9,7 +9,11 @@ struct RepositoryView: View {
     let openRepositoryPicker: () -> Void
     let closeRepository: (RepositoryStore.ID) -> Void
 
-    @State private var selection: RepositorySelection? = nil
+    private var selection: RepositorySelection? {
+        get { store.workspaceSelection }
+        nonmutating set { store.workspaceSelection = newValue }
+    }
+
     @State private var hasAppliedInitialSelection = false
     @State private var showingCreateBranch = false
     @State private var createBranchStartPoint: String? = nil
@@ -17,35 +21,32 @@ struct RepositoryView: View {
     @State private var showingCommandPalette = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            RepositoryTabsBar(
-                repositories: repositories,
-                selectedRepositoryID: $selectedRepositoryID,
-                openRepositoryPicker: openRepositoryPicker,
-                closeRepository: closeRepository
+        HSplitView {
+            RepositorySidebarView(
+                selection: selectionBinding,
+                store: store
+            )
+            .frame(
+                minWidth: AppPreferences.minSidebarWidth,
+                idealWidth: AppPreferences.sidebarWidth,
+                maxWidth: AppPreferences.maxSidebarWidth
             )
 
-            HSplitView {
-                RepositorySidebarView(
-                    selection: selectionBinding,
-                    store: store
+            VStack(spacing: 0) {
+                RepositoryTabsBar(
+                    repositories: repositories,
+                    selectedRepositoryID: $selectedRepositoryID,
+                    openRepositoryPicker: openRepositoryPicker,
+                    closeRepository: closeRepository
                 )
-                .frame(
-                    minWidth: AppPreferences.minSidebarWidth,
-                    idealWidth: AppPreferences.sidebarWidth,
-                    maxWidth: AppPreferences.maxSidebarWidth
+                RepositoryActionToolbarView(
+                    store: store,
+                    openRepositoryPicker: openRepositoryPicker
                 )
-
-                VStack(spacing: 0) {
-                    RepositoryActionToolbarView(
-                        store: store,
-                        openRepositoryPicker: openRepositoryPicker
-                    )
-                    Divider()
-                    workspace
-                }
-                .frame(minWidth: 760)
+                Divider()
+                workspace
             }
+            .frame(minWidth: 760)
         }
         .background(AviWorkspaceBackground())
         .navigationTitle(store.root?.lastPathComponent ?? "Avi")
@@ -138,7 +139,9 @@ struct RepositoryView: View {
         Binding(
             get: { store.aiRewordPreview != nil },
             set: { presented in
-                if !presented { store.dismissAIRewordPreview() }
+                if !presented {
+                    store.dismissAIRewordPreview()
+                }
             }
         )
     }
@@ -147,7 +150,9 @@ struct RepositoryView: View {
         Binding(
             get: { store.aiSplitPreview != nil && !store.isAIWorking },
             set: { presented in
-                if !presented { store.dismissAISplitPreview() }
+                if !presented {
+                    store.dismissAISplitPreview()
+                }
             }
         )
     }
@@ -219,6 +224,7 @@ struct RepositoryView: View {
 
     private func applyInitialSelectionIfNeeded() {
         guard !hasAppliedInitialSelection else { return }
+        guard selection == nil else { hasAppliedInitialSelection = true; return }
         guard !store.isLoading else { return }
         guard store.root != nil else { return }
 
@@ -243,7 +249,11 @@ struct RepositoryView: View {
     private var errorPresented: Binding<Bool> {
         Binding(
             get: { store.errorMessage != nil },
-            set: { presented in if !presented { store.dismissError() } }
+            set: {
+                presented in if !presented {
+                    store.dismissError()
+                }
+            }
         )
     }
 }
@@ -279,7 +289,7 @@ private struct RepositoryTabsBar: View {
                         RepositoryTabButton(
                             repository: repository,
                             isSelected: repository.id == selectedRepositoryID,
-                            canClose: repositories.count > 1,
+                            canClose: true,
                             select: { selectedRepositoryID = repository.id },
                             close: { closeRepository(repository.id) }
                         )
@@ -300,7 +310,7 @@ private struct RepositoryTabsBar: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 32)
-        .background(.ultraThinMaterial)
+        .background(DS.Palette.surface)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Glass.edgeStroke)
@@ -381,7 +391,9 @@ private struct RepositoryTabButton: View {
             let changes = repository.entries.count
             return changes == 0 ? name : "\(name), \(changes) changes"
         }
-        if repository.branch?.isDetached == true { return "Detached HEAD" }
+        if repository.branch?.isDetached == true {
+            return "Detached HEAD"
+        }
         return "Loading"
     }
 }
@@ -494,7 +506,9 @@ private struct RepositoryActionToolbarView: View {
     private var pullHelp: String {
         guard let branch = store.branch else { return "Pull" }
         let name = branch.name ?? "current branch"
-        if branch.isUnborn { return "No commits yet" }
+        if branch.isUnborn {
+            return "No commits yet"
+        }
         guard let upstream = branch.upstream else { return "Set upstream for \(name) first" }
         if branch.behind > 0 {
             return "Pull \(branch.behind) commit\(branch.behind == 1 ? "" : "s") from \(upstream) into \(name)"
@@ -505,7 +519,9 @@ private struct RepositoryActionToolbarView: View {
     private var pushHelp: String {
         guard let branch = store.branch else { return "Push" }
         let name = branch.name ?? "current branch"
-        if branch.isUnborn { return "No commits yet" }
+        if branch.isUnborn {
+            return "No commits yet"
+        }
         guard let upstream = branch.upstream else { return "Push \(name) and set upstream to origin/\(name)" }
         if branch.ahead > 0 {
             return "Push \(branch.ahead) commit\(branch.ahead == 1 ? "" : "s") from \(name) to \(upstream)"
@@ -603,13 +619,14 @@ struct HistoryWorkspaceView: View {
     var body: some View {
         VSplitView {
             HistoryListView(store: store, refBadgesByOID: refBadgesByOID)
-                .frame(minHeight: 180, idealHeight: 320)
+                .frame(maxWidth: .infinity, minHeight: 180, idealHeight: 320)
                 .aviPane()
 
             CommitDetailView(store: store)
-                .frame(minHeight: 320, idealHeight: 380)
+                .frame(maxWidth: .infinity, minHeight: 320, idealHeight: 380)
                 .aviPane()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var refBadgesByOID: [String: [HistoryRefBadge]] {
@@ -622,7 +639,7 @@ struct HistoryWorkspaceView: View {
             badges[ref.oid, default: []].append(HistoryRefBadge(label: ref.name, ref: ref))
         }
         for ref in store.refs.tags {
-            badges[ref.oid, default: []].append(HistoryRefBadge(label: ref.name, ref: ref))
+            badges[ref.targetOID, default: []].append(HistoryRefBadge(label: ref.name, ref: ref))
         }
 
         return badges
@@ -639,20 +656,28 @@ struct LocalChangesWorkspaceView: View {
             Divider()
             HSplitView {
                 ChangeListView(store: store, switchToAllCommits: switchToAllCommits)
-                    .frame(minWidth: 300, idealWidth: 380)
+                    .frame(minWidth: 260, idealWidth: 320, maxWidth: 520)
                     .aviPane()
 
                 VSplitView {
                     DiffDetailView(store: store)
-                        .frame(minHeight: 240)
+                        .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
                         .aviPane()
                     CommitPanelView(store: store)
-                        .frame(minHeight: 158, idealHeight: 220)
+                        .frame(minHeight: 190, idealHeight: 220, maxHeight: commitPanelMaxHeight)
                         .aviPane()
                 }
                 .frame(minWidth: 460)
             }
         }
+    }
+
+    private var commitPanelMaxHeight: CGFloat {
+        let hasExpandedContent = store.isGeneratingCommitMessage
+            || store.aiPendingPreview != nil
+            || store.aiErrorDetail != nil
+            || store.aiDebugDrawerVisible
+        return hasExpandedContent ? .infinity : 280
     }
 }
 
@@ -734,34 +759,56 @@ private struct LocalChangesStatusBar: View {
     }
 
     private var statusLabel: String {
-        if store.branch?.isDetached == true { return "detached" }
+        if store.branch?.isDetached == true {
+            return "detached"
+        }
         let n = store.entries.count
-        if n == 0 { return "clean" }
+        if n == 0 {
+            return "clean"
+        }
         return n == 1 ? "1 change" : "\(n) changes"
     }
 
     private var statusColor: Color {
-        if store.branch?.isDetached == true { return .red }
-        if store.entries.isEmpty { return .green }
+        if store.branch?.isDetached == true {
+            return .red
+        }
+        if store.entries.isEmpty {
+            return .green
+        }
         return .orange
     }
 
     private var aheadBehindText: String? {
         guard let branch = store.branch else { return nil }
         var parts: [String] = []
-        if branch.ahead > 0 { parts.append("↑\(branch.ahead)") }
-        if branch.behind > 0 { parts.append("↓\(branch.behind)") }
-        if parts.isEmpty { return nil }
+        if branch.ahead > 0 {
+            parts.append("↑\(branch.ahead)")
+        }
+        if branch.behind > 0 {
+            parts.append("↓\(branch.behind)")
+        }
+        if parts.isEmpty {
+            return nil
+        }
         return parts.joined(separator: " ")
     }
 
     private var fetchedLabel: String {
         guard let last = store.lastFetched else { return "never fetched" }
         let elapsed = Date().timeIntervalSince(last)
-        if elapsed < 30 { return "fetched just now" }
-        if elapsed < 60 * 60 { return "fetched \(Int(elapsed / 60)) min ago" }
-        if elapsed < 60 * 60 * 24 { return "fetched \(Int(elapsed / 3600)) h ago" }
-        if elapsed < 60 * 60 * 24 * 7 { return "fetched \(Int(elapsed / 86400)) d ago" }
+        if elapsed < 30 {
+            return "fetched just now"
+        }
+        if elapsed < 60 * 60 {
+            return "fetched \(Int(elapsed / 60)) min ago"
+        }
+        if elapsed < 60 * 60 * 24 {
+            return "fetched \(Int(elapsed / 3600)) h ago"
+        }
+        if elapsed < 60 * 60 * 24 * 7 {
+            return "fetched \(Int(elapsed / 86400)) d ago"
+        }
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         return "fetched \(formatter.string(from: last))"
@@ -774,36 +821,14 @@ private struct LocalChangesStatusBar: View {
 }
 
 private struct AviWorkspaceBackground: View {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
     var body: some View {
-        ZStack {
-            if reduceTransparency {
-                Color(nsColor: .windowBackgroundColor)
-            } else {
-                LinearGradient(
-                    colors: [
-                        Color(nsColor: .windowBackgroundColor),
-                        Color(nsColor: .underPageBackgroundColor)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                Rectangle().fill(.ultraThinMaterial)
-            }
-        }
-        .ignoresSafeArea()
+        DS.Palette.surface.ignoresSafeArea()
     }
 }
 
 extension View {
     func aviPane() -> some View {
-        background(.regularMaterial)
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Glass.edgeStroke)
-                    .frame(height: 0.6)
-            }
+        background(DS.Palette.surfaceRaised)
     }
 }
 
@@ -902,7 +927,9 @@ struct BranchSwitcherPopover: View {
 
     private var filteredLocal: [GitReference] {
         let sorted = store.refs.localBranches.sorted { lhs, rhs in
-            if lhs.isCurrent != rhs.isCurrent { return lhs.isCurrent }
+            if lhs.isCurrent != rhs.isCurrent {
+                return lhs.isCurrent
+            }
             return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
         }
         return filtered(sorted)

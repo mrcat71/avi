@@ -11,28 +11,30 @@ struct CommitPanelView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            VStack(alignment: .leading, spacing: 6) {
-                header
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    header
 
-                if store.isGeneratingCommitMessage {
-                    generatingBanner
+                    if store.isGeneratingCommitMessage {
+                        generatingBanner
+                    }
+
+                    if let preview = store.aiPendingPreview {
+                        AIPreviewCard(preview: preview, store: store, config: config.config.ai)
+                    }
+
+                    if let err = store.aiErrorDetail {
+                        AIErrorBanner(detail: err, store: store, config: config.config.ai)
+                    }
+
+                    summaryField
+                    bodyField
+
+                    footer
                 }
-
-                if let preview = store.aiPendingPreview {
-                    AIPreviewCard(preview: preview, store: store, config: config.config.ai)
-                }
-
-                if let err = store.aiErrorDetail {
-                    AIErrorBanner(detail: err, store: store, config: config.config.ai)
-                }
-
-                summaryField
-                bodyField
-
-                footer
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
             .disabled(isFormDisabled)
             .opacity(isFormDisabled ? 0.55 : 1)
             .overlay {
@@ -296,8 +298,12 @@ struct CommitPanelView: View {
     }
 
     private var counterColor: Color {
-        if summaryCount > summaryMax { return .red }
-        if summaryCount > summaryWarn { return .orange }
+        if summaryCount > summaryMax {
+            return .red
+        }
+        if summaryCount > summaryWarn {
+            return .orange
+        }
         return .secondary
     }
 
@@ -306,7 +312,9 @@ struct CommitPanelView: View {
             return store.stagedEntries.isEmpty ? "Amend last commit message" : "Amend with staged changes"
         }
         let count = store.stagedEntries.count
-        if count == 0 { return store.entries.isEmpty ? "" : "Stage to commit" }
+        if count == 0 {
+            return store.entries.isEmpty ? "" : "Stage to commit"
+        }
         return count == 1 ? "1 staged file" : "\(count) staged files"
     }
 }
@@ -345,8 +353,12 @@ private struct AmendChip: View {
     }
 
     private var background: Color {
-        if active { return Color.accentColor }
-        if isHovering { return Color.primary.opacity(0.08) }
+        if active {
+            return Color.accentColor
+        }
+        if isHovering {
+            return Color.primary.opacity(0.08)
+        }
         return Color.clear
     }
 
