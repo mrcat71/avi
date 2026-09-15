@@ -7,8 +7,24 @@ All notable changes to Avi are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Worktree support. A repository with linked worktrees lists them in the sidebar with their branch and any locked or prunable state, and opening one adds it as its own tab.
+- Branches already checked out in another worktree are marked as such, and their checkout is disabled instead of failing. Git's refusal, if it is still reached, now explains which worktree holds the branch.
+
+### Fixed
+- A linked worktree kept showing stale branches and history, because its refs live in the main repository's git directory and nothing there was being watched.
+- Commands run from sibling worktrees now share one queue slot, since they write the same refs.
+
+## [0.2.2] - 2026-09-15
+
+### Added
 - Double-click a branch in the sidebar to check it out.
 - The Branches section header offers a cleanup action for local branches whose upstream is gone from the remote. It appears only when such branches exist, confirms first, and keeps the current branch plus anything Git reports as unmerged.
+- Tags now offer Push Tag and Delete Tag from their context menu, in the sidebar and on history badges. Push names the remote it will publish to and warns that pushing only the tag uploads its commit outside every branch. Delete removes the local tag and leaves any pushed copy on the remote.
+
+### Changed
+- The push sheet states whether pushing updates an existing remote branch, adopts one that already exists, or creates a new one and sets it as upstream.
+- Local branches are listed by name, with only the default branch pinned to the top. Checking out a branch no longer reorders the list.
+- Starting a remote operation while another is still running now explains why nothing happened instead of ignoring the click.
 
 ## [0.2.1] - 2026-09-15
 

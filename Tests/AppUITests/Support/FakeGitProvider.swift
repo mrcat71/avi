@@ -18,10 +18,18 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public private(set) var unstagePathsCalls: [[String]] = []
     /// Branch names passed to `deleteBranch`, in call order.
     public private(set) var deleteBranchCalls: [String] = []
+    /// Tag names passed to `deleteTag`, in call order.
+    public private(set) var deleteTagCalls: [String] = []
+    /// Tag names passed to `pushTag`, with the resolved remote.
+    public private(set) var pushTagCalls: [(name: String, remote: String?)] = []
     /// Branches that `deleteBranch` refuses, mirroring `git branch -d` on unmerged work.
     public var unmergedBranches: Set<String> = []
     /// Stash changed-files keyed by stash ref, for stash-content tests.
     public var stashChanges: [String: [CommitFileChange]] = [:]
+    /// Worktrees reported by `worktrees(in:)`, main worktree first.
+    public var worktrees: [Worktree] = []
+    /// Common dir reported by `location(of:)`; nil means an ordinary repository.
+    public var commonDir: URL?
 
     public init(
         status: WorkingCopyStatus,
@@ -43,6 +51,18 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
 
     public func repositoryRoot(for url: URL) async throws -> URL {
         url
+    }
+
+    public func location(of repository: URL) async throws -> RepositoryLocation {
+        RepositoryLocation(
+            workingTree: repository,
+            gitDir: repository.appendingPathComponent(".git"),
+            commonDir: commonDir ?? repository.appendingPathComponent(".git")
+        )
+    }
+
+    public func worktrees(in _: URL) async throws -> [Worktree] {
+        worktrees
     }
 
     public func status(in _: URL) async throws -> WorkingCopyStatus {
@@ -147,8 +167,18 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
 
     public func createTag(name _: String, targetOID _: String, message _: String?, in _: URL) async throws {}
 
-    public func pushTag(name _: String, remote _: String?, in _: URL) async throws -> GitRemoteOperationResult {
-        GitRemoteOperationResult(output: "ok")
+    public func deleteTag(named name: String, in _: URL) async throws {
+        deleteTagCalls.append(name)
+        refs = RepositoryRefs(
+            localBranches: refs.localBranches,
+            remoteBranches: refs.remoteBranches,
+            tags: refs.tags.filter { $0.name != name }
+        )
+    }
+
+    public func pushTag(name: String, remote: String?, in _: URL) async throws -> GitRemoteOperationResult {
+        pushTagCalls.append((name: name, remote: remote))
+        return GitRemoteOperationResult(output: "ok")
     }
 
     public func commitMessage(for _: String, in _: URL) async throws -> String? {
