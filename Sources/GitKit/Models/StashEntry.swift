@@ -1,7 +1,9 @@
 import Foundation
 
 public struct StashEntry: Sendable, Equatable, Identifiable {
-    public var id: String { ref }
+    public var id: String {
+        ref
+    }
 
     /// Short ref of the stash, e.g. "stash@{0}".
     public let ref: String

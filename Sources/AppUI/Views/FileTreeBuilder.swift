@@ -16,7 +16,9 @@ struct FileTreeNode: Identifiable {
     let stagedCount: Int
 
     var isFolder: Bool {
-        if case .folder = payload { return true }
+        if case .folder = payload {
+            return true
+        }
         return false
     }
 

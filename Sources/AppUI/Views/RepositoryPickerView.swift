@@ -289,11 +289,19 @@ public struct RepositoryPickerView: View {
         let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
         guard !query.isEmpty else { return list }
         return list.filter { entry in
-            if entry.path.lowercased().contains(query) { return true }
-            if entry.displayName.lowercased().contains(query) { return true }
+            if entry.path.lowercased().contains(query) {
+                return true
+            }
+            if entry.displayName.lowercased().contains(query) {
+                return true
+            }
             if let branch = book.metadata(for: entry.url)?.branch,
-               branch.lowercased().contains(query) { return true }
-            if let hint = entry.providerHint, hint.lowercased().contains(query) { return true }
+               branch.lowercased().contains(query) {
+                return true
+            }
+            if let hint = entry.providerHint, hint.lowercased().contains(query) {
+                return true
+            }
             return false
         }
     }
@@ -467,8 +475,12 @@ private struct PickerRepoRow: View {
     private var providerIcon: some View {
         let symbol: String = {
             guard let hint = entry.providerHint?.lowercased() else { return "folder" }
-            if hint.hasPrefix("github") { return "chevron.left.forwardslash.chevron.right" }
-            if hint.hasPrefix("gitlab") { return "globe" }
+            if hint.hasPrefix("github") {
+                return "chevron.left.forwardslash.chevron.right"
+            }
+            if hint.hasPrefix("gitlab") {
+                return "globe"
+            }
             return "folder"
         }()
         Image(systemName: symbol)

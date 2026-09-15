@@ -107,7 +107,9 @@ struct CommandPalette: View {
             results.append((c, titleScore?.matchedIndexes ?? [], combined))
         }
         results.sort { lhs, rhs in
-            if lhs.2 != rhs.2 { return lhs.2 > rhs.2 }
+            if lhs.2 != rhs.2 {
+                return lhs.2 > rhs.2
+            }
             return lhs.0.title.localizedCaseInsensitiveCompare(rhs.0.title) == .orderedAscending
         }
         return results.map { ($0.0, $0.1) }

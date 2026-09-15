@@ -85,7 +85,9 @@ struct AviButton: View {
     }
 
     private var horizontalPadding: CGFloat {
-        if variant == .iconOnly { return 0 }
+        if variant == .iconOnly {
+            return 0
+        }
         return size == .small ? DS.Spacing.lg - 2 : DS.Spacing.lg
     }
 

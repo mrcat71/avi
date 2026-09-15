@@ -98,7 +98,9 @@ public enum AISplitParser {
             let bodyStartOriginal = raw.index(raw.startIndex, offsetBy: startOffset)
             let bodyEndOriginal = raw.index(raw.startIndex, offsetBy: endOffset)
             let body = String(raw[bodyStartOriginal ..< bodyEndOriginal]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !body.isEmpty { return body }
+            if !body.isEmpty {
+                return body
+            }
         }
         return nil
     }

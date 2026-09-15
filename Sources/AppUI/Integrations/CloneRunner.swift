@@ -212,7 +212,9 @@ private final class StderrCollector: @unchecked Sendable {
         let lines = text.split(whereSeparator: { $0 == "\n" || $0 == "\r" }).map(String.init)
         lock.lock(); defer { lock.unlock() }
         buffer.append(contentsOf: lines)
-        if buffer.count > maxLines { buffer.removeFirst(buffer.count - maxLines) }
+        if buffer.count > maxLines {
+            buffer.removeFirst(buffer.count - maxLines)
+        }
     }
 
     func tail(maxLines: Int) -> String {

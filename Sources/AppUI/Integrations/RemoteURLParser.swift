@@ -26,7 +26,9 @@ enum RemoteURLParser {
             if let colonIdx = withoutGit.firstIndex(of: ":") {
                 let host = String(withoutGit[..<colonIdx])
                 var path = String(withoutGit[withoutGit.index(after: colonIdx)...])
-                if path.hasSuffix(".git") { path.removeLast(4) }
+                if path.hasSuffix(".git") {
+                    path.removeLast(4)
+                }
                 return classify(host: host, path: path)
             }
         }
@@ -34,8 +36,12 @@ enum RemoteURLParser {
         // URL form.
         guard let parsed = URL(string: trimmed), let host = parsed.host else { return .unknown }
         var path = parsed.path
-        if path.hasPrefix("/") { path.removeFirst() }
-        if path.hasSuffix(".git") { path.removeLast(4) }
+        if path.hasPrefix("/") {
+            path.removeFirst()
+        }
+        if path.hasSuffix(".git") {
+            path.removeLast(4)
+        }
         return classify(host: host, path: path)
     }
 

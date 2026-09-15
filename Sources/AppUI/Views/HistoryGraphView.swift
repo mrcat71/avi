@@ -124,7 +124,9 @@ struct HistoryGraphView: View {
     }
 
     private func color(for lane: Int) -> Color {
-        if let stable = laneColors[lane] { return stable }
+        if let stable = laneColors[lane] {
+            return stable
+        }
         if let identity = row.laneIdentities[lane] {
             return HistoryGraphPalette.color(for: identity)
         }

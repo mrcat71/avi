@@ -146,7 +146,9 @@ public enum AICLIValidator {
 
     private static func probeVersion(executable: String) async -> String? {
         let r = await runTest(executable: executable)
-        if r.exitCode == 0, !r.stdoutFirstLine.isEmpty { return r.stdoutFirstLine }
+        if r.exitCode == 0, !r.stdoutFirstLine.isEmpty {
+            return r.stdoutFirstLine
+        }
         return nil
     }
 

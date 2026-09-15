@@ -72,7 +72,9 @@ public final class CloneController {
     }
 
     public var isCloning: Bool {
-        if case .cloning = state { return true }
+        if case .cloning = state {
+            return true
+        }
         return false
     }
 
@@ -205,7 +207,9 @@ public final class CloneController {
                 case .github: list = try await GhCLI.listRepos()
                 case .gitlab: list = try await GlabCLI.listRepos()
                 }
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 repos = list
                 state = .browsingRepos(provider)
             } catch {
@@ -255,7 +259,9 @@ public final class CloneController {
                         self?.progress = update
                     }
                 }
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
                 if outcome.success {
                     state = .finished(outcome.destination)
                     if openAfterClone {

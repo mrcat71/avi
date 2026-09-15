@@ -17,7 +17,9 @@ struct AviTooltipModifier<Tooltip: View>: ViewModifier {
                 if hovering {
                     Task {
                         try? await Task.sleep(for: delay)
-                        if isHovering { isShown = true }
+                        if isHovering {
+                            isShown = true
+                        }
                     }
                 } else {
                     isShown = false

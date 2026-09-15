@@ -14,7 +14,9 @@ enum FuzzyMatch {
     /// Score `haystack` against `needle`. Empty needle returns score 0
     /// (everything matches; caller should treat as "no filter").
     static func score(needle: String, haystack: String) -> Result? {
-        if needle.isEmpty { return Result(score: 0, matchedIndexes: []) }
+        if needle.isEmpty {
+            return Result(score: 0, matchedIndexes: [])
+        }
         let smartCase = needle.allSatisfy { !$0.isUppercase }
         let h = smartCase ? haystack.lowercased() : haystack
         let n = smartCase ? needle.lowercased() : needle
