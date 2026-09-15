@@ -1,4 +1,4 @@
 /// Namespace for top-level GitKit metadata.
 public enum GitKit {
-    public static let version = "0.2.0"
+    public static let version = "0.2.1"
 }

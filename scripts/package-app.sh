@@ -87,8 +87,12 @@ if (( NEED_FW_RPATH )); then
 fi
 
 # SwiftPM-generated resource bundles for the AppUI / dependency targets sit
-# next to the executable as `<Pkg>_<Target>.bundle`. Carry them into
-# Contents/Resources so Bundle.module lookups work at runtime.
+# next to the executable as `<Pkg>_<Target>.bundle`. These do NOT satisfy
+# `Bundle.module`: its generated accessor only looks in `Bundle.main.bundleURL`
+# (the .app root, where content cannot be sealed by the signature) before
+# trapping on the build machine's absolute .build path. App code therefore
+# reads its resources from Contents/Resources through `Bundle.main`; the
+# bundles are carried along so dependency assets ship with the app.
 shopt -s nullglob
 RES_BUNDLES=( "${SRC_DIR}"/*.bundle )
 shopt -u nullglob
@@ -118,6 +122,16 @@ if [[ -d "Sources/AppUI/Resources/Branding" ]]; then
         "${APP_DIR}/Contents/Resources/Branding/" 2>/dev/null || true
 fi
 
+# Lottie animations, resolved via Bundle.main at runtime (see LottieView).
+shopt -s nullglob
+LOTTIE_FILES=( Sources/AppUI/Resources/Lottie/*.json )
+shopt -u nullglob
+
+if (( ${#LOTTIE_FILES[@]} > 0 )); then
+    mkdir -p "${APP_DIR}/Contents/Resources/Lottie"
+    cp "${LOTTIE_FILES[@]}" "${APP_DIR}/Contents/Resources/Lottie/"
+fi
+
 # Ad-hoc sign so macOS at least registers a stable code identity and the bundle
 # launches cleanly on the local machine. Downloaders on other Macs still hit
 # Gatekeeper unless they right-click -> Open the first time; that workaround is
@@ -137,8 +151,10 @@ fi
 rm -f "${ZIP}"
 # Use plain `zip` instead of `ditto` so the archive contains no `__MACOSX/`
 # sidecars or `._*` Apple Double files. macOS extended attributes are
-# already stripped above.
-(cd dist && zip -qr -X "../${ZIP}" "${APP_NAME}.app")
+# already stripped above. `-y` is required: without it zip follows symlinks,
+# so Lottie.framework's Versions/Current links unpack as duplicate files and
+# the downloaded bundle no longer verifies ("bundle format is ambiguous").
+(cd dist && zip -qry -X "../${ZIP}" "${APP_NAME}.app")
 
 echo "Built ${ZIP}"
 ls -la "${ZIP}"

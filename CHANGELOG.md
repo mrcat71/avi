@@ -6,6 +6,12 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-15
+
+### Fixed
+- Avi downloaded from a GitHub release crashed immediately on launch. Bundled resources were resolved through SwiftPM's `Bundle.module`, which only finds its bundle on the machine that built the app; they now load from the app bundle through `Bundle.main`.
+- Release archives no longer replace `Lottie.framework`'s internal symlinks with duplicate files, which left the downloaded app with a code signature that failed verification.
+
 ## [0.2.0] - 2026-09-14
 
 ### Added
