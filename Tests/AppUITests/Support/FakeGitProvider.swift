@@ -24,6 +24,10 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public private(set) var pushTagCalls: [(name: String, remote: String?)] = []
     /// Branches that `deleteBranch` refuses, mirroring `git branch -d` on unmerged work.
     public var unmergedBranches: Set<String> = []
+    /// Branches whose deletion fails for a reason forcing cannot fix.
+    public var brokenBranches: Set<String> = []
+    /// Anything that would reach the remote, so local-only operations can assert on it.
+    public private(set) var pushCalls: [String] = []
     /// Stash changed-files keyed by stash ref, for stash-content tests.
     public var stashChanges: [String: [CommitFileChange]] = [:]
     /// Worktrees reported by `worktrees(in:)`, main worktree first.
@@ -102,9 +106,16 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func renameBranch(from _: String, to _: String, in _: URL) async throws {}
     public func setUpstream(branch _: String, upstream _: String, in _: URL) async throws {}
     public func unsetUpstream(branch _: String, in _: URL) async throws {}
-    public func deleteBranch(named name: String, in _: URL) async throws {
-        deleteBranchCalls.append(name)
-        if unmergedBranches.contains(name) {
+    public func deleteBranch(named name: String, force: Bool, in _: URL) async throws {
+        deleteBranchCalls.append(force ? "\(name) (forced)" : name)
+        if brokenBranches.contains(name) {
+            throw GitError.commandFailed(
+                command: "git branch -d -- \(name)",
+                exitCode: 1,
+                stderr: "error: worktree is dirty"
+            )
+        }
+        if unmergedBranches.contains(name), !force {
             throw GitError.commandFailed(
                 command: "git branch -d -- \(name)",
                 exitCode: 1,
@@ -131,11 +142,13 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     }
 
     public func push(in _: URL) async throws -> GitRemoteOperationResult {
-        GitRemoteOperationResult(output: "ok")
+        pushCalls.append("push")
+        return GitRemoteOperationResult(output: "ok")
     }
 
-    public func push(branch _: String?, in _: URL) async throws -> GitRemoteOperationResult {
-        GitRemoteOperationResult(output: "ok")
+    public func push(branch: String?, in _: URL) async throws -> GitRemoteOperationResult {
+        pushCalls.append("push \(branch ?? "")")
+        return GitRemoteOperationResult(output: "ok")
     }
 
     public func stage(path _: String, in _: URL) async throws {}
@@ -209,8 +222,9 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         false
     }
 
-    public func push(branch _: String?, remote _: String?, force _: Bool, pushTags _: Bool, in _: URL) async throws -> GitRemoteOperationResult {
-        GitRemoteOperationResult(output: "ok")
+    public func push(branch: String?, remote: String?, force _: Bool, pushTags _: Bool, in _: URL) async throws -> GitRemoteOperationResult {
+        pushCalls.append("push \(remote ?? "") \(branch ?? "")")
+        return GitRemoteOperationResult(output: "ok")
     }
 
     public func stashes(in _: URL) async throws -> [StashEntry] {

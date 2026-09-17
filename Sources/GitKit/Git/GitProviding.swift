@@ -83,7 +83,9 @@ public protocol GitProviding: Sendable {
     func unsetUpstream(branch: String, in repository: URL) async throws
 
     /// Delete a local branch using Git's safe non-force delete.
-    func deleteBranch(named name: String, in repository: URL) async throws
+    /// `force` maps to `git branch -D`, which also deletes a branch holding
+    /// commits HEAD cannot reach. Recoverable through the reflog, not beyond it.
+    func deleteBranch(named name: String, force: Bool, in repository: URL) async throws
 
     /// Create a tag at `targetOID`. When `message` is nil, creates a lightweight tag;
     /// when non-nil, creates an annotated tag (`git tag -a <name> <oid> -m <message>`).
@@ -237,6 +239,11 @@ public enum SingleCommitRebaseAction: Sendable {
 }
 
 public extension GitProviding {
+    /// Safe delete stays the default; forcing is always an explicit decision.
+    func deleteBranch(named name: String, in repository: URL) async throws {
+        try await deleteBranch(named: name, force: false, in: repository)
+    }
+
     func splitStagedChanges(_: StagedCommitPlan, in _: URL) async throws {
         throw GitError.invalidInput("This Git provider does not support safe staged splitting.")
     }

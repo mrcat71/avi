@@ -49,6 +49,13 @@ extension GitError {
         return path.isEmpty ? nil : path
     }
 
+    /// True when git refused `branch -d` because the branch still holds commits
+    /// it cannot see in HEAD. A squash-merged branch always looks like this: its
+    /// commits were never replayed, only their content.
+    public static func indicatesUnmergedBranch(_ stderr: String) -> Bool {
+        stderr.contains("is not fully merged")
+    }
+
     static func indicatesLockContention(_ stderr: String) -> Bool {
         // index.lock: "Another git process seems to be running in this repository"
         // ref/index .lock: "... Unable to create '/path/X.lock': File exists."

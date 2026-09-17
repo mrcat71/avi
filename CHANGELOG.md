@@ -11,6 +11,7 @@ All notable changes to Avi are documented here. The format is based on
 - Branches already checked out in another worktree are marked as such, and their checkout is disabled instead of failing. Git's refusal, if it is still reached, now explains which worktree holds the branch.
 
 ### Fixed
+- Gone-branch cleanup could not delete anything in the common case. A squash-merged branch has no commits in the current branch, so Git refuses the safe delete, and the result was a page of repeated Git hints. A gone upstream already means the remote dropped that branch, so the refused ones are now force-deleted in the same confirmed action, locally only. Any remaining failure is reported as one line per branch.
 - A linked worktree kept showing stale branches and history, because its refs live in the main repository's git directory and nothing there was being watched.
 - Commands run from sibling worktrees now share one queue slot, since they write the same refs.
 

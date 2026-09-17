@@ -442,22 +442,45 @@ public final class RepositoryStore: Identifiable {
         refs.localBranches.filter { $0.isUpstreamGone && !$0.isCurrent }
     }
 
-    /// Deletes every gone branch through Git's safe `branch -d`, which keeps any
-    /// branch still holding unmerged work. One refusal must not hide the others,
-    /// so every branch is attempted and the failures are reported together.
+    /// Deletes every gone branch locally. Nothing on the remote is touched:
+    /// `git branch -d/-D` only removes the local ref.
+    ///
+    /// The safe delete runs first. When Git refuses because it cannot find the
+    /// branch's commits in HEAD, the delete is retried with force: the upstream
+    /// being gone already means the remote dropped that branch, and a
+    /// squash-merged branch can never satisfy Git's merge check. One failure
+    /// must not hide the others, so every branch is attempted.
     public func deleteGoneBranches() async {
         guard let root else { return }
         var failures: [String] = []
         for branch in goneBranches {
             do {
                 try await git.deleteBranch(named: branch.name, in: root)
+            } catch let error as GitError {
+                guard case let .commandFailed(_, _, stderr) = error,
+                      GitError.indicatesUnmergedBranch(stderr)
+                else {
+                    failures.append("\(branch.name): \(error.localizedDescription)")
+                    continue
+                }
+                do {
+                    try await git.deleteBranch(named: branch.name, force: true, in: root)
+                } catch {
+                    failures.append("\(branch.name): \(error.localizedDescription)")
+                }
             } catch {
                 failures.append("\(branch.name): \(error.localizedDescription)")
             }
         }
         await refresh()
+        report(failures: failures)
+    }
+
+    /// One line per branch. Repeating Git's full hint block per branch is what
+    /// turned this alert into a wall of text.
+    private func report(failures: [String]) {
         guard !failures.isEmpty else { return }
-        errorMessage = "These branches were kept:\n\n" + failures.joined(separator: "\n\n")
+        errorMessage = "These branches could not be deleted:\n\n" + failures.joined(separator: "\n")
     }
 
     public func createTag(name: String, targetOID: String, message: String?) async {

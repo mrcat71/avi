@@ -223,8 +223,8 @@ public struct CLIGitProvider: GitProviding {
         try await run(["branch", "--unset-upstream", branch], in: repository)
     }
 
-    public func deleteBranch(named name: String, in repository: URL) async throws {
-        try await run(["branch", "-d", "--", name], in: repository)
+    public func deleteBranch(named name: String, force: Bool, in repository: URL) async throws {
+        try await run(["branch", force ? "-D" : "-d", "--", name], in: repository)
     }
 
     public func createTag(name: String, targetOID: String, message: String?, in repository: URL) async throws {
