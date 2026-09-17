@@ -22,20 +22,47 @@ struct GoneBranchCleanupTests {
         #expect(store.errorMessage == nil)
     }
 
-    @Test func reportsRefusedBranchesWithoutSkippingTheRest() async throws {
+    @Test func forcesOnlyTheBranchesGitRefusedAndAsksNothingFurther() async throws {
         let fake = provider()
-        fake.unmergedBranches = ["merged"]
+        fake.unmergedBranches = ["squashed"]
         let store = try await openStore(provider: fake)
 
         await store.deleteGoneBranches()
 
-        // The refusal must not stop the loop: both branches are still attempted.
-        #expect(fake.deleteBranchCalls == ["merged", "squashed"])
-        #expect(store.refs.localBranches.map(\.name).contains("merged"))
+        // "merged" went through the safe delete; only the refused one was forced.
+        #expect(fake.deleteBranchCalls == ["merged", "squashed", "squashed (forced)"])
+        #expect(store.refs.localBranches.map(\.name) == ["main", "tracked", "local-only", "gone-current"])
+        #expect(store.errorMessage == nil)
+    }
+
+    @Test func aGoneBranchIsNeverDeletedOnTheRemote() async throws {
+        let fake = provider()
+        fake.unmergedBranches = ["merged", "squashed"]
+        let store = try await openStore(provider: fake)
+
+        await store.deleteGoneBranches()
+
+        #expect(store.refs.localBranches.map(\.name) == ["main", "tracked", "local-only", "gone-current"])
+        // Deleting locally must not reach for the remote in any form.
+        #expect(fake.pushCalls.isEmpty)
+        #expect(fake.pushTagCalls.isEmpty)
+    }
+
+    @Test func realFailuresStayErrorsAndNameOneReasonPerBranch() async throws {
+        let fake = provider()
+        fake.brokenBranches = ["squashed"]
+        let store = try await openStore(provider: fake)
+
+        await store.deleteGoneBranches()
+
+        // A failure forcing cannot fix is never retried with force.
+        #expect(!fake.deleteBranchCalls.contains("squashed (forced)"))
         let message = try #require(store.errorMessage)
-        #expect(message.contains("merged"))
-        #expect(message.contains("not fully merged"))
-        #expect(!message.contains("squashed"))
+        #expect(message.contains("squashed"))
+        #expect(message.contains("worktree is dirty"))
+        // A header plus one line per failed branch, not Git's repeated hint block.
+        #expect(message.split(separator: "\n").count == 2)
+        #expect(!message.contains("hint:"))
     }
 
     @Test func deletingATagLeavesTheRemoteCopyAlone() async throws {
