@@ -151,6 +151,46 @@ struct OperationsTests {
         }
     }
 
+    @Test func discardBatchRestoresTrackedAndDeletesUntrackedInOneCall() async throws {
+        try await withTempRepo { repo in
+            try repo.write("a.txt", "v1\n")
+            try repo.write("b.txt", "v1\n")
+            try await repo.git("add", "a.txt", "b.txt")
+            try await repo.git("commit", "-q", "-m", "init")
+            try repo.write("a.txt", "v2\n")
+            try repo.write("b.txt", "v2\n")
+            try repo.write("u.txt", "junk\n")
+
+            let files = [
+                FileStatus(path: "a.txt", index: .unmodified, worktree: .modified),
+                FileStatus(path: "b.txt", index: .unmodified, worktree: .modified),
+                FileStatus(path: "u.txt", index: .unmodified, worktree: .untracked)
+            ]
+            try await provider(repo).discard(files, in: repo.url)
+
+            #expect(try repo.read("a.txt") == "v1\n")
+            #expect(try repo.read("b.txt") == "v1\n")
+            #expect(!FileManager.default.fileExists(atPath: repo.url.appendingPathComponent("u.txt").path))
+            #expect(try await provider(repo).status(in: repo.url).entries.isEmpty)
+        }
+    }
+
+    @Test func discardBatchLeavesUnselectedFilesAlone() async throws {
+        try await withTempRepo { repo in
+            try repo.write("a.txt", "v1\n")
+            try repo.write("b.txt", "v1\n")
+            try await repo.git("add", "a.txt", "b.txt")
+            try await repo.git("commit", "-q", "-m", "init")
+            try repo.write("a.txt", "v2\n")
+            try repo.write("b.txt", "v2\n")
+
+            try await provider(repo).discard([FileStatus(path: "a.txt", index: .unmodified, worktree: .modified)], in: repo.url)
+
+            #expect(try repo.read("a.txt") == "v1\n")
+            #expect(try repo.read("b.txt") == "v2\n")
+        }
+    }
+
     @Test func commitCreatesCommitAndCleansIndex() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "hello\n")

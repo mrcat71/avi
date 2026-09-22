@@ -422,6 +422,17 @@ public struct CLIGitProvider: GitProviding {
         }
     }
 
+    public func discard(_ files: [FileStatus], in repository: URL) async throws {
+        guard !files.isEmpty else { return }
+        for file in files where file.isUntracked {
+            try FileManager.default.removeItem(at: repository.appendingPathComponent(file.path))
+        }
+        let tracked = files.filter { !$0.isUntracked }.map(\.path)
+        guard !tracked.isEmpty else { return }
+        // One restore for the whole selection instead of N processes.
+        try await run(["restore", "--"] + tracked, in: repository)
+    }
+
     public func commit(message: String, in repository: URL) async throws {
         try await run(["commit", "-m", message], in: repository)
     }

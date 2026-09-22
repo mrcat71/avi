@@ -79,6 +79,11 @@ struct AviApp: App {
                 }
                 .keyboardShortcut("u", modifiers: [.command, .shift])
 
+                Button("Discard Selected Changes...") {
+                    NotificationCenter.default.post(name: .aviDiscardSelection, object: nil)
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+
                 Button("Commit") {
                     NotificationCenter.default.post(name: .aviCommit, object: nil)
                 }

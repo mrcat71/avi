@@ -9,6 +9,8 @@ struct ChangeListView: View {
     @Bindable private var config = ConfigStore.shared
     @State private var multiSelection: Set<String> = []
     @State private var activeStagedPane = false
+    @State private var pendingDiscard: [FileStatus] = []
+    @State private var confirmingDiscard = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,6 +19,23 @@ struct ChangeListView: View {
             content
         }
         .background(selectAllShortcut)
+        .confirmationDialog(
+            discardPrompt,
+            isPresented: $confirmingDiscard,
+            titleVisibility: .visible
+        ) {
+            Button(pendingDiscard.count > 1 ? "Discard \(pendingDiscard.count) Files" : "Discard", role: .destructive) {
+                discardFiles(pendingDiscard)
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDiscard = []
+            }
+        } message: {
+            Text(discardMessage)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aviDiscardSelection)) { _ in
+            requestDiscard(selectedUnstagedFiles)
+        }
         .onChange(of: store.selectedDiffSource) { _, source in
             activeStagedPane = source == .staged
         }
@@ -205,6 +224,44 @@ struct ChangeListView: View {
         Task { await store.stage(files, advancingFrom: order) }
     }
 
+    /// Files a discard from `file`'s row applies to: the whole selection when the
+    /// row is part of it, otherwise that row alone.
+    private func discardTargets(for file: FileStatus) -> [FileStatus] {
+        DiscardTargets.resolve(row: file, selection: multiSelection, entries: store.unstagedEntries)
+    }
+
+    /// Open the confirmation for `files`. Empty input is ignored so the
+    /// Cmd+Shift+D path cannot raise an empty dialog.
+    private func requestDiscard(_ files: [FileStatus]) {
+        guard !files.isEmpty else { return }
+        pendingDiscard = files
+        confirmingDiscard = true
+    }
+
+    /// Discard `files` as a single batch and advance selection to the next
+    /// unstaged file.
+    private func discardFiles(_ files: [FileStatus]) {
+        guard !files.isEmpty else { return }
+        let order = visibleOrder(store.unstagedEntries)
+        pendingDiscard = []
+        Task { await store.discard(files, advancingFrom: order) }
+    }
+
+    private var discardPrompt: String {
+        guard let only = pendingDiscard.first, pendingDiscard.count == 1 else {
+            return "Discard changes to \(pendingDiscard.count) files?"
+        }
+        return "Discard changes to \(only.path)?"
+    }
+
+    private var discardMessage: String {
+        guard pendingDiscard.count > 1 else { return "This cannot be undone." }
+        let shown = pendingDiscard.prefix(5).map(\.path).joined(separator: "\n")
+        let hidden = pendingDiscard.count - min(pendingDiscard.count, 5)
+        let list = hidden > 0 ? "\(shown)\nand \(hidden) more" : shown
+        return "\(list)\n\nThis cannot be undone."
+    }
+
     /// Unstage `files` as a single batch and advance selection to the next staged file.
     private func unstageFiles(_ files: [FileStatus]) {
         guard !files.isEmpty else { return }
@@ -231,7 +288,9 @@ struct ChangeListView: View {
                             staged: staged,
                             store: store,
                             onStage: { stageFiles([$0]) },
-                            onUnstage: { unstageFiles([$0]) }
+                            onUnstage: { unstageFiles([$0]) },
+                            onDiscard: { requestDiscard(discardTargets(for: $0)) },
+                            discardCount: discardTargets(for: file).count
                         )
                         .tag(file.path)
                         .id(file.path)
@@ -321,7 +380,9 @@ struct ChangeListView: View {
                     isTreeRow: true,
                     store: store,
                     onStage: { stageFiles([$0]) },
-                    onUnstage: { unstageFiles([$0]) }
+                    onUnstage: { unstageFiles([$0]) },
+                    onDiscard: { requestDiscard(discardTargets(for: $0)) },
+                    discardCount: discardTargets(for: file).count
                 )
                 .tag(file.path)
                 .padding(.leading, CGFloat(node.depth + 1) * 12)
@@ -446,7 +507,9 @@ private struct ChangeRow: View {
     let store: RepositoryStore
     let onStage: (FileStatus) -> Void
     let onUnstage: (FileStatus) -> Void
-    @State private var confirmingDiscard = false
+    let onDiscard: (FileStatus) -> Void
+    /// How many files a discard from this row would touch, so the menu can say so.
+    var discardCount: Int = 1
 
     var body: some View {
         HStack(spacing: 6) {
@@ -468,8 +531,8 @@ private struct ChangeRow: View {
                 inlineAction("plus.circle", help: "Stage") {
                     onStage(file)
                 }
-                inlineAction("arrow.uturn.backward.circle", help: "Discard") {
-                    confirmingDiscard = true
+                inlineAction("arrow.uturn.backward.circle", help: discardHelp) {
+                    onDiscard(file)
                 }
             }
         }
@@ -478,18 +541,10 @@ private struct ChangeRow: View {
         .contextMenu {
             fileContextMenu
         }
-        .confirmationDialog(
-            "Discard changes to \(file.path)?",
-            isPresented: $confirmingDiscard,
-            titleVisibility: .visible
-        ) {
-            Button("Discard", role: .destructive) {
-                Task { await store.discard(file) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This cannot be undone.")
-        }
+    }
+
+    private var discardHelp: String {
+        discardCount > 1 ? "Discard \(discardCount) files" : "Discard"
     }
 
     @ViewBuilder
@@ -502,8 +557,8 @@ private struct ChangeRow: View {
             Button("Stage") {
                 onStage(file)
             }
-            Button("Discard…", role: .destructive) {
-                confirmingDiscard = true
+            Button(discardCount > 1 ? "Discard \(discardCount) Files…" : "Discard…", role: .destructive) {
+                onDiscard(file)
             }
         }
 
