@@ -157,6 +157,10 @@ public protocol GitProviding: Sendable {
     /// Tracked files are restored from the index; untracked files are deleted.
     func discard(_ file: FileStatus, in repository: URL) async throws
 
+    /// Discard the working-tree changes of several files at once. Untracked
+    /// files are deleted, tracked ones restored from the index.
+    func discard(_ files: [FileStatus], in repository: URL) async throws
+
     /// Commit staged changes with `message` (`git commit -m`).
     func commit(message: String, in repository: URL) async throws
 
@@ -277,6 +281,14 @@ public extension GitProviding {
     func unstage(paths: [String], in repository: URL) async throws {
         for path in paths {
             try await unstage(path: path, in: repository)
+        }
+    }
+
+    /// Default: discard one file at a time. The CLI provider batches the tracked
+    /// paths into a single `git restore`.
+    func discard(_ files: [FileStatus], in repository: URL) async throws {
+        for file in files {
+            try await discard(file, in: repository)
         }
     }
 }

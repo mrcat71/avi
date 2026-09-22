@@ -16,6 +16,8 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     /// Recorded calls for batched staging assertions in tests.
     public private(set) var stagePathsCalls: [[String]] = []
     public private(set) var unstagePathsCalls: [[String]] = []
+    /// Paths passed to the batched `discard`, one entry per call.
+    public private(set) var discardCalls: [[String]] = []
     /// Branch names passed to `deleteBranch`, in call order.
     public private(set) var deleteBranchCalls: [String] = []
     /// Tag names passed to `deleteTag`, in call order.
@@ -163,7 +165,14 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     }
 
     public func unstageAll(in _: URL) async throws {}
-    public func discard(_: FileStatus, in _: URL) async throws {}
+    public func discard(_ file: FileStatus, in _: URL) async throws {
+        discardCalls.append([file.path])
+    }
+
+    public func discard(_ files: [FileStatus], in _: URL) async throws {
+        discardCalls.append(files.map(\.path))
+    }
+
     public func commit(message _: String, in _: URL) async throws {}
     public func amend(message _: String?, in _: URL) async throws {}
     public func lastCommitMessage(in _: URL) async throws -> String? {

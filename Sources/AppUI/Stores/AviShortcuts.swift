@@ -21,6 +21,7 @@ public enum AviShortcuts {
         case refresh
         case stageAll
         case unstageAll
+        case discardSelection
         case commit
         case fetch
         case pull
@@ -40,6 +41,7 @@ public enum AviShortcuts {
             case .refresh: return "Refresh"
             case .stageAll: return "Stage All"
             case .unstageAll: return "Unstage All"
+            case .discardSelection: return "Discard Selected Changes"
             case .commit: return "Commit"
             case .fetch: return "Fetch"
             case .pull: return "Pull"
@@ -57,6 +59,7 @@ public enum AviShortcuts {
             case .refresh: return .aviRefreshRepository
             case .stageAll: return .aviStageAll
             case .unstageAll: return .aviUnstageAll
+            case .discardSelection: return .aviDiscardSelection
             case .commit: return .aviCommit
             case .fetch: return .aviFetchRepository
             case .pull: return .aviPullRepository
@@ -100,6 +103,7 @@ extension KeyboardShortcuts.Name {
     static let refresh = Self("avi.refresh", default: .init(.r, modifiers: [.command]))
     static let stageAll = Self("avi.stageAll", default: .init(.s, modifiers: [.command, .shift]))
     static let unstageAll = Self("avi.unstageAll", default: .init(.u, modifiers: [.command, .shift]))
+    static let discardSelection = Self("avi.discardSelection", default: .init(.d, modifiers: [.command, .shift]))
     static let commit = Self("avi.commit", default: .init(.return, modifiers: [.command]))
     static let fetch = Self("avi.fetch", default: .init(.f, modifiers: [.command, .shift]))
     static let pull = Self("avi.pull", default: .init(.l, modifiers: [.command, .shift]))
@@ -117,6 +121,7 @@ extension AviShortcuts.Action {
         case .refresh: return .refresh
         case .stageAll: return .stageAll
         case .unstageAll: return .unstageAll
+        case .discardSelection: return .discardSelection
         case .commit: return .commit
         case .fetch: return .fetch
         case .pull: return .pull

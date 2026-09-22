@@ -4,6 +4,14 @@ All notable changes to Avi are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Avi follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Discarding changes works on a multi-file selection. A discard started from a row that is part of the selection applies to every selected file, and the confirmation names the count and lists the paths. Cmd+Shift+D discards the selected unstaged files from anywhere in the window, and the shortcut is rebindable like the other global ones.
+
+### Changed
+- A multi-file discard runs as a single `git restore` instead of one process per file, with untracked files deleted in the same action.
+
 ## [0.3.0] - 2026-09-22
 
 ### Added

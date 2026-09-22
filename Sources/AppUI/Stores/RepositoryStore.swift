@@ -327,6 +327,21 @@ public final class RepositoryStore: Identifiable {
         await perform { try await $0.discard(file, in: $1) }
     }
 
+    /// Discard `files` in one batch, refresh once, then advance the selection to
+    /// the next file in the unstaged pane's `visibleOrder`. Every multi-file
+    /// discard entry point (context menu, Cmd+Shift+D) funnels through here.
+    public func discard(_ files: [FileStatus], advancingFrom visibleOrder: [String]) async {
+        guard !files.isEmpty, let root else { return }
+        let acted = Set(files.map(\.path))
+        do {
+            try await git.discard(files, in: root)
+            await refresh()
+            await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(unstagedEntries.map(\.path)), source: .unstaged)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     public func refreshRefs() async {
         guard let root else { return }
         isRefsLoading = true

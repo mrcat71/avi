@@ -46,6 +46,10 @@ struct GitFixture {
         try contents.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 
+    func read(_ relativePath: String) throws -> String {
+        try String(contentsOf: url.appendingPathComponent(relativePath), encoding: .utf8)
+    }
+
     func removeDirectory() {
         try? FileManager.default.removeItem(at: url)
     }
