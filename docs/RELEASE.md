@@ -159,5 +159,23 @@ If a workflow fails before publication, inspect its logs and confirm whether
 a release or assets were created before deciding how to retry. Do not create
 a competing manual release while the workflow is running.
 
+### Tag pushed before the version bump
+
+`Verify in-app version matches tag` fails when `GitKit.version` still holds the
+previous version. That gate runs before the build, so nothing is packaged and no
+release is created: the tag is unused and may be moved instead of burned. Update
+the three files from step 1, rerun the checks in step 3, commit, push `main`, and
+move the tag onto the release commit:
+
+```sh
+git tag -f -a v0.3.0 -m "v0.3.0"
+git push origin main
+git push --force origin v0.3.0
+```
+
+Moving a tag is safe only while no release exists for it. Confirm with
+`gh release view v0.3.0 --repo mrcat71/avi` first. If a release is already
+published, leave that tag alone and ship the next version instead.
+
 Published releases are immutable. Fix a bad release in a new patch version;
 do not delete or move its tag, replace its assets, or reuse its version.
