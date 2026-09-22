@@ -4,7 +4,7 @@ All notable changes to Avi are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and Avi follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-22
 
 ### Added
 - Worktree support. A repository with linked worktrees lists them in the sidebar with their branch and any locked or prunable state, and opening one adds it as its own tab.
