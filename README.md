@@ -10,18 +10,26 @@ generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. Avi has not had a public release yet; v0.1.0 is the first tagged build.
-Expect rough edges, especially around provider authentication, OAuth, and
-multi-account flows.
+Alpha. The current release is v0.3.0. The config schema, the UI, and the
+internal APIs still change between releases. Expect rough edges, especially
+around provider authentication, OAuth, and multi-account flows.
 
 ## Features
 
 - Tab-based repository view with status bar, branch info, and remote actions.
 - Staged / unstaged file lists in Fork-style ordering, with selection-preserving
   stage and unstage operations.
-- Commit graph view with per-commit file diffs.
+- Native selectable diff text with Find support, horizontal scrolling, and
+  separate old / new line-number gutters.
+- Commit graph view with per-commit file diffs, scoped to the current branch or
+  to all branches.
 - Changed-files tree that defaults to fully expanded, with expand-all and
   collapse-all controls.
+- Sidebar sections for branches, tags, stashes, and linked worktrees: checkout,
+  push and delete tags, apply / pop / drop stashes, open a worktree in its own
+  tab, and clean up local branches whose upstream is gone.
+- Push sheet that states whether the push updates, adopts, or creates the remote
+  branch, plus "Push and Open Pull Request" for GitHub and GitLab.
 - AI-assisted commit message generation through a configurable command or the
   OpenAI API, with an IDE-style debug drawer for the underlying run.
 - Config file with live reload; secrets stored in the macOS Keychain.
@@ -32,7 +40,9 @@ multi-account flows.
 ## Requirements
 
 - macOS 14 (Sonoma) or later, Apple Silicon.
-- Swift 6.2 toolchain (Xcode 16 or a recent Swift release).
+- Swift 6.0 toolchain or newer. The package declares
+  `swift-tools-version: 6.0`; CI builds with the Swift 6.2 toolchain that ships
+  with Xcode 26 on `macos-26` runners.
 - Optional CLI tools used by some features: `git` (required), `gh`, `glab`,
   `codex`, `claude`. Configure paths in **Settings → External Tools**.
 
