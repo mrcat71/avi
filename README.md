@@ -8,6 +8,13 @@ Avi is a SwiftUI-based macOS git client. It focuses on local-first workflows
 (staging, committing, browsing history) and adds an AI-assisted commit message
 generator alongside lightweight GitHub and GitLab integration.
 
+<p align="center">
+  <img src="docs/screenshot-history.png" alt="Avi showing the History view of its own repository" width="900">
+</p>
+<p align="center">
+  <em>History with the commit graph, reference sidebar, and per-commit diff.</em>
+</p>
+
 ## Status
 
 Alpha. The current release is v0.3.0. The config schema, the UI, and the
