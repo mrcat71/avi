@@ -19,6 +19,7 @@ struct RepositoryView: View {
     @State private var createBranchStartPoint: String? = nil
     @State private var createTagTargetOID: String? = nil
     @State private var showingCommandPalette = false
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         HSplitView {
@@ -74,6 +75,10 @@ struct RepositoryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviOpenCommandPalette)) { _ in
             showingCommandPalette = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aviOpenAgentSettings)) { _ in
+            SettingsNavigation.shared.requested = .agents
+            openSettings()
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviGoToLocalChanges)) { _ in
             selection = .localChanges
@@ -230,6 +235,12 @@ struct RepositoryView: View {
 
         hasAppliedInitialSelection = true
 
+        // An agent's proposal waits in Changes; show it rather than the last view.
+        if store.hasUnseenProposal {
+            selection = .localChanges
+            return
+        }
+
         if let saved = AppPreferences.lastSelectedView {
             switch saved {
             case .localChanges where !store.entries.isEmpty:
@@ -333,7 +344,13 @@ private struct RepositoryTabButton: View {
             HStack(spacing: 0) {
                 Button(action: select) {
                     HStack(spacing: 6) {
-                        if repository.entries.count > 0 {
+                        if repository.hasUnseenProposal {
+                            Image(systemName: "tray.and.arrow.down.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color.accentColor)
+                                .help("An agent sent commits to review")
+                                .accessibilityLabel("New proposal")
+                        } else if repository.entries.count > 0 {
                             Circle()
                                 .fill(Color.orange)
                                 .frame(width: 6, height: 6)
@@ -655,21 +672,50 @@ struct LocalChangesWorkspaceView: View {
             LocalChangesStatusBar(store: store)
             Divider()
             HSplitView {
-                ChangeListView(store: store, switchToAllCommits: switchToAllCommits)
-                    .frame(minWidth: 260, idealWidth: 320, maxWidth: 520)
-                    .aviPane()
+                Group {
+                    if store.changesMode == .plan {
+                        CommitPlanListView(store: store)
+                    } else {
+                        ChangeListView(store: store, switchToAllCommits: switchToAllCommits)
+                    }
+                }
+                .frame(minWidth: 260, idealWidth: 320, maxWidth: 520)
+                .aviPane()
 
                 VSplitView {
                     DiffDetailView(store: store)
                         .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
                         .aviPane()
-                    CommitPanelView(store: store)
-                        .frame(minHeight: 190, idealHeight: 220, maxHeight: commitPanelMaxHeight)
-                        .aviPane()
+                    Group {
+                        if store.changesMode == .plan {
+                            CommitPlanComposerView(store: store)
+                        } else {
+                            CommitPanelView(store: store)
+                        }
+                    }
+                    .frame(minHeight: 190, idealHeight: 220, maxHeight: commitPanelMaxHeight)
+                    .aviPane()
                 }
                 .frame(minWidth: 460)
             }
         }
+        .onAppear(perform: markSeenIfFrontmost)
+        .onChange(of: store.hasUnseenProposal) { _, _ in
+            markSeenIfFrontmost()
+        }
+        .sheet(item: Binding(get: { store.revisionRequest }, set: { store.revisionRequest = $0 })) { request in
+            PlanRevisionSheet(store: store, request: request)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            markSeenIfFrontmost()
+        }
+    }
+
+    /// You are looking at this repository's changes, so whatever an agent sent
+    /// here is no longer news.
+    private func markSeenIfFrontmost() {
+        guard store.hasUnseenProposal, NSApp.isActive else { return }
+        store.hasUnseenProposal = false
     }
 
     private var commitPanelMaxHeight: CGFloat {
@@ -677,6 +723,8 @@ struct LocalChangesWorkspaceView: View {
             || store.aiPendingPreview != nil
             || store.aiErrorDetail != nil
             || store.aiDebugDrawerVisible
+            || store.fieldProposal != nil
+            || store.changesMode == .plan
         return hasExpandedContent ? .infinity : 280
     }
 }

@@ -13,7 +13,7 @@ public final class RepositoryStore: Identifiable {
     public private(set) var branch: BranchInfo?
     public private(set) var entries: [FileStatus] = []
     public private(set) var selectedPath: String?
-    public private(set) var selectedDiffSource: DiffSource = .unstaged
+    public internal(set) var selectedDiffSource: DiffSource = .unstaged
     public private(set) var diff: FileDiff?
     public private(set) var diffError: String?
     private var diffRequestID = UUID()
@@ -46,7 +46,7 @@ public final class RepositoryStore: Identifiable {
     public private(set) var isHistoryLoading = false
     public private(set) var isRefsLoading = false
     public private(set) var isRemoteOperationRunning = false
-    public private(set) var errorMessage: String?
+    public internal(set) var errorMessage: String?
     public var historyFilter: HistoryFilter = .default
 
     public var commitSummary: String = ""
@@ -65,7 +65,25 @@ public final class RepositoryStore: Identifiable {
     public var isAIWorking: Bool = false
     public private(set) var isApplyingAISplit = false
     public var rebaseInProgress: Bool = false
-    private var aiTask: Task<Void, Never>?
+    /// Pending commits for this repository: agent proposals, AI splits, and
+    /// drafts you made. Empty when there is no plan.
+    public var commitPlan = CommitPlan()
+    public var changesMode: ChangesMode = .files
+    public var selectedDraftID: UUID?
+    /// Commits made so far while a plan is being applied; nil when idle.
+    public internal(set) var planProgress: PlanProgress?
+    /// Set when an agent sends something you have not looked at yet.
+    public var hasUnseenProposal = false
+    /// The single agent proposal currently staged into the commit field.
+    public internal(set) var fieldProposal: FieldProposal?
+    /// One-line note about the last plan change, such as dropped AI paths.
+    public var planNotice: String?
+    /// Drafts the AI is revising right now.
+    public internal(set) var revisingDraftIDs: Set<UUID> = []
+    /// The revise-with-AI sheet, when open.
+    public var revisionRequest: PlanRevisionRequest?
+    var planAITask: Task<Void, Never>?
+    var aiTask: Task<Void, Never>?
     /// Folder ids we've seen at least once during this session. Used to decide
     /// which folders are "new" on a refresh so we can auto-expand them. Never
     /// shrinks during a session, so a folder whose only file is staged out and
@@ -81,7 +99,7 @@ public final class RepositoryStore: Identifiable {
         return trimmedSummary + "\n\n" + trimmedBody
     }
 
-    private let git: GitProviding
+    let git: GitProviding
     private var watcher: RepositoryWatcher?
     private var autoRefreshTask: Task<Void, Never>?
     private var refreshPending = false
@@ -207,8 +225,14 @@ public final class RepositoryStore: Identifiable {
         do {
             let status = try await git.status(in: root)
             guard self.root == root else { return }
-            branch = status.branch
-            entries = status.entries
+            // Assign only on change: a watcher refresh with nothing new must not
+            // re-render every list, which also closes menus you have open.
+            if branch != status.branch {
+                branch = status.branch
+            }
+            if entries != status.entries {
+                entries = status.entries
+            }
             let currentFolderIds = FileTreeBuilder.allFolderIds(for: entries)
             let newFolders = currentFolderIds.subtracting(lastSeenFolderIds)
             if !newFolders.isEmpty {
@@ -348,8 +372,14 @@ public final class RepositoryStore: Identifiable {
         defer { isRefsLoading = false }
 
         do {
-            refs = try await git.refs(in: root)
-            worktrees = try await git.worktrees(in: root)
+            let latestRefs = try await git.refs(in: root)
+            if refs != latestRefs {
+                refs = latestRefs
+            }
+            let latestWorktrees = try await git.worktrees(in: root)
+            if worktrees != latestWorktrees {
+                worktrees = latestWorktrees
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -379,7 +409,10 @@ public final class RepositoryStore: Identifiable {
     public func refreshStashes() async {
         guard let root else { return }
         do {
-            stashes = try await git.stashes(in: root)
+            let latestStashes = try await git.stashes(in: root)
+            if stashes != latestStashes {
+                stashes = latestStashes
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -547,7 +580,10 @@ public final class RepositoryStore: Identifiable {
     public func refreshRemotes() async {
         guard let root else { return }
         do {
-            remotes = try await git.remotes(in: root)
+            let latestRemotes = try await git.remotes(in: root)
+            if remotes != latestRemotes {
+                remotes = latestRemotes
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -693,7 +729,10 @@ public final class RepositoryStore: Identifiable {
                 extensions += 1
             }
 
-            historyRows = CommitGraph.assignRows(for: commits, refs: refs)
+            let rows = CommitGraph.assignRows(for: commits, refs: refs)
+            if historyRows != rows {
+                historyRows = rows
+            }
 
             if let selectedCommitOID,
                let row = historyRows.first(where: { $0.commit.oid == selectedCommitOID }) {
@@ -849,6 +888,7 @@ public final class RepositoryStore: Identifiable {
             commitSummary = ""
             commitBody = ""
             amend = false
+            fieldProposal = nil
             await refresh()
         } catch {
             errorMessage = error.localizedDescription
@@ -1062,10 +1102,19 @@ public final class RepositoryStore: Identifiable {
             commitBody = commitBody.isEmpty ? appended : commitBody + "\n\n" + appended
         }
         aiPendingPreview = nil
+        if preview.proposedBy != nil, fieldProposal?.inField == false {
+            // The field now holds the agent's text; later edits count as yours.
+            fieldProposal?.inField = true
+            fieldProposal?.message = commitMessage
+        }
     }
 
     public func discardAIPreview() {
+        let preview = aiPendingPreview
         aiPendingPreview = nil
+        if preview?.proposedBy != nil, fieldProposal?.inField == false {
+            Task { await discardFieldProposal() }
+        }
     }
 
     private func errorTitle(for err: AIEngineError) -> String {
@@ -1086,7 +1135,7 @@ public final class RepositoryStore: Identifiable {
         case appendAsBody
     }
 
-    private func splitGeneratedMessage(_ text: String) -> (String, String) {
+    func splitGeneratedMessage(_ text: String) -> (String, String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lines = trimmed.split(separator: "\n", omittingEmptySubsequences: false)
         let firstLine = lines.first.map(String.init) ?? trimmed
@@ -1127,12 +1176,14 @@ public final class RepositoryStore: Identifiable {
         pasteboard.setString(file.path, forType: .string)
     }
 
-    private func loadDiff(for file: FileStatus) async {
+    func loadDiff(for file: FileStatus) async {
         guard let root else { return }
         let requestID = UUID()
         diffRequestID = requestID
         let source: DiffSource
-        if selectedDiffSource == .staged, file.isStaged {
+        if selectedDiffSource == .head, file.isStaged, file.hasUnstagedChanges, branch?.isUnborn == false {
+            source = .head
+        } else if selectedDiffSource == .staged, file.isStaged {
             source = .staged
         } else {
             source = file.isUntracked ? .untracked : (file.hasUnstagedChanges ? .unstaged : .staged)
@@ -1382,17 +1433,25 @@ public final class RepositoryStore: Identifiable {
                 return
             }
             do {
+                // A draft commits the working-tree copy, which only matches what
+                // the AI reads when nothing unstaged sits on top of a staged file.
+                let partial = stagedEntries.filter(\.hasUnstagedChanges).map(\.path)
+                guard partial.isEmpty else {
+                    aiErrorDetail = AIErrorDetail(
+                        title: "Partially staged files",
+                        message: "Splitting works per file. Stage or unstage the rest of \(partial.joined(separator: ", ")) first.",
+                        runResult: nil
+                    )
+                    return
+                }
                 let diff = try await git.stagedDiff(in: root)
                 guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     aiErrorDetail = AIErrorDetail(title: "Nothing staged", message: "Stage files first.", runResult: nil)
                     return
                 }
-                try await runSplit(
-                    diff: diff,
-                    source: .staged,
-                    config: config,
-                    report: report
-                )
+                if let groups = try await requestSplitGroups(diff: diff, config: config, report: report) {
+                    adoptAISplit(groups)
+                }
             } catch let err as AIEngineError {
                 handleAIError(err)
             } catch {
@@ -1465,12 +1524,9 @@ public final class RepositoryStore: Identifiable {
             do {
                 // Combined diff: everything that landed across the range.
                 let diff = try await git.commitRangeDiff(oldest: oldestOID, newest: newestOID, in: root)
-                try await runSplit(
-                    diff: diff,
-                    source: .commitRange(oids: orderedOIDs),
-                    config: config,
-                    report: report
-                )
+                if let groups = try await requestSplitGroups(diff: diff, config: config, report: report) {
+                    aiSplitPreview = AISplitPreview(source: .commitRange(oids: orderedOIDs), groups: groups)
+                }
             } catch let err as AIEngineError {
                 handleAIError(err)
             } catch {
@@ -1506,12 +1562,9 @@ public final class RepositoryStore: Identifiable {
             }
             do {
                 let diff = try await git.commitDiff(for: oid, in: root)
-                try await runSplit(
-                    diff: diff,
-                    source: .oldCommit(oid: oid),
-                    config: config,
-                    report: report
-                )
+                if let groups = try await requestSplitGroups(diff: diff, config: config, report: report) {
+                    aiSplitPreview = AISplitPreview(source: .oldCommit(oid: oid), groups: groups)
+                }
             } catch let err as AIEngineError {
                 handleAIError(err)
             } catch {
@@ -1537,12 +1590,6 @@ public final class RepositoryStore: Identifiable {
             defer { isApplyingAISplit = false }
             do {
                 switch preview.source {
-                case .staged:
-                    let plan = StagedCommitPlan(
-                        groups: groups.map { .init(files: $0.files, message: $0.message) },
-                        expectedDiff: preview.sourceDiff
-                    )
-                    try await git.splitStagedChanges(plan, in: root)
                 case .oldCommit(let oid):
                     try await git.rebaseSingle(commit: oid, action: .edit, in: root)
                     try await git.reset(mode: .mixed, target: "HEAD^", in: root)
@@ -1586,12 +1633,13 @@ public final class RepositoryStore: Identifiable {
 
     // MARK: - Split helpers
 
-    private func runSplit(
+    /// Asks the AI to group `diff` into commits. Returns nil, with the error
+    /// and raw response already shown, when the answer cannot be parsed.
+    private func requestSplitGroups(
         diff: String,
-        source: AISplitPreview.Source,
         config: AIConfig,
         report: AIValidationReport
-    ) async throws {
+    ) async throws -> [AICommitGroup]? {
         let context = PromptContext(
             stagedDiff: diff,
             branch: branch?.name ?? "",
@@ -1625,7 +1673,7 @@ public final class RepositoryStore: Identifiable {
         do {
             let groups = try AISplitParser.parse(raw)
             try Task.checkCancellation()
-            aiSplitPreview = AISplitPreview(source: source, sourceDiff: diff, groups: groups)
+            return groups
         } catch let err as AISplitParseError {
             aiErrorDetail = AIErrorDetail(
                 title: "Could not parse AI response",
@@ -1633,6 +1681,7 @@ public final class RepositoryStore: Identifiable {
                 runResult: aiDebugLatestRun
             )
             openAIDebugDrawer()
+            return nil
         }
     }
 
@@ -1641,7 +1690,7 @@ public final class RepositoryStore: Identifiable {
         try await git.stage(paths: group.files, in: root)
     }
 
-    private func handleAIError(_ err: AIEngineError) {
+    func handleAIError(_ err: AIEngineError) {
         if case .cancelled = err {
             return
         }
@@ -1678,9 +1727,10 @@ public struct AIRewordPreview: Equatable, Sendable {
     public var proposed: String
 }
 
+/// An AI proposal to rewrite existing commits. Staged-change splits go to
+/// the commit plan instead.
 public struct AISplitPreview: Equatable, Sendable {
     public enum Source: Equatable, Sendable {
-        case staged
         case oldCommit(oid: String)
         /// Range of consecutive commits, oldest-first. Apply uses `git rebase -i`
         /// with the newest commit marked `edit` and a `git reset --mixed <oldest>^`
@@ -1689,6 +1739,37 @@ public struct AISplitPreview: Equatable, Sendable {
     }
 
     public let source: Source
-    public let sourceDiff: String
     public var groups: [AICommitGroup]
+}
+
+/// Which drafts the revise-with-AI sheet works on, and what to prefill.
+public struct PlanRevisionRequest: Identifiable, Equatable, Sendable {
+    public let id = UUID()
+    public let draftIDs: [UUID]
+    /// Names the scope, like "Commit 2: docs: ..." or "All 5 commits".
+    public let title: String
+    public let suggestion: String
+}
+
+public enum ChangesMode: Sendable {
+    case files
+    case plan
+}
+
+public struct PlanProgress: Equatable, Sendable {
+    public var completed: Int
+    public let total: Int
+}
+
+/// The agent proposal whose files were staged and whose message went to the
+/// commit field, or to the preview card when the field held your own text.
+public struct FieldProposal: Equatable, Sendable {
+    public let source: DraftSource
+    public let files: [String]
+    public var message: String
+    /// Paths Avi staged for this proposal that were not staged before, so
+    /// withdrawing the proposal can put the index back.
+    public let stagedByAvi: [String]
+    /// False while the message waits in the preview card.
+    public var inField: Bool
 }

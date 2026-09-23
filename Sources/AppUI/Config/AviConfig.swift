@@ -12,6 +12,7 @@ public struct AviConfig: Codable, Equatable, Sendable {
     public var externalTools: ExternalToolsConfig
     public var advanced: AdvancedConfig
     public var clone: CloneConfig
+    public var agents: AgentsConfig
 
     public init(
         version: Int = 1,
@@ -22,7 +23,8 @@ public struct AviConfig: Codable, Equatable, Sendable {
         ai: AIConfig = .init(),
         externalTools: ExternalToolsConfig = .init(),
         advanced: AdvancedConfig = .init(),
-        clone: CloneConfig = .init()
+        clone: CloneConfig = .init(),
+        agents: AgentsConfig = .init()
     ) {
         self.version = version
         self.general = general
@@ -33,6 +35,7 @@ public struct AviConfig: Codable, Equatable, Sendable {
         self.externalTools = externalTools
         self.advanced = advanced
         self.clone = clone
+        self.agents = agents
     }
 
     public init(from decoder: Decoder) throws {
@@ -47,6 +50,22 @@ public struct AviConfig: Codable, Equatable, Sendable {
         externalTools = (try? c.decode(ExternalToolsConfig.self, forKey: .externalTools)) ?? defaults.externalTools
         advanced = (try? c.decode(AdvancedConfig.self, forKey: .advanced)) ?? defaults.advanced
         clone = (try? c.decode(CloneConfig.self, forKey: .clone)) ?? defaults.clone
+        agents = (try? c.decode(AgentsConfig.self, forKey: .agents)) ?? defaults.agents
+    }
+}
+
+/// Local agents (Claude Code, Codex) talking to Avi over its control socket.
+public struct AgentsConfig: Codable, Equatable, Sendable {
+    /// Accept proposals from the `avi` command. Off closes the socket.
+    public var enabled: Bool
+
+    public init(enabled: Bool = true) {
+        self.enabled = enabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = (try? c.decode(Bool.self, forKey: .enabled)) ?? AgentsConfig().enabled
     }
 }
 
@@ -219,11 +238,12 @@ public struct AIConfig: Codable, Equatable, Sendable {
     public var directInsert: Bool // skip the preview card; replace commit fields directly
     public var rewordPromptTemplate: String
     public var splitPromptTemplate: String
+    public var planRevisionPromptTemplate: String
 
     public init(
         enabled: Bool = false,
         backend: String = "command",
-        model: String = "",
+        model: String = AIConfig.defaultModel,
         temperature: Double = 0.2,
         maxTokens: Int = 800,
         promptTemplate: String = AIConfig.defaultPromptTemplate,
@@ -238,7 +258,8 @@ public struct AIConfig: Codable, Equatable, Sendable {
         reasoningEffort: String = "",
         directInsert: Bool = true,
         rewordPromptTemplate: String = AIConfig.defaultRewordPromptTemplate,
-        splitPromptTemplate: String = AIConfig.defaultSplitPromptTemplate
+        splitPromptTemplate: String = AIConfig.defaultSplitPromptTemplate,
+        planRevisionPromptTemplate: String = AIConfig.defaultPlanRevisionPromptTemplate
     ) {
         self.enabled = enabled
         self.backend = backend
@@ -258,7 +279,11 @@ public struct AIConfig: Codable, Equatable, Sendable {
         self.directInsert = directInsert
         self.rewordPromptTemplate = rewordPromptTemplate
         self.splitPromptTemplate = splitPromptTemplate
+        self.planRevisionPromptTemplate = planRevisionPromptTemplate
     }
+
+    /// OpenAI's efficient GPT-6 model: fast and cheap enough for commit messages.
+    public static let defaultModel = "gpt-6-luna"
 
     public static let defaultPromptTemplate = """
     Generate commit message for ${target}.
@@ -310,13 +335,44 @@ public struct AIConfig: Codable, Equatable, Sendable {
     ${target}
     """
 
+    public static let defaultPlanRevisionPromptTemplate = """
+    Revise the planned commits below as the instructions say. Every listed
+    file must end up in exactly one commit, and no other files may appear.
+    Keep the commit order meaningful: each commit should build on the ones
+    before it.
+
+    Use Conventional Commits style for messages unless the instructions say
+    otherwise. Subject must be at most ${highLimit} characters; wrap the body
+    at ${guideLine} characters. Never add AI attribution trailers.
+
+    Instructions:
+    ${instructions}
+
+    Planned commits:
+    ${plan}
+
+    Respond with ONLY a JSON object in a ```json fenced block:
+    ```json
+    {
+      "groups": [
+        { "files": ["path/to/file1", "path/to/file2"], "message": "feat(scope): subject\\n\\nOptional body." }
+      ]
+    }
+    ```
+
+    Diff of these files:
+    ${target}
+    """
+
     /// Tolerant decoder: any field can be missing in an older config file.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = AIConfig()
         enabled = (try? c.decode(Bool.self, forKey: .enabled)) ?? defaults.enabled
         backend = (try? c.decode(String.self, forKey: .backend)) ?? defaults.backend
-        model = (try? c.decode(String.self, forKey: .model)) ?? defaults.model
+        // A blank model was never usable, so it means "not chosen yet".
+        let decodedModel = (try? c.decode(String.self, forKey: .model)) ?? ""
+        model = decodedModel.trimmingCharacters(in: .whitespaces).isEmpty ? defaults.model : decodedModel
         temperature = (try? c.decode(Double.self, forKey: .temperature)) ?? defaults.temperature
         maxTokens = (try? c.decode(Int.self, forKey: .maxTokens)) ?? defaults.maxTokens
         promptTemplate = (try? c.decode(String.self, forKey: .promptTemplate)) ?? defaults.promptTemplate
@@ -332,6 +388,7 @@ public struct AIConfig: Codable, Equatable, Sendable {
         directInsert = (try? c.decode(Bool.self, forKey: .directInsert)) ?? defaults.directInsert
         rewordPromptTemplate = (try? c.decode(String.self, forKey: .rewordPromptTemplate)) ?? defaults.rewordPromptTemplate
         splitPromptTemplate = (try? c.decode(String.self, forKey: .splitPromptTemplate)) ?? defaults.splitPromptTemplate
+        planRevisionPromptTemplate = (try? c.decode(String.self, forKey: .planRevisionPromptTemplate)) ?? defaults.planRevisionPromptTemplate
     }
 }
 

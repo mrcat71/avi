@@ -60,11 +60,15 @@ public struct AIPendingPreview: Sendable, Equatable {
     public let subject: String
     public let body: String
     public let result: AIRunResult
+    /// Agent that proposed this message through the control socket, or nil
+    /// when Avi's own AI generated it.
+    public let proposedBy: String?
 
-    public init(subject: String, body: String, result: AIRunResult) {
+    public init(subject: String, body: String, result: AIRunResult, proposedBy: String? = nil) {
         self.subject = subject
         self.body = body
         self.result = result
+        self.proposedBy = proposedBy
     }
 
     public var combined: String {

@@ -6,9 +6,6 @@ struct CommitPanelView: View {
 
     @Bindable private var config = ConfigStore.shared
 
-    private let summaryWarn = 50
-    private let summaryMax = 72
-
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
@@ -27,8 +24,11 @@ struct CommitPanelView: View {
                         AIErrorBanner(detail: err, store: store, config: config.config.ai)
                     }
 
-                    summaryField
-                    bodyField
+                    if let proposal = store.fieldProposal, proposal.inField {
+                        FieldProposalBanner(proposal: proposal, store: store)
+                    }
+
+                    CommitMessageEditor(summary: summaryBinding, messageBody: bodyBinding)
 
                     footer
                 }
@@ -149,9 +149,10 @@ struct CommitPanelView: View {
                 Button {
                     store.splitStagedWithAI()
                 } label: {
-                    Label("Split Staged Into Multiple Commits…", systemImage: "rectangle.split.3x1")
+                    Label("Split Staged Into Commits…", systemImage: "rectangle.split.3x1")
                 }
                 .disabled(store.stagedEntries.count < 2)
+                .help("Ask the AI to group the staged files into commits you review in Plan")
             }
         } label: {
             HStack(spacing: 4) {
@@ -208,56 +209,6 @@ struct CommitPanelView: View {
         .accessibilityLabel("Toggle AI debug drawer")
     }
 
-    private var summaryField: some View {
-        HStack(spacing: 0) {
-            TextField("feat(scope): short summary", text: summaryBinding)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13, weight: .medium))
-                .padding(.horizontal, 8)
-                .frame(height: 28)
-
-            Text("\(summaryCount) / \(summaryMax)")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(counterColor)
-                .padding(.trailing, 8)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
-                .fill(.regularMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
-                .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
-        )
-    }
-
-    private var bodyField: some View {
-        TextEditor(text: bodyBinding)
-            .font(.system(size: 12))
-            .scrollContentBackground(.hidden)
-            .frame(minHeight: 50, idealHeight: 64, maxHeight: 100)
-            .overlay {
-                if store.commitBody.isEmpty {
-                    Text("Optional details. Leave a blank line after the summary.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 5)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .allowsHitTesting(false)
-                }
-            }
-            .padding(4)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.primary.opacity(0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.primary.opacity(0.10), lineWidth: 1)
-            )
-    }
-
     private var footer: some View {
         HStack(spacing: 8) {
             AmendChip(active: store.amend, enabled: store.canAmend) {
@@ -291,20 +242,6 @@ struct CommitPanelView: View {
 
     private var bodyBinding: Binding<String> {
         Binding(get: { store.commitBody }, set: { store.commitBody = $0 })
-    }
-
-    private var summaryCount: Int {
-        store.commitSummary.count
-    }
-
-    private var counterColor: Color {
-        if summaryCount > summaryMax {
-            return .red
-        }
-        if summaryCount > summaryWarn {
-            return .orange
-        }
-        return .secondary
     }
 
     private var commitHint: String {
@@ -381,16 +318,18 @@ private struct AIPreviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
-                Image(systemName: "character.bubble")
+                Image(systemName: preview.proposedBy == nil ? "character.bubble" : "terminal")
                     .font(.system(size: 10))
                     .foregroundStyle(Color.accentColor)
-                Text("Generated commit message")
+                Text(preview.proposedBy.map { "Proposed by \($0)" } ?? "Generated commit message")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                 Spacer()
-                Text("via \(config.backend) · \(config.model)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                if preview.proposedBy == nil {
+                    Text("via \(config.backend) · \(config.model)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -417,11 +356,13 @@ private struct AIPreviewCard: View {
                 }
                 .controlSize(.small)
 
-                Button("Regenerate") {
-                    store.generateCommitMessage(config: config)
+                if preview.proposedBy == nil {
+                    Button("Regenerate") {
+                        store.generateCommitMessage(config: config)
+                    }
+                    .controlSize(.small)
+                    .disabled(store.isGeneratingCommitMessage)
                 }
-                .controlSize(.small)
-                .disabled(store.isGeneratingCommitMessage)
 
                 Button("Copy") {
                     let pasteboard = NSPasteboard.general
@@ -430,10 +371,12 @@ private struct AIPreviewCard: View {
                 }
                 .controlSize(.small)
 
-                Button("Debug") {
-                    store.openAIDebugDrawer()
+                if preview.proposedBy == nil {
+                    Button("Debug") {
+                        store.openAIDebugDrawer()
+                    }
+                    .controlSize(.small)
                 }
-                .controlSize(.small)
 
                 Spacer()
 
@@ -441,6 +384,7 @@ private struct AIPreviewCard: View {
                     store.discardAIPreview()
                 }
                 .controlSize(.small)
+                .help(preview.proposedBy == nil ? "Discard this message" : "Discard the proposal and unstage the files Avi staged for it")
             }
         }
         .padding(8)
@@ -514,5 +458,68 @@ private struct AIErrorBanner: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(Color.orange.opacity(0.30), lineWidth: 1)
         )
+    }
+}
+
+/// Shown while an agent's proposal fills the commit field: who sent it, what
+/// it staged, and anything else staged that will ride along.
+private struct FieldProposalBanner: View {
+    let proposal: FieldProposal
+    let store: RepositoryStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "terminal")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.accentColor)
+                Text("Proposed by \(proposal.source.displayName)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(filesLabel)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Withdraw") {
+                    Task { await store.discardFieldProposal() }
+                }
+                .controlSize(.small)
+                .help("Clear the message and unstage the files Avi staged for this proposal")
+            }
+            let extra = store.stagedOutsideFieldProposal
+            if !extra.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                    Text("\(extra.count) other staged file\(extra.count == 1 ? "" : "s") will be committed too")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .help(extra.joined(separator: "\n"))
+                    Spacer()
+                    Button("Unstage Them") {
+                        Task { await store.unstageOutsideFieldProposal() }
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.accentColor.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private var filesLabel: String {
+        let count = proposal.files.count
+        if count == 0 {
+            return "message only"
+        }
+        return count == 1 ? "1 file staged" : "\(count) files staged"
     }
 }

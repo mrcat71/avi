@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Multi-step sheet for reviewing an AI-proposed commit split (either of the
-/// current staged diff, or of an existing commit).
+/// Sheet for reviewing an AI proposal that rewrites existing commits: splitting
+/// one commit or recomposing a range. Staged changes split into the commit plan.
 struct AISplitSheet: View {
     let store: RepositoryStore
     let preview: AISplitPreview
@@ -70,7 +70,6 @@ struct AISplitSheet: View {
 
     private var sourceLabel: String {
         switch preview.source {
-        case .staged: return "Staged changes will become these commits."
         case .oldCommit(let oid): return "Commit \(String(oid.prefix(7))) will be split into these commits."
         case .commitRange(let oids):
             let count = oids.count
