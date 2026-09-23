@@ -14,6 +14,7 @@ struct CommitPlanComposerView: View {
                 if let draft = store.selectedDraft {
                     CommitMessageEditor(summary: summaryBinding(draft.id), messageBody: bodyBinding(draft.id))
                     issueLine(for: draft)
+                    actionBar(for: draft)
                 } else {
                     Text("Add a commit with the + button, then drag files onto it.")
                         .font(.system(size: 12))
@@ -104,6 +105,92 @@ struct CommitPlanComposerView: View {
         guard let current = store.selectedDraft, let index = drafts.firstIndex(where: { $0.id == current.id }) else { return nil }
         let target = index + offset
         return drafts.indices.contains(target) ? drafts[target].id : nil
+    }
+
+    // MARK: Actions
+
+    /// The draft menu's main actions as visible buttons, so they need no hunting.
+    /// Falls back to icons when the pane is narrow.
+    private func actionBar(for draft: CommitDraft) -> some View {
+        ViewThatFits(in: .horizontal) {
+            actionRow(for: draft, compact: false)
+            actionRow(for: draft, compact: true)
+        }
+    }
+
+    private func actionRow(for draft: CommitDraft, compact: Bool) -> some View {
+        let drafts = store.commitPlan.drafts
+        let index = drafts.firstIndex { $0.id == draft.id } ?? 0
+        let isLast = index == drafts.count - 1
+        let aiReady = store.canUseAIForPlan && !store.isRevisingPlan && !store.isApplyingPlan
+        let aiHelp = store.canUseAIForPlan ? nil : "Turn on AI in Settings > AI Commit Messages"
+        return HStack(spacing: 6) {
+            actionButton("Write Message", symbol: "character.bubble", compact: compact, help: aiHelp ?? "Let the AI write this commit's message from its changes") {
+                store.improveMessage(forDraft: draft.id)
+            }
+            .disabled(!aiReady || draft.files.isEmpty)
+            actionButton("Revise…", symbol: "square.and.pencil", compact: compact, help: aiHelp ?? "Tell the AI how to change this commit") {
+                store.requestRevision(of: [draft.id])
+            }
+            .disabled(!aiReady)
+            actionButton("Split…", symbol: "square.split.2x1", compact: compact, help: aiHelp ?? "Have the AI split this commit into smaller ones") {
+                store.requestRevision(of: [draft.id], suggestion: "Split this commit into smaller commits, one per logical change.")
+            }
+            .disabled(!aiReady || draft.files.count < 2)
+            Menu {
+                Button("Move Up") {
+                    store.moveDraft(draft.id, by: -1)
+                }
+                .disabled(index == 0)
+                Button("Move Down") {
+                    store.moveDraft(draft.id, by: 1)
+                }
+                .disabled(isLast)
+                Divider()
+                Button("Merge with Previous") {
+                    store.mergeDraft(draft.id, withNext: false)
+                }
+                .disabled(index == 0)
+                Button("Merge with Next") {
+                    store.mergeDraft(draft.id, withNext: true)
+                }
+                .disabled(isLast)
+                Divider()
+                Button("Delete Commit", role: .destructive) {
+                    store.deleteDraft(draft.id)
+                }
+            } label: {
+                if compact {
+                    Image(systemName: "arrow.up.arrow.down")
+                } else {
+                    Label("Arrange", systemImage: "arrow.up.arrow.down")
+                }
+            }
+            .controlSize(.small)
+            .fixedSize()
+            .help("Move, merge, or delete this commit")
+            .accessibilityLabel("Arrange")
+            Spacer(minLength: 8)
+            actionButton("Rethink Plan…", symbol: "rectangle.3.group", compact: compact, help: aiHelp ?? "Tell the AI how to regroup every commit") {
+                store.requestRevision(of: drafts.map(\.id))
+            }
+            .disabled(!aiReady || drafts.count < 2)
+        }
+        .disabled(store.isApplyingPlan)
+    }
+
+    private func actionButton(_ title: String, symbol: String, compact: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            if compact {
+                Image(systemName: symbol)
+            } else {
+                Label(title, systemImage: symbol)
+            }
+        }
+        .controlSize(.small)
+        .fixedSize()
+        .help(help)
+        .accessibilityLabel(title)
     }
 
     // MARK: Draft problems
