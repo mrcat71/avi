@@ -69,3 +69,5 @@ jobs:
         run: .build/release/AviApp --version
       - name: Self-test
         run: .build/release/AviApp --self-test
+      - name: avi command
+        run: .build/release/AviApp --cli version

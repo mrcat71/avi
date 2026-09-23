@@ -1,6 +1,7 @@
 import AppKit
 @testable import AppUI
 import GitKit
+import SwiftUI
 import XCTest
 
 final class NativeDiffViewportTests: XCTestCase {
@@ -81,6 +82,46 @@ final class NativeDiffViewportTests: XCTestCase {
         }
     }
 
+    /// The real layout: the title row sits right above the gutter. Rendering the
+    /// window must leave the title row free of the gutter's edge line.
+    func testTitleRowAboveTheGutterStaysClean() throws {
+        try MainActor.assumeIsolated {
+            _ = NSApplication.shared
+            // A one-letter title keeps glyphs away from the gutter edge column.
+            let host = NSHostingView(rootView: FileDiffView(title: "x", diff: makeDiff()).frame(width: 600, height: 300))
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.contentView = host
+            host.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            let scroll = try XCTUnwrap(findScrollView(in: host))
+            let ruler = try XCTUnwrap(scroll.verticalRulerView)
+            // Invalidate generously, the way AppKit does when neighbours redraw.
+            host.setNeedsDisplay(host.bounds)
+            ruler.setNeedsDisplay(ruler.bounds.insetBy(dx: 0, dy: -60))
+            window.displayIfNeeded()
+
+            let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let rulerEdge = ruler.convert(NSPoint(x: ruler.bounds.maxX - 1, y: 0), to: host)
+            let rulerTop = ruler.convert(ruler.bounds, to: host)
+            let scale = CGFloat(bitmap.pixelsWide) / host.bounds.width
+            // Title row: from the top of the host down to the gutter's top edge.
+            let titleRows = host.isFlipped ? (0 ..< Int(rulerTop.minY * scale) - 2) : (Int(rulerTop.maxY * scale) + 2 ..< bitmap.pixelsHigh)
+            let edgeX = Int(rulerEdge.x * scale)
+            let backgroundX = Int((rulerEdge.x + 40) * scale)
+            var differing = 0
+            for y in titleRows {
+                // Row y in bitmap coordinates counts from the top.
+                guard let edge = bitmap.colorAt(x: edgeX, y: y), let background = bitmap.colorAt(x: backgroundX, y: y) else { continue }
+                if abs(edge.brightnessComponent - background.brightnessComponent) > 0.08 {
+                    differing += 1
+                }
+            }
+            XCTAssertLessThan(differing, 3, "a vertical line crosses the title row at the gutter edge")
+        }
+    }
+
     func testViewportResetAccountsForTopInset() {
         MainActor.assumeIsolated {
             let scroll = makeScrollView()
@@ -140,4 +181,16 @@ private func makeDiff(start: Int = 1) -> FileDiff {
                      oldLineNumber: nil, newLineNumber: start + index)
         }
     )], isBinary: false)
+}
+
+@MainActor private func findScrollView(in view: NSView) -> DiffScrollView? {
+    if let scroll = view as? DiffScrollView {
+        return scroll
+    }
+    for child in view.subviews {
+        if let found = findScrollView(in: child) {
+            return found
+        }
+    }
+    return nil
 }
