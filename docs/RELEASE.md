@@ -49,14 +49,18 @@ separate branch CI workflow is failing, so complete the checks below first.
    shasum -a 256 -c SHA256SUMS
    codesign --verify --deep --strict --verbose=2 dist/Avi.app
    ./dist/Avi.app/Contents/MacOS/Avi --version
+   ./dist/Avi.app/Contents/MacOS/Avi --cli version
    open dist/Avi.app
+   ./dist/Avi.app/Contents/MacOS/Avi --cli status
    ```
 
    Check Changes and History, staged/unstaged diffs, horizontal scrolling,
    resizing with and without a selection, repository switching, and tag
-   inspection. Test commit/stage/checkout operations only in a disposable
-   repository. Confirm the version in About Avi and that local changes remain
-   intact when a checkout is refused.
+   inspection. Once Avi is open, `--cli status` must report the new version,
+   and in a disposable repository you opened in Avi, a `--cli propose` with two
+   commits must land in Plan. Test commit/stage/checkout operations only in a
+   disposable repository. Confirm the version in About Avi and that local
+   changes remain intact when a checkout is refused.
 
 ## Commit, then wait for branch CI
 
