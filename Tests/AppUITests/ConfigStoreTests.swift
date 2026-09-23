@@ -52,5 +52,30 @@ struct ConfigStoreTests {
         #expect(decoded.appearance.theme == "system")
         #expect(decoded.clone.defaultDirectory == "~/Developer")
         #expect(decoded.ai.backend == "command")
+        #expect(decoded.agents.enabled)
+    }
+
+    @Test(arguments: [
+        (#"{}"#, "gpt-6-luna"),
+        (#"{"model": ""}"#, "gpt-6-luna"),
+        (#"{"model": "  "}"#, "gpt-6-luna"),
+        (#"{"model": "gpt-5.5"}"#, "gpt-5.5")
+    ])
+    func aiModelDefaultsToLunaUntilOneIsChosen(json: String, expected: String) throws {
+        let decoded = try JSONDecoder().decode(AIConfig.self, from: Data(json.utf8))
+        #expect(decoded.model == expected)
+        #expect(AIConfig().model == "gpt-6-luna")
+    }
+
+    @Test func agentsSectionRoundTripsThroughTOML() throws {
+        var config = AviConfig()
+        config.agents.enabled = false
+        let raw = try JSONEncoder().encode(config)
+        let object = try #require(try JSONSerialization.jsonObject(with: raw) as? [String: Any])
+        let toml = MiniTOML.encode(object)
+        #expect(toml.contains("[agents]\nenabled = false"))
+        let parsed = try MiniTOML.parse(toml)
+        let decoded = try JSONDecoder().decode(AviConfig.self, from: JSONSerialization.data(withJSONObject: parsed))
+        #expect(decoded.agents.enabled == false)
     }
 }
