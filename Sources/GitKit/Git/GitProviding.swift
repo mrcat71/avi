@@ -26,8 +26,11 @@ public struct HistoryFilter: Sendable, Equatable {
 /// libgit2-backed implementation can be added later for hot-path reads and
 /// swapped in behind this protocol.
 public protocol GitProviding: Sendable {
-    /// Apply a validated file-level split without interleaving other Avi commands.
-    func splitStagedChanges(_ plan: StagedCommitPlan, in repository: URL) async throws
+    /// Create the plan's commits in order, each from the working-tree content of
+    /// its files, without interleaving other Avi commands. `progress` receives
+    /// the number of commits made so far. Throws `CommitPlanError` when a commit
+    /// fails after others were made.
+    func commitFiles(_ plan: FileCommitPlan, in repository: URL, progress: (@Sendable (Int) -> Void)?) async throws
 
     /// Top-level directory of the repository containing `url`. Throws if `url` is not in a repo.
     func repositoryRoot(for url: URL) async throws -> URL
@@ -173,6 +176,10 @@ public protocol GitProviding: Sendable {
     /// Raw unified diff of staged changes (used as AI input).
     func stagedDiff(in repository: URL) async throws -> String
 
+    /// Unified diff of `paths` from HEAD to the working tree, new files
+    /// included. What a plan draft would commit, used as AI input.
+    func workingTreeDiff(paths: [String], in repository: URL) async throws -> String
+
     /// Full subject + body of the commit at `oid`, or `nil` if it doesn't exist.
     func commitMessage(for oid: String, in repository: URL) async throws -> String?
 
@@ -248,8 +255,16 @@ public extension GitProviding {
         try await deleteBranch(named: name, force: false, in: repository)
     }
 
-    func splitStagedChanges(_: StagedCommitPlan, in _: URL) async throws {
-        throw GitError.invalidInput("This Git provider does not support safe staged splitting.")
+    func commitFiles(_: FileCommitPlan, in _: URL, progress _: (@Sendable (Int) -> Void)?) async throws {
+        throw GitError.invalidInput("This Git provider does not support commit plans.")
+    }
+
+    func commitFiles(_ plan: FileCommitPlan, in repository: URL) async throws {
+        try await commitFiles(plan, in: repository, progress: nil)
+    }
+
+    func workingTreeDiff(paths _: [String], in _: URL) async throws -> String {
+        throw GitError.invalidInput("This Git provider cannot diff the working tree.")
     }
 
     /// Default implementation forwards the simple `history` call to the filtered variant.

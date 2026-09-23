@@ -61,4 +61,5 @@ public enum DiffSource: Sendable, Equatable {
     case unstaged // working tree vs index
     case staged // index vs HEAD
     case untracked // whole file as additions
+    case head // working tree vs HEAD, staged and unstaged changes together
 }

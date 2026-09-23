@@ -52,19 +52,25 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func status(in repository: URL) async throws -> WorkingCopyStatus {
-        let result = try await run(["status", "--porcelain=v2", "--branch", "-z"], in: repository)
+        // Every untracked file on its own line: a new folder would otherwise be a
+        // single entry, and plans and agents name the files inside it.
+        let result = try await run(["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"], in: repository)
         return try StatusParser.parse(result.stdout)
     }
 
     public func diff(path: String, source: DiffSource, in repository: URL) async throws -> FileDiff {
         let arguments: [String]
         let allowedExitCodes: Set<Int32>
+        // Paths come from status output, so they are literal names, never globs.
         switch source {
         case .unstaged:
-            arguments = ["diff", "--no-color", "--no-ext-diff", "--", path]
+            arguments = ["--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--", path]
             allowedExitCodes = [0]
         case .staged:
-            arguments = ["diff", "--cached", "--no-color", "--no-ext-diff", "--", path]
+            arguments = ["--literal-pathspecs", "diff", "--cached", "--no-color", "--no-ext-diff", "--", path]
+            allowedExitCodes = [0]
+        case .head:
+            arguments = ["--literal-pathspecs", "diff", "HEAD", "--no-color", "--no-ext-diff", "--", path]
             allowedExitCodes = [0]
         case .untracked:
             // --no-index renders the whole new file as additions and exits 1 when files differ.
@@ -380,7 +386,7 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func stage(path: String, in repository: URL) async throws {
-        try await run(["add", "--", path], in: repository)
+        try await run(["--literal-pathspecs", "add", "--", path], in: repository)
     }
 
     public func stage(paths: [String], in repository: URL) async throws {
@@ -390,7 +396,7 @@ public struct CLIGitProvider: GitProviding {
         // subprocess (and per-file status refresh) that made staging many files
         // slow.
         for chunk in paths.chunked(into: 256) {
-            try await run(["add", "--"] + chunk, in: repository)
+            try await run(["--literal-pathspecs", "add", "--"] + chunk, in: repository)
         }
     }
 
@@ -399,13 +405,13 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func unstage(path: String, in repository: URL) async throws {
-        try await run(["restore", "--staged", "--", path], in: repository)
+        try await run(["--literal-pathspecs", "restore", "--staged", "--", path], in: repository)
     }
 
     public func unstage(paths: [String], in repository: URL) async throws {
         guard !paths.isEmpty else { return }
         for chunk in paths.chunked(into: 256) {
-            try await run(["restore", "--staged", "--"] + chunk, in: repository)
+            try await run(["--literal-pathspecs", "restore", "--staged", "--"] + chunk, in: repository)
         }
     }
 
@@ -416,21 +422,34 @@ public struct CLIGitProvider: GitProviding {
     public func discard(_ file: FileStatus, in repository: URL) async throws {
         if file.isUntracked {
             // Untracked files are unknown to git; discarding means deleting them.
-            try FileManager.default.removeItem(at: repository.appendingPathComponent(file.path))
+            try removeUntracked(file.path, in: repository)
         } else {
-            try await run(["restore", "--", file.path], in: repository)
+            try await run(["--literal-pathspecs", "restore", "--", file.path], in: repository)
         }
     }
 
     public func discard(_ files: [FileStatus], in repository: URL) async throws {
         guard !files.isEmpty else { return }
         for file in files where file.isUntracked {
-            try FileManager.default.removeItem(at: repository.appendingPathComponent(file.path))
+            try removeUntracked(file.path, in: repository)
         }
         let tracked = files.filter { !$0.isUntracked }.map(\.path)
         guard !tracked.isEmpty else { return }
         // One restore for the whole selection instead of N processes.
-        try await run(["restore", "--"] + tracked, in: repository)
+        try await run(["--literal-pathspecs", "restore", "--"] + tracked, in: repository)
+    }
+
+    /// Deletes an untracked file, then any folders that deleting it left empty,
+    /// so discarding a new folder's files leaves no empty folder behind.
+    /// `rmdir` refuses non-empty folders, so nothing else can be removed.
+    private func removeUntracked(_ path: String, in repository: URL) throws {
+        let file = repository.appendingPathComponent(path)
+        try FileManager.default.removeItem(at: file)
+        let root = repository.standardizedFileURL.path
+        var folder = file.deletingLastPathComponent().standardizedFileURL
+        while folder.path.hasPrefix(root + "/"), rmdir(folder.path) == 0 {
+            folder = folder.deletingLastPathComponent().standardizedFileURL
+        }
     }
 
     public func commit(message: String, in repository: URL) async throws {
@@ -458,44 +477,99 @@ public struct CLIGitProvider: GitProviding {
         return result.stdoutString
     }
 
-    public func splitStagedChanges(_ plan: StagedCommitPlan, in repository: URL) async throws {
+    public func workingTreeDiff(paths: [String], in repository: URL) async throws -> String {
+        guard !paths.isEmpty else { return "" }
+        let status = try await status(in: repository)
+        let untracked = Set(status.entries.filter(\.isUntracked).map(\.path))
+        let tracked = paths.filter { !untracked.contains($0) }
+        // Before the first commit there is no HEAD; the index holds what was added.
+        let base = status.branch.isUnborn ? "--cached" : "HEAD"
+        var output = ""
+        for chunk in tracked.chunked(into: 200) {
+            let result = try await run(
+                ["--literal-pathspecs", "diff", base, "--no-color", "--no-ext-diff", "--no-textconv", "--"] + chunk,
+                in: repository
+            )
+            output += result.stdoutString
+        }
+        for path in paths where untracked.contains(path) {
+            // --no-index exits 1 when the files differ, which a new file always does.
+            let result = try await run(
+                ["diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv", "--", "/dev/null", path],
+                in: repository,
+                allowedExitCodes: [0, 1]
+            )
+            output += result.stdoutString
+        }
+        return output
+    }
+
+    public func commitFiles(
+        _ plan: FileCommitPlan,
+        in repository: URL,
+        progress: (@Sendable (Int) -> Void)?
+    ) async throws {
         try await GitCommandQueue.shared.run(repository: repository) {
             var scoped = self
             scoped.ownsCommandSlot = true
             let status = try await scoped.status(in: repository)
-            let diff = try await scoped.stagedDiff(in: repository)
-            try plan.validate(status: status, currentDiff: diff)
-            // An unfinished merge/rebase has commit semantics different from a normal split.
-            for ref in ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD"] {
-                let result = try await scoped.execute(["rev-parse", "--verify", "--quiet", ref], in: repository)
-                guard result.exitCode == 1 else {
-                    throw GitError.invalidInput("Finish or abort the current Git operation before splitting staged changes.")
-                }
-            }
-            for directory in ["rebase-merge", "rebase-apply", "sequencer"] {
-                let result = try await scoped.run(["rev-parse", "--git-path", directory], in: repository)
-                let path = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !path.isEmpty else { throw GitError.parseFailed("Missing Git operation path.") }
-                let url = URL(fileURLWithPath: path, relativeTo: repository).standardizedFileURL
-                guard !FileManager.default.fileExists(atPath: url.path) else {
-                    throw GitError.invalidInput("Finish or abort the current Git operation before splitting staged changes.")
-                }
-            }
+            let commits = try plan.resolved(against: status)
+            try await scoped.ensureNoOperationInProgress(in: repository)
+            let untracked = Set(status.entries.filter(\.isUntracked).map(\.path))
             var completed = 0
             do {
-                try await scoped.unstageAll(in: repository)
-                for group in plan.groups {
-                    // Paths supplied by AI are literal filenames, never Git pathspecs.
-                    for paths in group.files.chunked(into: 200) {
-                        try await scoped.run(["--literal-pathspecs", "add", "--"] + paths, in: repository)
+                for commit in commits {
+                    // `commit --only` accepts only paths Git already knows about.
+                    let newFiles = commit.files.filter { untracked.contains($0) }
+                    for chunk in newFiles.chunked(into: 200) {
+                        try await scoped.run(["--literal-pathspecs", "add", "--"] + chunk, in: repository)
                     }
-                    try await scoped.commit(message: group.message, in: repository)
+                    try await scoped.commitOnly(commit, in: repository)
                     completed += 1
+                    progress?(completed)
                 }
             } catch {
                 // Never auto-reset or retry: hooks or Git may already have made progress.
-                throw GitError.invalidInput("Split stopped after \(completed) completed commit(s). Inspect history and staged changes before continuing. No automatic rollback was attempted.\n\n\(error.localizedDescription)")
+                throw CommitPlanError(completed: completed, total: commits.count, reason: error.localizedDescription)
             }
+        }
+    }
+
+    /// Commits the working-tree content of exactly `commit.files`. Other staged
+    /// changes stay staged. Long file lists go through a pathspec file so the
+    /// argument list stays under the OS limit.
+    private func commitOnly(_ commit: FileCommitPlan.Commit, in repository: URL) async throws {
+        let head = ["--literal-pathspecs", "commit", "--only", "-m", commit.message]
+        guard commit.files.count > Self.inlinePathspecLimit else {
+            try await run(head + ["--"] + commit.files, in: repository)
+            return
+        }
+        let listURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("avi-pathspec-\(UUID().uuidString)")
+        try Data(commit.files.joined(separator: "\0").utf8).write(to: listURL)
+        defer { try? FileManager.default.removeItem(at: listURL) }
+        try await run(head + ["--pathspec-from-file=\(listURL.path)", "--pathspec-file-nul"], in: repository)
+    }
+
+    static let inlinePathspecLimit = 100
+
+    /// Refuses while a merge, rebase, cherry-pick, or revert is unfinished: a
+    /// commit made then has different semantics from a normal one. A rebase
+    /// counts only while its folder exists, as in `git status`: a finished or
+    /// abandoned rebase can leave `REBASE_HEAD` behind for good.
+    private func ensureNoOperationInProgress(in repository: URL) async throws {
+        let message = "Finish or abort the current Git operation before committing."
+        for ref in ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"] {
+            let result = try await execute(["rev-parse", "--verify", "--quiet", ref], in: repository)
+            guard result.exitCode == 1 else { throw GitError.invalidInput(message) }
+        }
+        for directory in ["rebase-merge", "rebase-apply", "sequencer"] {
+            // Absolute, because resolving a relative path against a repository URL
+            // without a trailing slash would look in its parent directory.
+            let result = try await run(["rev-parse", "--path-format=absolute", "--git-path", directory], in: repository)
+            let path = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard path.hasPrefix("/") else { throw GitError.parseFailed("Missing Git operation path.") }
+            guard !FileManager.default.fileExists(atPath: path) else { throw GitError.invalidInput(message) }
         }
     }
 
@@ -855,7 +929,8 @@ public struct CLIGitProvider: GitProviding {
             // Compound commands can make partial progress before a lock failure.
             // Replaying fetch, pull, push, rebase, or stash is not safe by default.
             let retryableCommands: Set = ["status", "diff", "log", "show", "rev-parse", "rev-list", "ls-files", "add"]
-            let backoff = arguments.first.map { retryableCommands.contains($0) } == true ? Self.lockRetryBackoff : []
+            let subcommand = arguments.first == "--literal-pathspecs" ? arguments.dropFirst().first : arguments.first
+            let backoff = subcommand.map { retryableCommands.contains($0) } == true ? Self.lockRetryBackoff : []
             return try await Self.runWithLockRetry(backoff: backoff) {
                 try await ProcessRunner.run(
                     executable: executable,
