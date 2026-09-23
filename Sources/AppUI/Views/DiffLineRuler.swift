@@ -18,6 +18,10 @@ final class DiffLineRuler: NSRulerView {
 
     init(scrollView: NSScrollView, textView: NSTextView) {
         super.init(scrollView: scrollView, orientation: .verticalRuler)
+        // Views stopped clipping to their bounds by default in macOS 14. AppKit
+        // then hands the ruler dirty rects taller than itself, and its own edge
+        // line ran up through the file title above the diff.
+        clipsToBounds = true
         clientView = textView
         ruleThickness = 80
         scrollView.contentView.postsBoundsChangedNotifications = true

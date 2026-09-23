@@ -70,6 +70,26 @@ struct OperationsTests {
         }
     }
 
+    @Test func discardingANewFolderLeavesNoEmptyFolder() async throws {
+        try await withTempRepo { repo in
+            try repo.write("kept.txt", "v1\n")
+            try await repo.git("add", "kept.txt")
+            try await repo.git("commit", "-q", "-m", "init")
+            try repo.write("New/Deep/a.txt", "a\n")
+            try repo.write("New/b.txt", "b\n")
+            try repo.write("Other/c.txt", "c\n")
+
+            let status = try await provider(repo).status(in: repo.url)
+            let newFiles = status.entries.filter { $0.path.hasPrefix("New/") }
+            #expect(newFiles.count == 2)
+            try await provider(repo).discard(newFiles, in: repo.url)
+
+            #expect(!FileManager.default.fileExists(atPath: repo.url.appendingPathComponent("New").path))
+            #expect(FileManager.default.fileExists(atPath: repo.url.appendingPathComponent("Other/c.txt").path))
+            #expect(FileManager.default.fileExists(atPath: repo.url.path))
+        }
+    }
+
     @Test func stashContentsListAndDiffChangedFiles() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")
