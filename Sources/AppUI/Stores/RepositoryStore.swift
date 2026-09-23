@@ -63,6 +63,9 @@ public final class RepositoryStore: Identifiable {
     public var aiRewordPreview: AIRewordPreview?
     public var aiSplitPreview: AISplitPreview?
     public var isAIWorking: Bool = false
+    /// What the running AI job is doing, for the banner that replaces the
+    /// old blocking sheet so you can keep working meanwhile.
+    public internal(set) var aiWorkDescription = ""
     public private(set) var isApplyingAISplit = false
     public var rebaseInProgress: Bool = false
     /// Pending commits for this repository: agent proposals, AI splits, and
@@ -1301,6 +1304,7 @@ public final class RepositoryStore: Identifiable {
         aiTask?.cancel()
         aiErrorDetail = nil
         aiRewordPreview = nil
+        aiWorkDescription = "The AI is rewording the commit…"
         isAIWorking = true
         aiTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1415,6 +1419,7 @@ public final class RepositoryStore: Identifiable {
         aiTask?.cancel()
         aiErrorDetail = nil
         aiSplitPreview = nil
+        aiWorkDescription = "The AI is splitting the staged changes into commits…"
         isAIWorking = true
         aiTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1504,6 +1509,7 @@ public final class RepositoryStore: Identifiable {
         aiTask?.cancel()
         aiErrorDetail = nil
         aiSplitPreview = nil
+        aiWorkDescription = "The AI is recomposing the selected commits…"
         isAIWorking = true
         aiTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1543,6 +1549,7 @@ public final class RepositoryStore: Identifiable {
         aiTask?.cancel()
         aiErrorDetail = nil
         aiSplitPreview = nil
+        aiWorkDescription = "The AI is splitting the commit…"
         isAIWorking = true
         aiTask = Task { @MainActor [weak self] in
             guard let self else { return }
