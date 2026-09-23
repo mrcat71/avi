@@ -36,6 +36,14 @@ Avi runs entirely on your Mac and has no backend. The parts worth looking at:
 - Config and repository parsing, including paths taken from a repository.
 - The `openai` AI backend, which sends the staged diff to the configured
   endpoint. Anything that sends repository content anywhere else is in scope.
+- The agent control socket (`~/Library/Application Support/Avi/control.sock`,
+  mode `0600`, same-user peers only) and the `avi` command. A request may stage
+  the files it names, fill a commit message, and create plan drafts in
+  repositories you have opened in Avi; it must never commit, push, run a
+  command, or make Avi open a repository you did not approve. Anything that lets
+  another user, a web page, or a sandboxed agent go beyond that is in scope.
+- The installer in Settings > Agents, which writes `~/.local/bin/avi` and the
+  agent skills and must not overwrite files it did not write.
 
 Known and out of scope:
 

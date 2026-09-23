@@ -3,13 +3,17 @@ import AppUI
 import GitKit
 import SwiftUI
 
-/// Dispatches between the SwiftUI app and CI-only diagnostic flags before
-/// `NSApplication.run()` takes over. `--version` and `--self-test` are used by
-/// the release pipeline; everything else falls through to the normal app.
+/// Dispatches between the SwiftUI app, the `avi` command, and CI-only
+/// diagnostic flags before `NSApplication.run()` takes over. `--cli` is what
+/// the `~/.local/bin/avi` shim passes; `--version` and `--self-test` are used
+/// by the release pipeline; everything else falls through to the normal app.
 @main
 enum AviAppMain {
     static func main() {
         let args = CommandLine.arguments
+        if args.count > 1, args[1] == "--cli" {
+            exit(AgentCLI.run(Array(args.dropFirst(2))))
+        }
         if args.contains("--version") {
             print(GitKit.version)
             exit(0)
@@ -53,6 +57,9 @@ struct AviApp: App {
                 Button("About Avi") {
                     showAboutPanel()
                 }
+            }
+            CommandGroup(after: .help) {
+                InstallAgentSkillsCommand()
             }
             CommandMenu("Repository") {
                 Button("Open Repository...") {
@@ -144,14 +151,25 @@ struct AviApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_: Notification) {
-        // A CLI-launched process is an accessory by default; promote it to a
-        // normal foreground app so the window appears and takes focus.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        // A process started with `swift run` is an accessory by default; promote
+        // it to a normal foreground app so the window appears and takes focus.
+        // A real bundle is activated by Launch Services, which also honors
+        // `open -g` when the avi command starts Avi in the background.
+        if Bundle.main.bundleURL.pathExtension != "app" {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
 
         // Register customisable keyboard shortcuts. No-op when the
         // KeyboardShortcuts library isn't linked (bare-CLI build).
         AviShortcuts.registerAll()
+
+        // Listen for agents (the `avi` command) when Settings allows it.
+        AgentBridge.shared.start()
+    }
+
+    func applicationWillTerminate(_: Notification) {
+        AgentBridge.shared.stop()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
