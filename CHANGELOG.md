@@ -6,11 +6,29 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-23
+
 ### Added
+- Plan mode in Changes. A Files | Plan switch shows pending commits grouped by who proposed them: an agent session, Avi's AI, or you. Drag files between commits or use Move To, check each file's full change against HEAD, edit every message, then Commit All (Cmd+Return) to create them in order, or Commit This (Option+Cmd+Return) to take them one at a time. Each commit takes exactly its files with `git commit --only`, so anything else staged stays staged. If a hook or Git stops the run, the commits already made stay and the rest of the plan waits.
+- Right-click a planned commit, or use its "…" button, for the same menu: commit it now, have the AI write its message, revise or split it with the AI from your own instructions, move it, merge it with a neighbour, or delete it. Rethink Plan with AI… reworks every commit at once from what you tell it.
+- Agents can hand work to Avi. The new `avi` command talks to Avi over a local socket: Claude Code, Codex, or any other agent sends one commit (Avi stages its files and fills the commit field) or several (they land in Plan). Nothing is committed until you approve it. Several sessions can work at once, across repositories or in the same one: a session's new proposal replaces only its own drafts, files another session holds are refused, and your edits are never overwritten without the agent asking. Avi marks tabs with new proposals and counts them on the Dock icon instead of switching tabs on you. See `docs/AGENT-INTEGRATION.md`.
+- Settings > Agents, also reachable from Help > Install Agent Skills…, installs the `avi` command in `~/.local/bin` and the `avi` skill for Claude Code and Codex, and shows whether Avi is listening. `[agents] enabled` in the config turns the socket off.
 - Discarding changes works on a multi-file selection. A discard started from a row that is part of the selection applies to every selected file, and the confirmation names the count and lists the paths. Cmd+Shift+D discards the selected unstaged files from anywhere in the window, and the shortcut is rebindable like the other global ones.
 
 ### Changed
+- The default AI model is `gpt-6-luna`. A config file with a blank `model` now uses it too; a model you set stays as it is.
+- AI > Split Staged Into Commits… now fills Plan mode instead of a separate sheet, so you review the split with diffs and can move files around. Paths the AI names that are not staged are left out with a note instead of failing the whole split. Splitting or recomposing existing commits from History keeps its sheet.
+- Stage, unstage, discard, and diff pass file paths to Git literally, so a name containing `*`, `?`, or `[` affects only that file.
+- A new folder shows each of its files in the Changes list instead of one folder entry, so its files can be staged and planned one by one. Discarding them removes the folders they leave empty.
 - A multi-file discard runs as a single `git restore` instead of one process per file, with untracked files deleted in the same action.
+
+### Fixed
+- On macOS 14 and later, a vertical line from the diff's line-number gutter ran through the file name above every diff.
+- AI prompts no longer fill in `${...}` placeholders that appear inside your diff, which garbled the prompt for changes to shell scripts or templates.
+- Splitting staged changes refused to run in repositories where a long-finished rebase had left `.git/REBASE_HEAD` behind. Only a rebase that is actually in progress blocks it now.
+
+### Security
+- Agents can only use repositories you have opened in Avi. For any other repository Avi asks you first, because opening a repository runs Git in it and a repository's config can make Git run programs, which would let a sandboxed agent escape its sandbox through Avi.
 
 ## [0.3.0] - 2026-09-22
 

@@ -36,14 +36,16 @@ A complete example with every section is in
 | `appearance`     | Theme, density, font sizes, file-list mode (tree / flat), graph width.  |
 | `git`            | Default author identity, fetch interval, auto-refresh, terminal/editor. |
 | `clone`          | Default clone directory, protocol preference, gh/glab vs git fallback.  |
-| `ai`             | AI commit-message backend (command / openai), prompts, limits, timeout. |
+| `ai`             | AI commit-message backend (command / openai), model (default `gpt-6-luna`), prompts, limits, timeout. |
+| `agents`         | `enabled`: accept proposals from local agents through the `avi` command. See [`AGENT-INTEGRATION.md`](AGENT-INTEGRATION.md). |
 | `externalTools`  | Override paths to `git`, `gh`, `glab`, `codex`, `claude`, editors.      |
 | `advanced`       | History limit, verbose logging.                                         |
 | `integrations`   | Provider accounts (PAT + CLI). Tokens themselves are in the Keychain.   |
 
 The TOML decoder is intentionally tolerant: missing keys decode to their
 defaults, unknown keys are dropped silently. Old config files keep working
-across upgrades unless a key is renamed.
+across upgrades unless a key is renamed. A blank `ai.model` also decodes to the
+default model, since no backend accepts an empty one.
 
 ## Secret storage
 
