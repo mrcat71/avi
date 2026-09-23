@@ -72,11 +72,7 @@ struct ChangeListView: View {
 
     private var sectionToolbar: some View {
         HStack(spacing: 6) {
-            Text("Changes")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
+            ChangesModeSwitch(store: store)
             Spacer()
             Text(summary)
                 .font(.system(size: 11))

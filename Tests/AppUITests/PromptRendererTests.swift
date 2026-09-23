@@ -65,3 +65,14 @@ struct PromptRendererTests {
         #expect(rendered == "SOME_DIFF")
     }
 }
+
+@Test func substitutedTextIsNeverScannedAgain() {
+    let context = PromptContext(
+        stagedDiff: "+ template uses ${plan} and ${instructions}",
+        branch: "main", files: [], repo: "avi", model: "m",
+        lowLimit: 50, highLimit: 72, guideLine: 72,
+        instructions: "split it", plan: "[{...}]"
+    )
+    let rendered = PromptRenderer.render(template: "I: ${instructions}\nP: ${plan}\nD: ${target}\nU: ${unknown}", context: context)
+    #expect(rendered == "I: split it\nP: [{...}]\nD: + template uses ${plan} and ${instructions}\nU: ${unknown}")
+}

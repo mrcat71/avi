@@ -60,6 +60,25 @@ enum CommandRegistry {
             })
         }
 
+        // Commit plan
+        result.append(AppCommand(id: "plan.show", title: store.commitPlan.isEmpty ? "Plan Commits…" : "Show Commit Plan", subtitle: "Group changes into several commits", group: "Working Copy", symbol: "rectangle.split.3x1") {
+            setSelection(.localChanges)
+            store.showPlan()
+        })
+        if store.canCommitAllDrafts {
+            result.append(AppCommand(id: "plan.commitAll", title: "Commit All Planned Commits", subtitle: "\(store.commitPlan.drafts.count) commits", group: "Working Copy", symbol: "checkmark") {
+                Task { await store.commitAllDrafts() }
+            })
+        }
+        if !store.commitPlan.isEmpty, !store.commitPlan.isEdited {
+            result.append(AppCommand(id: "plan.discard", title: "Discard Commit Plan", subtitle: nil, group: "Working Copy", symbol: "trash") {
+                store.discardPlan()
+            })
+        }
+        result.append(AppCommand(id: "agents.install", title: "Install Agent Skills…", subtitle: "avi command, Claude Code, Codex", group: "View", symbol: "terminal") {
+            NotificationCenter.default.post(name: .aviOpenAgentSettings, object: nil)
+        })
+
         // Branches
         result.append(AppCommand(id: "branch.create", title: "Create Branch…", subtitle: nil, group: "Branch", symbol: "plus") {
             openCreateBranch()
