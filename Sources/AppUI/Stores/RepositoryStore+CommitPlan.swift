@@ -398,7 +398,9 @@ extension RepositoryStore {
         }
         commitPlan.replaceDrafts(from: .ai, with: drafts)
         changesMode = .plan
-        hasUnseenProposal = false
+        // The split ran in the background; you may have moved on meanwhile.
+        // Changes clears this as soon as you are looking at it.
+        hasUnseenProposal = true
         selectedDraftID = drafts.first?.id ?? commitPlan.drafts.first?.id
         planNotice = dropped.isEmpty
             ? nil

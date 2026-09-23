@@ -125,17 +125,19 @@ struct RepositoryView: View {
                 AIRewordSheet(store: store, preview: preview)
             }
         }
-        .sheet(isPresented: aiSplitLoadingPresented) {
-            AISplitLoadingSheet(onCancel: { store.dismissAISplitPreview() })
-        }
         .sheet(isPresented: aiSplitPresented) {
             if let preview = store.aiSplitPreview {
                 AISplitSheet(store: store, preview: preview)
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if store.rebaseInProgress {
-                rebaseBanner
+            VStack(spacing: 0) {
+                if store.rebaseInProgress {
+                    rebaseBanner
+                }
+                if store.isAIWorking {
+                    aiWorkBanner
+                }
             }
         }
     }
@@ -162,11 +164,27 @@ struct RepositoryView: View {
         )
     }
 
-    private var aiSplitLoadingPresented: Binding<Bool> {
-        Binding(
-            get: { store.isAIWorking && store.aiSplitPreview == nil },
-            set: { _ in }
-        )
+    /// Shown while an AI job runs, instead of a sheet that blocked the window:
+    /// you can switch views, tabs, and repositories until the result is ready.
+    private var aiWorkBanner: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+            Text(store.aiWorkDescription.isEmpty ? "The AI is working…" : store.aiWorkDescription)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Cancel") {
+                store.cancelCommitMessageGeneration()
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Glass.edgeStroke).frame(height: 0.6)
+        }
     }
 
     private var rebaseBanner: some View {
@@ -763,14 +781,6 @@ private struct LocalChangesStatusBar: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let aheadBehind = aheadBehindText {
-                Text("·")
-                    .foregroundStyle(.tertiary)
-                Text(aheadBehind)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-
             Spacer()
 
             HStack(spacing: 5) {
@@ -825,21 +835,6 @@ private struct LocalChangesStatusBar: View {
             return .green
         }
         return .orange
-    }
-
-    private var aheadBehindText: String? {
-        guard let branch = store.branch else { return nil }
-        var parts: [String] = []
-        if branch.ahead > 0 {
-            parts.append("↑\(branch.ahead)")
-        }
-        if branch.behind > 0 {
-            parts.append("↓\(branch.behind)")
-        }
-        if parts.isEmpty {
-            return nil
-        }
-        return parts.joined(separator: " ")
     }
 
     private var fetchedLabel: String {

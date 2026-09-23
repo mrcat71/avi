@@ -185,24 +185,3 @@ struct AISplitSheet: View {
         !groups.isEmpty && groups.allSatisfy { !$0.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 }
-
-/// Loading placeholder shown while the AI is generating the split proposal.
-struct AISplitLoadingSheet: View {
-    let onCancel: () -> Void
-
-    var body: some View {
-        VStack(spacing: 18) {
-            LottieView(name: "downloading", loopMode: .loop, size: CGSize(width: 96, height: 96))
-            Text("Analyzing changes…")
-                .font(.system(size: 13, weight: .medium))
-            Text("Asking the AI to group the diff into coherent commits.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("Cancel", role: .cancel) { onCancel() }
-                .keyboardShortcut(.cancelAction)
-        }
-        .padding(28)
-        .frame(width: 380)
-    }
-}

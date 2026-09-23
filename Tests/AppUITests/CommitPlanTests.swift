@@ -411,5 +411,7 @@ struct CommitPlanApplyTests {
         #expect(store.planNotice?.contains("ghost") == true)
         #expect(store.planNotice?.contains("c") == true)
         #expect(store.changesMode == .plan)
+        // The split ran in the background, so the tab says so until you look.
+        #expect(store.hasUnseenProposal)
     }
 }
