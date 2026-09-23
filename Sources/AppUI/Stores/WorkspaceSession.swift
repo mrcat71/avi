@@ -62,6 +62,36 @@ final class WorkspaceSession {
         }
     }
 
+    /// Opens `url` as a tab without switching to it, for requests that arrive
+    /// from an agent rather than from you. Failures are returned as nil, never
+    /// shown as alerts over whatever you are doing.
+    func openInBackground(_ url: URL) async -> RepositoryStore? {
+        guard let root = try? await git.repositoryRoot(for: url).resolvingSymlinksInPath().standardizedFileURL else {
+            return nil
+        }
+        if let existing = repository(at: root) {
+            return existing
+        }
+        let candidate = RepositoryStore(git: git)
+        await candidate.open(root)
+        guard candidate.root != nil else { return nil }
+        // Another request may have opened the same path while this one waited.
+        if let existing = repository(at: root) {
+            candidate.stopBackgroundObservation()
+            return existing
+        }
+        repositories.append(candidate)
+        if selectedRepositoryID == nil {
+            selectedRepositoryID = candidate.id
+        }
+        return candidate
+    }
+
+    func repository(at root: URL) -> RepositoryStore? {
+        let wanted = root.resolvingSymlinksInPath().standardizedFileURL
+        return repositories.first { $0.root?.resolvingSymlinksInPath().standardizedFileURL == wanted }
+    }
+
     func close(_ id: RepositoryStore.ID) {
         guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
         repositories[index].stopBackgroundObservation()

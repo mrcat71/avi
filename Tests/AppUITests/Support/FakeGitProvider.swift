@@ -36,6 +36,12 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public var worktrees: [Worktree] = []
     /// Common dir reported by `location(of:)`; nil means an ordinary repository.
     public var commonDir: URL?
+    /// When set, batched stage/unstage calls update `status` like Git would.
+    public var appliesStaging = false
+    /// Plans passed to `commitFiles`, in call order.
+    public private(set) var commitPlanCalls: [FileCommitPlan] = []
+    /// Makes `commitFiles` stop with `CommitPlanError` after this many commits.
+    public var failCommitPlanAfter: Int?
 
     public init(
         status: WorkingCopyStatus,
@@ -156,12 +162,48 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func stage(path _: String, in _: URL) async throws {}
     public func stage(paths: [String], in _: URL) async throws {
         stagePathsCalls.append(paths)
+        guard appliesStaging else { return }
+        let chosen = Set(paths)
+        status = WorkingCopyStatus(branch: status.branch, entries: status.entries.map { entry in
+            guard chosen.contains(entry.path) else { return entry }
+            let index: FileState = entry.isUntracked ? .added : (entry.worktree == .deleted ? .deleted : .modified)
+            return FileStatus(path: entry.path, originalPath: entry.originalPath, index: index, worktree: .unmodified)
+        })
     }
 
     public func stageAll(in _: URL) async throws {}
     public func unstage(path _: String, in _: URL) async throws {}
     public func unstage(paths: [String], in _: URL) async throws {
         unstagePathsCalls.append(paths)
+        guard appliesStaging else { return }
+        let chosen = Set(paths)
+        status = WorkingCopyStatus(branch: status.branch, entries: status.entries.map { entry in
+            guard chosen.contains(entry.path), entry.isStaged else { return entry }
+            let worktree: FileState = entry.index == .added ? .untracked : entry.index
+            return FileStatus(path: entry.path, originalPath: entry.originalPath, index: entry.index == .added ? .untracked : .unmodified, worktree: worktree)
+        })
+    }
+
+    /// Diff text returned for any paths, and the paths asked for.
+    public var workingTreeDiffText = "diff --git a/file b/file"
+    public private(set) var workingTreeDiffCalls: [[String]] = []
+
+    public func workingTreeDiff(paths: [String], in _: URL) async throws -> String {
+        workingTreeDiffCalls.append(paths)
+        return workingTreeDiffText
+    }
+
+    public func commitFiles(_ plan: FileCommitPlan, in _: URL, progress: (@Sendable (Int) -> Void)?) async throws {
+        commitPlanCalls.append(plan)
+        let commits = try plan.resolved(against: status)
+        for (index, commit) in commits.enumerated() {
+            if let limit = failCommitPlanAfter, index == limit {
+                throw CommitPlanError(completed: index, total: commits.count, reason: "simulated hook failure")
+            }
+            let done = Set(commit.files)
+            status = WorkingCopyStatus(branch: status.branch, entries: status.entries.filter { !done.contains($0.path) })
+            progress?(index + 1)
+        }
     }
 
     public func unstageAll(in _: URL) async throws {}

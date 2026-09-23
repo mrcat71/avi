@@ -18,4 +18,5 @@ public extension Notification.Name {
     static let aviGoToAllCommits = Notification.Name("avi.goToAllCommits")
     static let aviToggleHistoryScope = Notification.Name("avi.toggleHistoryScope")
     static let aviDensityChanged = Notification.Name("avi.densityChanged")
+    static let aviOpenAgentSettings = Notification.Name("avi.openAgentSettings")
 }

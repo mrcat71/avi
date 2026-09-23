@@ -56,6 +56,29 @@ public struct RootView: View {
             )
         }
         .frame(minWidth: 1120, minHeight: 700)
+        .onAppear {
+            AgentBridge.shared.register(session)
+        }
+        .onDisappear {
+            AgentBridge.shared.unregister(session)
+        }
+        .onChange(of: unseenProposalCount) { _, _ in
+            AgentBridge.shared.updateDockBadge()
+        }
+        .alert(
+            approvalTitle,
+            isPresented: approvalPresented,
+            presenting: AgentBridge.shared.pendingApproval
+        ) { _ in
+            Button("Open") {
+                AgentBridge.shared.resolveApproval(open: true, in: session)
+            }
+            Button("Cancel", role: .cancel) {
+                AgentBridge.shared.resolveApproval(open: false, in: session)
+            }
+        } message: { approval in
+            Text("\(approval.path)\n\nOpening a repository runs Git in it, and its settings can make Git run other programs. Open only repositories you trust.")
+        }
         .alert("Git Error", isPresented: openErrorPresented) {
             Button("OK", role: .cancel) { openErrorMessage = nil }
         } message: {
@@ -80,7 +103,15 @@ public struct RootView: View {
             Task { await selectedStore?.unstageAll() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviCommit)) { _ in
-            Task { await selectedStore?.commit() }
+            guard let store = selectedStore else { return }
+            // In Plan mode the shortcut means Commit All; a classic commit here
+            // would sweep up whatever happens to be staged.
+            if store.changesMode == .plan {
+                guard store.canCommitAllDrafts else { return }
+                Task { await store.commitAllDrafts() }
+            } else {
+                Task { await store.commit() }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviFetchRepository)) { _ in
             Task { await selectedStore?.fetch(remote: nil) }
@@ -95,6 +126,26 @@ public struct RootView: View {
 
     private var selectedStore: RepositoryStore? {
         session.selectedRepository
+    }
+
+    private var unseenProposalCount: Int {
+        repositories.filter(\.hasUnseenProposal).count
+    }
+
+    private var approvalTitle: String {
+        guard let approval = AgentBridge.shared.pendingApproval else { return "" }
+        return "Open this repository for \(approval.requester)?"
+    }
+
+    private var approvalPresented: Binding<Bool> {
+        Binding(
+            get: { AgentBridge.shared.pendingApproval != nil && AgentBridge.shared.presentsApprovals(in: session) },
+            set: { presented in
+                if !presented, AgentBridge.shared.pendingApproval != nil {
+                    AgentBridge.shared.resolveApproval(open: false, in: session)
+                }
+            }
+        )
     }
 
     private var openErrorPresented: Binding<Bool> {

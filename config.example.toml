@@ -36,14 +36,14 @@ rememberDestinationPerProvider = true
 [ai]
 enabled = false
 backend = "command"        # command | openai
-model = ""
+model = "gpt-6-luna"       # any model your backend accepts, e.g. gpt-6-sol
 temperature = 0.2
 maxTokens = 800
 conventionalCommits = true
 subjectSoftLimit = 50
 subjectHardLimit = 72
 bodyWrap = 72
-commandTemplate = "codex exec --model ${model} ${effort_kv}"
+commandTemplate = "codex exec --skip-git-repo-check --model ${model} ${effort_kv}"
 openAIBaseURL = "https://api.openai.com/v1"
 timeoutSeconds = 120
 
@@ -61,6 +61,11 @@ mergeToolPath = ""
 [advanced]
 historyLimit = 200
 verboseLogging = false
+
+# Claude Code, Codex, and other local agents send commit proposals through the
+# `avi` command and Avi's control socket. See docs/AGENT-INTEGRATION.md.
+[agents]
+enabled = true
 
 # `integrations.accounts` is managed by the Accounts UI. Each entry stores
 # non-secret metadata (kind, instance URL, username, Keychain reference) -

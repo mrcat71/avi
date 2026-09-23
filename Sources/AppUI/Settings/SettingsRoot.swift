@@ -9,6 +9,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case github
     case gitlab
     case ai
+    case agents
     case externalTools
     case advanced
 
@@ -26,6 +27,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .github: return "GitHub"
         case .gitlab: return "GitLab"
         case .ai: return "AI Commit Messages"
+        case .agents: return "Agents"
         case .externalTools: return "External Tools"
         case .advanced: return "Advanced"
         }
@@ -41,6 +43,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .github: return "chevron.left.forwardslash.chevron.right"
         case .gitlab: return "globe"
         case .ai: return "wand.and.stars"
+        case .agents: return "terminal"
         case .externalTools: return "wrench.and.screwdriver"
         case .advanced: return "slider.horizontal.3"
         }
@@ -91,6 +94,16 @@ public struct SettingsRoot: View {
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 820, minHeight: 560)
+        .onAppear(perform: applyRequestedSection)
+        .onChange(of: SettingsNavigation.shared.requested) { _, _ in
+            applyRequestedSection()
+        }
+    }
+
+    private func applyRequestedSection() {
+        guard let requested = SettingsNavigation.shared.requested else { return }
+        selection = requested
+        SettingsNavigation.shared.requested = nil
     }
 
     private func shouldShowPlannedChip(_ section: SettingsSection) -> Bool {
@@ -111,6 +124,7 @@ public struct SettingsRoot: View {
         case .github: GitHubSettingsView()
         case .gitlab: GitLabSettingsView()
         case .ai: AISettingsView()
+        case .agents: AgentsSettingsView()
         case .externalTools: ExternalToolsSettingsView()
         case .advanced: AdvancedSettingsView()
         }

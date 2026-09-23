@@ -5,8 +5,9 @@
 # Avi
 
 Avi is a SwiftUI-based macOS git client. It focuses on local-first workflows
-(staging, committing, browsing history) and adds an AI-assisted commit message
-generator alongside lightweight GitHub and GitLab integration.
+(staging, committing, browsing history), lets Claude Code, Codex, and other
+local agents hand finished work to it for review, and adds an AI-assisted
+commit message generator alongside lightweight GitHub and GitLab integration.
 
 <p align="center">
   <img src="docs/screenshot-history.png" alt="Avi showing the History view of its own repository" width="900">
@@ -17,7 +18,7 @@ generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.3.0. The config schema, the UI, and the
+Alpha. The current release is v0.4.0. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -26,6 +27,14 @@ around provider authentication, OAuth, and multi-account flows.
 - Tab-based repository view with status bar, branch info, and remote actions.
 - Staged / unstaged file lists in Fork-style ordering, with selection-preserving
   stage and unstage operations.
+- Plan mode for several commits at once: drafts from agents, the AI split, and
+  you, grouped by who proposed them. Drag files between commits, review each
+  file's full diff, tell the AI how to split, merge, or rethink them, and
+  commit them one by one or all in order.
+- Agent hand-off: the `avi` command lets Claude Code, Codex, and other local
+  agents stage files and fill the commit message, or propose a whole commit
+  plan, from several sessions at once. Nothing is committed until you approve
+  it. Settings > Agents installs the command and the agent skill.
 - Native selectable diff text with Find support, horizontal scrolling, and
   separate old / new line-number gutters.
 - Commit graph view with per-commit file diffs, scoped to the current branch or
@@ -38,7 +47,8 @@ around provider authentication, OAuth, and multi-account flows.
 - Push sheet that states whether the push updates, adopts, or creates the remote
   branch, plus "Push and Open Pull Request" for GitHub and GitLab.
 - AI-assisted commit message generation through a configurable command or the
-  OpenAI API, with an IDE-style debug drawer for the underlying run.
+  OpenAI API (default model `gpt-6-luna`), with an IDE-style debug drawer for
+  the underlying run.
 - Config file with live reload; secrets stored in the macOS Keychain.
 - Repository picker with search, lazy metadata hydration, and clone-from-provider.
 - GitHub / GitLab account management with Personal Access Tokens and `gh` /
@@ -79,6 +89,21 @@ Pushing a version tag triggers the GitHub Actions release workflow, which tests,
 builds, packages, and publishes the app. Local builds use the same SwiftPM and
 `scripts/package-app.sh` flow. See
 [`docs/RELEASE.md`](docs/RELEASE.md) for the full runbook.
+
+## Agent integration
+
+1. **Settings > Agents > Install All** installs `~/.local/bin/avi` and the `avi`
+   skill for Claude Code and Codex.
+2. Open the repository in Avi once; agents can only use repositories you have
+   opened.
+3. Ask your agent to send its work to Avi, or let the skill do it when a task is
+   done. One commit lands in the commit field with its files staged; several
+   land in Plan.
+
+Codex needs `[sandbox_workspace_write] network_access = true` (or your approval)
+for `avi` to reach Avi. See
+[`docs/AGENT-INTEGRATION.md`](docs/AGENT-INTEGRATION.md) for the command, the
+multi-session rules, the protocol, and the security model.
 
 ## Configuration
 
