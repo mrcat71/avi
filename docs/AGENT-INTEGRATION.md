@@ -84,6 +84,7 @@ grouped by who proposed them, then the changed files no draft holds.
   menu: **Commit This Now**, **Write Message with AI**, **Revise with AI…**,
   **Split with AI…**, **Move Up/Down**, **Merge with Previous/Next**, and
   **Delete Commit**. The plan's own "…" menu has **Rethink Plan with AI…**.
+  The composer shows the main ones as buttons under the message.
 - The AI actions ask what should change ("put the tests in their own commit",
   "merge the docs into the feature commit"), then replace those drafts in
   place with the AI's answer. They see only those drafts' messages and the
