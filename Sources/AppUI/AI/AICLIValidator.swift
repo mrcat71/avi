@@ -1,4 +1,5 @@
 import Foundation
+import GitKit
 
 public struct AIValidationReport: Equatable, Sendable {
     public let isValid: Bool
@@ -174,26 +175,21 @@ public enum AICLIValidator {
 
         let outcome = await withTaskGroup(of: Bool.self) { group -> Bool in
             group.addTask {
-                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                    process.terminationHandler = { _ in cont.resume() }
-                    if !process.isRunning {
-                        process.terminationHandler = nil
-                        cont.resume()
-                    }
-                }
+                await process.waitForExit()
                 return true
             }
             group.addTask {
-                try? await Task.sleep(for: .seconds(timeoutSeconds))
+                try? await Task.safeSleep(for: .seconds(timeoutSeconds))
                 return false
             }
             let first = await group.next() ?? false
             group.cancelAll()
+            if !first, process.isRunning {
+                // The group waits for the exit waiter, which returns only once
+                // the process is gone, so a hung probe has to be killed here.
+                kill(process.processIdentifier, SIGKILL)
+            }
             return first
-        }
-
-        if process.isRunning {
-            process.terminate()
         }
 
         let outData = out.fileHandleForReading.readDataToEndOfFile()

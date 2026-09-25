@@ -977,7 +977,7 @@ public struct CLIGitProvider: GitProviding {
             else {
                 return result
             }
-            try await Task.sleep(for: backoff[attempt])
+            try await Task.safeSleep(for: backoff[attempt])
             attempt += 1
         }
     }

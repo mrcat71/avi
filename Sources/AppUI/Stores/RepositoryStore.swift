@@ -1279,7 +1279,7 @@ public final class RepositoryStore: Identifiable {
         }
         autoRefreshTask?.cancel()
         autoRefreshTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
+            try? await Task.safeSleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
             await self?.refresh()
         }

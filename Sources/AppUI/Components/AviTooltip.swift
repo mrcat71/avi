@@ -1,3 +1,4 @@
+import GitKit
 import SwiftUI
 
 /// View modifier that shows a rich popover after a hover delay. Standardizes the timing
@@ -16,7 +17,7 @@ struct AviTooltipModifier<Tooltip: View>: ViewModifier {
                 isHovering = hovering
                 if hovering {
                     Task {
-                        try? await Task.sleep(for: delay)
+                        try? await Task.safeSleep(for: delay)
                         if isHovering {
                             isShown = true
                         }

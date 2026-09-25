@@ -1,4 +1,5 @@
 import Foundation
+import GitKit
 import Observation
 
 public enum ConfigStatus: Equatable, Sendable {
@@ -115,7 +116,7 @@ public final class ConfigStore {
     private func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(200))
+            try? await Task.safeSleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
             saveImmediately()
         }
