@@ -32,9 +32,12 @@ separate branch CI workflow is failing, so complete the checks below first.
    swift test
    swift build -c release --arch arm64
    .build/release/AviApp --version
+   .build/release/AviApp --self-test
    ```
 
-   The reported version must match the intended tag. The legacy `./build.sh`
+   The reported version must match the intended tag. `--self-test` runs the
+   AI preflight in the release binary, where a miscompiled async sleep aborts
+   it (0.4.0 shipped with one); CI runs it with its own toolchain too. The legacy `./build.sh`
    fallback and isolated component tests are not substitutes for a SwiftPM
    release build and the complete test suite. Some tests and `--self-test`
    access Avi's user configuration; use a disposable macOS account for an
