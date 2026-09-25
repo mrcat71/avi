@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.4.0. The config schema, the UI, and the
+Alpha. The current release is v0.4.1. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
