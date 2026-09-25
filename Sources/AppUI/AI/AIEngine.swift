@@ -1,4 +1,5 @@
 import Foundation
+import GitKit
 
 public enum AIEngineError: Error, CustomStringConvertible, LocalizedError {
     case noModelConfigured(String)
@@ -197,23 +198,14 @@ final class CommandAIEngine: AIEngine {
         await withTaskGroup(of: WaitOutcome.self) { group in
             // Termination listener.
             group.addTask {
-                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                    process.terminationHandler = { _ in
-                        cont.resume()
-                    }
-                    if !process.isRunning {
-                        // Already exited before we attached. Resume immediately.
-                        process.terminationHandler = nil
-                        cont.resume()
-                    }
-                }
+                await process.waitForExit()
                 return .terminated
             }
 
             // Timeout.
             group.addTask {
                 do {
-                    try await Task.sleep(for: .seconds(timeoutSeconds))
+                    try await Task.safeSleep(for: .seconds(timeoutSeconds))
                     return .timedOut
                 } catch {
                     return .cancelled
@@ -227,7 +219,7 @@ final class CommandAIEngine: AIEngine {
                 if process.isRunning {
                     process.terminate()
                     // Give it a moment to flush stderr / produce exit status.
-                    try? await Task.sleep(for: .milliseconds(300))
+                    try? await Task.safeSleep(for: .milliseconds(300))
                     if process.isRunning {
                         kill(process.processIdentifier, SIGKILL)
                     }

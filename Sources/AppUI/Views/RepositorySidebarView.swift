@@ -1102,7 +1102,7 @@ private struct TagRow: View {
             isHovering = hovering
             if hovering {
                 Task {
-                    try? await Task.sleep(for: .milliseconds(500))
+                    try? await Task.safeSleep(for: .milliseconds(500))
                     if isHovering {
                         showingPopover = true
                     }

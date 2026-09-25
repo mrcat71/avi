@@ -1,4 +1,5 @@
 import AppKit
+import GitKit
 import SwiftUI
 
 /// GitHub Device Authorization flow.
@@ -141,7 +142,7 @@ struct GitHubDeviceFlowSheet: View {
         var interval = TimeInterval(deviceCode.interval)
         let deadline = Date().addingTimeInterval(TimeInterval(deviceCode.expires_in))
         while Date() < deadline {
-            try await Task.sleep(for: .seconds(interval))
+            try await Task.safeSleep(for: .seconds(interval))
             var request = URLRequest(url: GitHubDeviceFlowConfig.tokenURL)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Accept")

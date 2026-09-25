@@ -34,6 +34,20 @@ enum AviAppMain {
             let store = RepositoryStore()
             _ = store.id
         }
+        // Swift 6.2 and 6.3 release builds have miscompiled async sleeps
+        // (swiftlang/swift#86204), and 0.4.0 crashed on every AI action. Run the
+        // AI preflight, which cancels a sleeping timeout task, and a full sleep.
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            try? await Task.safeSleep(for: .milliseconds(10))
+            let probe = await AICLIValidator.runTest(executable: "/bin/echo")
+            if probe.exitCode != 0 {
+                FileHandle.standardError.write(Data("self-test: AI preflight probe failed: \(probe)\n".utf8))
+                exit(1)
+            }
+            done.signal()
+        }
+        done.wait()
         print("ok")
     }
 }
