@@ -37,9 +37,10 @@ separate branch CI workflow is failing, so complete the checks below first.
 
    The reported version must match the intended tag. `--self-test` runs the
    AI preflight in the release binary, where a miscompiled async sleep aborts
-   it (0.4.0 shipped with one); CI runs it with its own toolchain too. The legacy `./build.sh`
-   fallback and isolated component tests are not substitutes for a SwiftPM
-   release build and the complete test suite. Some tests and `--self-test`
+   it (0.4.0 shipped with one). Branch CI runs it with its own toolchain, and
+   the release workflow runs it on the packaged app before publishing. The
+   legacy `./build.sh` fallback and isolated component tests are not
+   substitutes for a SwiftPM release build and the complete test suite. Some tests and `--self-test`
    access Avi's user configuration; use a disposable macOS account for an
    isolated release check.
 

@@ -80,6 +80,11 @@ jobs:
       - name: Package .app bundle
         run: scripts/package-app.sh "${{ steps.ver.outputs.version }}"
 
+      - name: Self-test packaged app
+        # Runs the AI preflight in the binary that ships. A miscompiled async
+        # sleep (swiftlang/swift#86204) aborts it here, before publishing.
+        run: dist/Avi.app/Contents/MacOS/Avi --self-test
+
       - name: Generate checksums
         run: shasum -a 256 "avi-${{ steps.ver.outputs.version }}-macos-arm64.zip" > SHA256SUMS
 
