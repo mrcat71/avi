@@ -103,6 +103,10 @@ public protocol GitProviding: Sendable {
     /// on the remote, because published tags are what releases are built from.
     func deleteTag(named name: String, in repository: URL) async throws
 
+    /// Delete a tag on `remote` and leave the local tag alone.
+    /// Runs `git push --delete -- <remote> refs/tags/<name>`, so a branch with the same name is never matched.
+    func deleteRemoteTag(named name: String, remote: String, in repository: URL) async throws -> GitRemoteOperationResult
+
     /// Fetch from one remote or all configured remotes when nil.
     func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult
 

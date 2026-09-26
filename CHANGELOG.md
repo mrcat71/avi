@@ -6,6 +6,9 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Delete Tag now asks whether to delete the tag only here or on the remote too. Delete Locally keeps the pushed copy, as before. Delete Locally and from 'origin' deletes the remote tag first, so if the remote refuses, for example because the tag is protected, the local tag stays for you to retry. The remote is the one Push Tag uses, and only the tag is matched, never a branch with the same name.
+
 ## [0.4.2] - 2026-09-26
 
 0.4.1 was tagged but never published, so its fixes ship in this release.

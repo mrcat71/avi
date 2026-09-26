@@ -8,10 +8,12 @@ struct ReferenceActionButton<Label: View>: View {
     let hasLocalChanges: Bool
     let select: () -> Void
     let checkout: (GitReference) -> Void
-    /// Remote a tag push targets, shown in the menu so the target is never a guess.
+    /// Remote a tag push or remote tag delete targets, named in the menu and
+    /// the delete confirmation so the target is never a guess.
     var pushRemote: String?
     var pushTag: ((GitReference) -> Void)?
-    var deleteTag: ((GitReference) -> Void)?
+    /// `remote` is nil for a local-only delete.
+    var deleteTag: ((_ tag: GitReference, _ remote: String?) -> Void)?
     @ViewBuilder let label: () -> Label
 
     @State private var pendingTag: GitReference?
@@ -63,12 +65,22 @@ struct ReferenceActionButton<Label: View>: View {
             }
             .alert("Delete Tag?", isPresented: presented($pendingDelete), presenting: pendingDelete) { tag in
                 Button("Cancel", role: .cancel) { pendingDelete = nil }
-                Button("Delete Tag", role: .destructive) {
-                    pendingDelete = nil
-                    deleteTag?(tag)
+                if let pushRemote {
+                    Button("Delete Locally", role: .destructive) { confirmDelete(tag, remote: nil) }
+                    Button("Delete Locally and from '\(pushRemote)'", role: .destructive) {
+                        confirmDelete(tag, remote: pushRemote)
+                    }
+                } else {
+                    Button("Delete Tag", role: .destructive) { confirmDelete(tag, remote: nil) }
                 }
             } message: { tag in
-                Text("Removes \"\(tag.name)\" from this repository only. A copy already pushed stays on the remote, so anything released from it keeps working.")
+                if let pushRemote {
+                    Text("Delete \"\(tag.name)\" only here, or from '\(pushRemote)' too?\n\n"
+                        + "Deleting it only here leaves the pushed copy on '\(pushRemote)', so anything released from it keeps working. "
+                        + "Deleting it from '\(pushRemote)' removes it for everyone who fetches from there; clones that already fetched it keep their copy.")
+                } else {
+                    Text("Removes \"\(tag.name)\" from this repository.")
+                }
             }
             .alert("Check Out Tag?", isPresented: checkoutPresented, presenting: pendingTag) { tag in
                 Button("Cancel", role: .cancel) { pendingTag = nil }
@@ -91,6 +103,11 @@ struct ReferenceActionButton<Label: View>: View {
         case .localBranch: return "Check Out Branch"
         case .remoteBranch: return "Track Branch"
         }
+    }
+
+    private func confirmDelete(_ tag: GitReference, remote: String?) {
+        pendingDelete = nil
+        deleteTag?(tag, remote)
     }
 
     private var checkoutPresented: Binding<Bool> {

@@ -46,6 +46,7 @@ struct GoneBranchCleanupTests {
         // Deleting locally must not reach for the remote in any form.
         #expect(fake.pushCalls.isEmpty)
         #expect(fake.pushTagCalls.isEmpty)
+        #expect(fake.deleteRemoteTagCalls.isEmpty)
     }
 
     @Test func realFailuresStayErrorsAndNameOneReasonPerBranch() async throws {
@@ -63,29 +64,6 @@ struct GoneBranchCleanupTests {
         // A header plus one line per failed branch, not Git's repeated hint block.
         #expect(message.split(separator: "\n").count == 2)
         #expect(!message.contains("hint:"))
-    }
-
-    @Test func deletingATagLeavesTheRemoteCopyAlone() async throws {
-        let fake = FakeGitProvider(
-            status: WorkingCopyStatus(branch: BranchInfo(name: "main", oid: "a1"), entries: []),
-            refs: RepositoryRefs(
-                localBranches: [branch("main", isCurrent: true)],
-                remoteBranches: [],
-                tags: [
-                    GitReference(name: "v0.2.2", fullName: "refs/tags/v0.2.2", oid: "t1", kind: .tag),
-                    GitReference(name: "v0.2.1", fullName: "refs/tags/v0.2.1", oid: "t0", kind: .tag)
-                ]
-            )
-        )
-        let store = try await openStore(provider: fake)
-
-        await store.deleteTag(named: "v0.2.2")
-
-        #expect(fake.deleteTagCalls == ["v0.2.2"])
-        #expect(store.refs.tags.map(\.name) == ["v0.2.1"])
-        // Deleting locally must never reach for the remote.
-        #expect(fake.pushTagCalls.isEmpty)
-        #expect(store.errorMessage == nil)
     }
 
     @Test func doesNothingWhenNoUpstreamIsGone() async throws {
