@@ -690,22 +690,17 @@ struct LocalChangesWorkspaceView: View {
             LocalChangesStatusBar(store: store)
             Divider()
             HSplitView {
-                Group {
-                    if store.changesMode == .plan {
-                        CommitPlanListView(store: store)
-                    } else {
-                        ChangeListView(store: store, switchToAllCommits: switchToAllCommits)
-                    }
-                }
-                .frame(minWidth: 260, idealWidth: 320, maxWidth: 520)
-                .aviPane()
+                ChangeListView(store: store, switchToAllCommits: switchToAllCommits)
+                    .frame(minWidth: 260, idealWidth: 320, maxWidth: 520)
+                    .aviPane()
 
                 VSplitView {
                     DiffDetailView(store: store)
                         .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
                         .aviPane()
                     Group {
-                        if store.changesMode == .plan {
+                        // The composer edits whichever commit of the stack is selected.
+                        if store.composerDraft != nil {
                             CommitPlanComposerView(store: store)
                         } else {
                             CommitPanelView(store: store)
@@ -742,7 +737,7 @@ struct LocalChangesWorkspaceView: View {
             || store.aiErrorDetail != nil
             || store.aiDebugDrawerVisible
             || store.fieldProposal != nil
-            || store.changesMode == .plan
+            || store.stackCount > 1
         return hasExpandedContent ? .infinity : 280
     }
 }

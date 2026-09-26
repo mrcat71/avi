@@ -27,10 +27,11 @@ around provider authentication, OAuth, and multi-account flows.
 - Tab-based repository view with status bar, branch info, and remote actions.
 - Staged / unstaged file lists in Fork-style ordering, with selection-preserving
   stage and unstage operations.
-- Plan mode for several commits at once: drafts from agents, the AI split, and
-  you, grouped by who proposed them. Drag files between commits, review each
-  file's full diff, tell the AI how to split, merge, or rethink them, and
-  commit them one by one or all in order.
+- One Changes screen for one commit or several: unstaged files on top, then the
+  commits you are about to make. Commit 1 is your staged files; planned commits
+  from agents, the AI, and you stack under it. Drag files between commits, let
+  **Split into Commits…** have the AI group the changes, tell it how to split,
+  merge, or rethink them, and commit one at a time or all in order.
 - Agent hand-off: the `avi` command lets Claude Code, Codex, and other local
   agents stage files and fill the commit message, or propose a whole commit
   plan, from several sessions at once. Nothing is committed until you approve
@@ -99,7 +100,7 @@ builds, packages, and publishes the app. Local builds use the same SwiftPM and
    opened.
 3. Ask your agent to send its work to Avi, or let the skill do it when a task is
    done. One commit lands in the commit field with its files staged; several
-   land in Plan.
+   become planned commits under it.
 
 Codex needs `[sandbox_workspace_write] network_access = true` (or your approval)
 for `avi` to reach Avi. See

@@ -239,8 +239,9 @@ public enum AgentCLI {
     A plan file lists commits with paths relative to the repository root:
       {"version": 1, "title": "...", "commits": [{"message": "...", "files": ["a", "b"]}]}
 
-    One commit fills Avi's commit field and stages its files; several commits go
-    to Avi's Plan view. Nothing is committed until you approve it in Avi.
+    One commit fills Avi's commit field and stages its files; several become
+    planned commits in Avi's Changes view. Nothing is committed until you
+    approve it in Avi.
 
     Exit codes: 0 ok, 1 rejected by Avi, 2 usage error, 3 Avi not reachable.
     See https://github.com/mrcat71/avi/blob/main/docs/AGENT-INTEGRATION.md

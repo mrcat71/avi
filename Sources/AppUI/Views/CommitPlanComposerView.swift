@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Bottom-right pane in Plan mode: edit the selected draft's message, step
-/// through drafts, and commit the whole plan.
+/// Bottom-right pane while a planned commit is selected: edit its message,
+/// step through the stack, and commit it or every commit.
 struct CommitPlanComposerView: View {
     let store: RepositoryStore
 
@@ -11,7 +11,7 @@ struct CommitPlanComposerView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
                 header
-                if let draft = store.selectedDraft {
+                if let draft = store.composerDraft {
                     CommitMessageEditor(summary: summaryBinding(draft.id), messageBody: bodyBinding(draft.id))
                     issueLine(for: draft)
                     actionBar(for: draft)
@@ -26,7 +26,7 @@ struct CommitPlanComposerView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
         }
-        .disabled(store.isApplyingPlan || store.selectedDraft.map { store.revisingDraftIDs.contains($0.id) } == true)
+        .disabled(store.isApplyingPlan || store.composerDraft.map { store.revisingDraftIDs.contains($0.id) } == true)
         .confirmationDialog("Discard the whole plan?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
             Button("Discard Plan", role: .destructive) {
                 store.discardPlan()
@@ -46,14 +46,14 @@ struct CommitPlanComposerView: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
                 .tracking(0.5)
-            if let draft = store.selectedDraft {
+            if let draft = store.composerDraft {
                 Text("from \(draft.source.displayName)")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
             Spacer()
-            if let draft = store.selectedDraft {
+            if let draft = store.composerDraft {
                 Menu {
                     DraftActionsMenu(store: store, draftID: draft.id)
                 } label: {
@@ -75,17 +75,15 @@ struct CommitPlanComposerView: View {
     }
 
     private var position: String {
-        guard let draft = store.selectedDraft,
-              let index = store.commitPlan.drafts.firstIndex(where: { $0.id == draft.id })
-        else { return "Plan" }
-        return "Commit \(index + 1) of \(store.commitPlan.drafts.count)"
+        guard let draft = store.composerDraft, let number = store.stackNumber(ofDraft: draft.id) else { return "Planned commit" }
+        return "Commit \(number) of \(store.stackCount)"
     }
 
     private func stepButton(_ symbol: String, label: String, offset: Int) -> some View {
         let target = neighbour(offset)
         return Button {
             if let target {
-                store.selectDraft(target)
+                store.selectStackEntry(target)
             }
         } label: {
             Image(systemName: symbol)
@@ -100,11 +98,12 @@ struct CommitPlanComposerView: View {
         .accessibilityLabel(label)
     }
 
-    private func neighbour(_ offset: Int) -> UUID? {
-        let drafts = store.commitPlan.drafts
-        guard let current = store.selectedDraft, let index = drafts.firstIndex(where: { $0.id == current.id }) else { return nil }
+    /// The stack entry `offset` steps away; `.some(nil)` is Commit 1.
+    private func neighbour(_ offset: Int) -> UUID?? {
+        let order = store.stackOrder
+        guard let current = store.composerDraft, let index = order.firstIndex(of: current.id) else { return nil }
         let target = index + offset
-        return drafts.indices.contains(target) ? drafts[target].id : nil
+        return order.indices.contains(target) ? order[target] : nil
     }
 
     // MARK: Actions
@@ -171,7 +170,7 @@ struct CommitPlanComposerView: View {
             .help("Move, merge, or delete this commit")
             .accessibilityLabel("Arrange")
             Spacer(minLength: 8)
-            actionButton("Rethink Plan…", symbol: "rectangle.3.group", compact: compact, help: aiHelp ?? "Tell the AI how to regroup every commit") {
+            actionButton("Rethink All…", symbol: "rectangle.3.group", compact: compact, help: aiHelp ?? "Tell the AI how to regroup every planned commit") {
                 store.requestRevision(of: drafts.map(\.id))
             }
             .disabled(!aiReady || drafts.count < 2)
@@ -259,14 +258,14 @@ struct CommitPlanComposerView: View {
                 Text("Committing \(min(progress.completed + 1, progress.total)) of \(progress.total)")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-            } else if let blocker {
+            } else if let blocker = store.stackBlocker {
                 Text(blocker)
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
                     .lineLimit(1)
             }
 
-            if store.commitPlan.drafts.count > 1, let draft = store.selectedDraft {
+            if store.stackCount > 1, let draft = store.composerDraft {
                 Button("Commit This") {
                     Task { await store.commitDraft(draft.id) }
                 }
@@ -277,7 +276,7 @@ struct CommitPlanComposerView: View {
             }
 
             Button {
-                Task { await store.commitAllDrafts() }
+                Task { await store.commitStack() }
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "checkmark")
@@ -288,29 +287,15 @@ struct CommitPlanComposerView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .disabled(!store.canCommitAllDrafts || store.isLoading)
+            .disabled(!store.canCommitStack)
             .keyboardShortcut(.return, modifiers: [.command])
-            .help("Create every commit in order (Cmd+Return)")
+            .help(store.stackCount > 1 ? "Create every commit in order, Commit 1 first (Cmd+Return)" : "Create this commit (Cmd+Return)")
         }
     }
 
     private var commitAllTitle: String {
-        let count = store.commitPlan.drafts.count
+        let count = store.stackCount
         return count == 1 ? "Commit" : "Commit All (\(count))"
-    }
-
-    /// The first thing stopping Commit All, named by commit number.
-    private var blocker: String? {
-        for (index, draft) in store.commitPlan.drafts.enumerated() {
-            if let issue = store.issues(of: draft).first {
-                switch issue {
-                case .emptyMessage: return "Commit \(index + 1) needs a message"
-                case .noFiles: return "Commit \(index + 1) has no files"
-                case .unchanged: return "Commit \(index + 1) has unchanged files"
-                }
-            }
-        }
-        return nil
     }
 
     // MARK: Bindings

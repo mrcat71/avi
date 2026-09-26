@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Where you tell the AI how to rework planned commits: split one, merge a
-/// few, regroup the whole plan, or rewrite the messages.
+/// few, regroup them all, or rewrite the messages. It also splits changes that
+/// are in no planned commit yet into new ones.
 struct PlanRevisionSheet: View {
     let store: RepositoryStore
     let request: PlanRevisionRequest
@@ -18,7 +19,7 @@ struct PlanRevisionSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(request.draftIDs.count > 1 ? "Rethink Commits with AI" : "Revise Commit with AI")
+                Text(heading)
                     .font(.system(size: 15, weight: .semibold))
                 Text(request.title)
                     .font(.system(size: 11))
@@ -50,7 +51,7 @@ struct PlanRevisionSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
-                Text("The AI sees these commits and the changes in their files. Files it leaves out move to Not in Plan.")
+                Text(footnote)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -59,8 +60,12 @@ struct PlanRevisionSheet: View {
                     store.revisionRequest = nil
                 }
                 .keyboardShortcut(.cancelAction)
-                Button(request.draftIDs.count > 1 ? "Rethink" : "Revise") {
-                    store.reviseDrafts(request.draftIDs, instructions: instructions)
+                Button(isSplit ? "Split" : (request.draftIDs.count > 1 ? "Rethink" : "Revise")) {
+                    if isSplit {
+                        store.splitIntoCommits(request.files, instructions: instructions)
+                    } else {
+                        store.reviseDrafts(request.draftIDs, instructions: instructions)
+                    }
                     store.revisionRequest = nil
                 }
                 .buttonStyle(.borderedProminent)
@@ -74,5 +79,23 @@ struct PlanRevisionSheet: View {
         .onAppear {
             editorFocused = true
         }
+    }
+
+    private var isSplit: Bool {
+        !request.files.isEmpty
+    }
+
+    private var heading: String {
+        if isSplit {
+            return "Split into Commits with AI"
+        }
+        return request.draftIDs.count > 1 ? "Rethink Commits with AI" : "Revise Commit with AI"
+    }
+
+    private var footnote: String {
+        if isSplit {
+            return "The AI sees the changes in these files and plans commits for them. Files it leaves out stay where they are."
+        }
+        return "The AI sees these commits and the changes in their files. Files it leaves out go back to Commit 1 or Unstaged."
     }
 }

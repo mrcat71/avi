@@ -46,6 +46,12 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public private(set) var commitPlanCalls: [FileCommitPlan] = []
     /// Makes `commitFiles` stop with `CommitPlanError` after this many commits.
     public var failCommitPlanAfter: Int?
+    /// Makes `commit(message:)` and `amend` fail like a rejecting hook.
+    public var failCommit = false
+    /// Makes `workingTreeDiff` fail, so AI plan requests stop before the AI.
+    public var failWorkingTreeDiff = false
+    /// Index and commit calls in the order they happened.
+    public private(set) var events: [String] = []
 
     public init(
         status: WorkingCopyStatus,
@@ -166,6 +172,7 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func stage(path _: String, in _: URL) async throws {}
     public func stage(paths: [String], in _: URL) async throws {
         stagePathsCalls.append(paths)
+        events.append("stage " + paths.joined(separator: ","))
         guard appliesStaging else { return }
         let chosen = Set(paths)
         status = WorkingCopyStatus(branch: status.branch, entries: status.entries.map { entry in
@@ -179,6 +186,7 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func unstage(path _: String, in _: URL) async throws {}
     public func unstage(paths: [String], in _: URL) async throws {
         unstagePathsCalls.append(paths)
+        events.append("unstage " + paths.joined(separator: ","))
         guard appliesStaging else { return }
         let chosen = Set(paths)
         status = WorkingCopyStatus(branch: status.branch, entries: status.entries.map { entry in
@@ -194,11 +202,15 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
 
     public func workingTreeDiff(paths: [String], in _: URL) async throws -> String {
         workingTreeDiffCalls.append(paths)
+        if failWorkingTreeDiff {
+            throw GitError.invalidInput("simulated diff failure")
+        }
         return workingTreeDiffText
     }
 
     public func commitFiles(_ plan: FileCommitPlan, in _: URL, progress: (@Sendable (Int) -> Void)?) async throws {
         commitPlanCalls.append(plan)
+        events.append("plan " + plan.commits.map(\.message).joined(separator: ","))
         let commits = try plan.resolved(against: status)
         for (index, commit) in commits.enumerated() {
             if let limit = failCommitPlanAfter, index == limit {
@@ -219,8 +231,25 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         discardCalls.append(files.map(\.path))
     }
 
-    public func commit(message _: String, in _: URL) async throws {}
-    public func amend(message _: String?, in _: URL) async throws {}
+    public func commit(message: String, in _: URL) async throws {
+        if failCommit {
+            throw GitError.commandFailed(command: "git commit", exitCode: 1, stderr: "hook rejected the commit")
+        }
+        events.append("commit " + message)
+        // Like git: the staged files are committed and leave the status.
+        status = WorkingCopyStatus(branch: status.branch, entries: status.entries.compactMap { entry in
+            guard entry.isStaged else { return entry }
+            return entry.hasUnstagedChanges ? FileStatus(path: entry.path, index: .unmodified, worktree: entry.worktree) : nil
+        })
+    }
+
+    public func amend(message: String?, in _: URL) async throws {
+        if failCommit {
+            throw GitError.commandFailed(command: "git commit --amend", exitCode: 1, stderr: "hook rejected the commit")
+        }
+        events.append("amend " + (message ?? ""))
+    }
+
     public func lastCommitMessage(in _: URL) async throws -> String? {
         lastCommit
     }

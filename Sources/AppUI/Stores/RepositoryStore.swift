@@ -71,7 +71,7 @@ public final class RepositoryStore: Identifiable {
     /// Pending commits for this repository: agent proposals, AI splits, and
     /// drafts you made. Empty when there is no plan.
     public var commitPlan = CommitPlan()
-    public var changesMode: ChangesMode = .files
+    /// The planned commit the composer edits. Nil selects Commit 1, the staged commit.
     public var selectedDraftID: UUID?
     /// Commits made so far while a plan is being applied; nil when idle.
     public internal(set) var planProgress: PlanProgress?
@@ -148,11 +148,11 @@ public final class RepositoryStore: Identifiable {
 
     public var canCommit: Bool {
         let hasSummary = !commitSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return hasSummary && ((amend && canAmend) || !stagedEntries.isEmpty)
+        return hasSummary && ((amend && canAmend) || !stagedCommitEntries.isEmpty)
     }
 
     public var canStageAll: Bool {
-        !unstagedEntries.isEmpty && !isLoading
+        !unplannedUnstagedEntries.isEmpty && !isLoading
     }
 
     public var canUnstageAll: Bool {
@@ -296,8 +296,16 @@ public final class RepositoryStore: Identifiable {
         await perform { try await $0.stage(path: file.path, in: $1) }
     }
 
+    /// Stages every unstaged change into Commit 1, except files a planned commit holds.
     public func stageAll() async {
-        await perform { try await $0.stageAll(in: $1) }
+        let planned = commitPlan.claimedPaths
+        guard !planned.isEmpty else {
+            await perform { try await $0.stageAll(in: $1) }
+            return
+        }
+        let paths = unplannedUnstagedEntries.map(\.path)
+        guard !paths.isEmpty else { return }
+        await perform { try await $0.stage(paths: paths, in: $1) }
     }
 
     public func unstage(_ file: FileStatus) async {
@@ -889,10 +897,18 @@ public final class RepositoryStore: Identifiable {
         stashFileDiff = nil
     }
 
-    public func commit() async {
-        guard let root, canCommit else { return }
+    /// Creates Commit 1 from the staged files. Returns false when nothing was committed.
+    @discardableResult
+    public func commit() async -> Bool {
+        guard let root, canCommit else { return false }
         let message = commitMessage
         do {
+            // A staged file a planned commit holds goes with that commit, which
+            // takes it from the working tree, so it leaves the index first.
+            let planned = withRenamePartners(stagedEntries.map(\.path).filter(commitPlan.claimedPaths.contains))
+            if !planned.isEmpty {
+                try await git.unstage(paths: planned, in: root)
+            }
             if amend {
                 try await git.amend(message: message, in: root)
             } else {
@@ -903,8 +919,13 @@ public final class RepositoryStore: Identifiable {
             amend = false
             fieldProposal = nil
             await refresh()
+            return true
         } catch {
-            errorMessage = error.localizedDescription
+            let failure = error.localizedDescription
+            // Planned files may have left the index before the commit failed.
+            await refresh()
+            errorMessage = failure
+            return false
         }
     }
 
@@ -1423,60 +1444,6 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
-    public func splitStagedWithAI() {
-        guard let root else { return }
-        let config = ConfigStore.shared.config.ai
-        aiTask?.cancel()
-        aiErrorDetail = nil
-        aiSplitPreview = nil
-        aiWorkDescription = "The AI is splitting the staged changes into commits…"
-        isAIWorking = true
-        aiTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer { self.isAIWorking = false }
-
-            let report = await AICLIValidator.validate(config)
-            if Task.isCancelled {
-                return
-            }
-            if !report.isValid {
-                aiErrorDetail = AIErrorDetail(
-                    title: "AI setup not ready",
-                    message: report.messages.joined(separator: "\n"),
-                    runResult: nil
-                )
-                return
-            }
-            do {
-                // A draft commits the working-tree copy, which only matches what
-                // the AI reads when nothing unstaged sits on top of a staged file.
-                let partial = stagedEntries.filter(\.hasUnstagedChanges).map(\.path)
-                guard partial.isEmpty else {
-                    aiErrorDetail = AIErrorDetail(
-                        title: "Partially staged files",
-                        message: "Splitting works per file. Stage or unstage the rest of \(partial.joined(separator: ", ")) first.",
-                        runResult: nil
-                    )
-                    return
-                }
-                let diff = try await git.stagedDiff(in: root)
-                guard !diff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    aiErrorDetail = AIErrorDetail(title: "Nothing staged", message: "Stage files first.", runResult: nil)
-                    return
-                }
-                if let groups = try await requestSplitGroups(diff: diff, config: config, report: report) {
-                    adoptAISplit(groups)
-                }
-            } catch let err as AIEngineError {
-                handleAIError(err)
-            } catch {
-                if !(error is CancellationError) {
-                    aiErrorDetail = AIErrorDetail(title: "AI error", message: error.localizedDescription, runResult: nil)
-                }
-            }
-        }
-    }
-
     /// Recompose a range of consecutive commits via AI. Combines their diffs,
     /// asks the AI to propose new groups, and on Apply replays the new commits
     /// via an interactive rebase that rewinds the whole range.
@@ -1763,14 +1730,11 @@ public struct AISplitPreview: Equatable, Sendable {
 public struct PlanRevisionRequest: Identifiable, Equatable, Sendable {
     public let id = UUID()
     public let draftIDs: [UUID]
+    /// Files to split into new planned commits; empty when revising drafts.
+    public var files: [String] = []
     /// Names the scope, like "Commit 2: docs: ..." or "All 5 commits".
     public let title: String
     public let suggestion: String
-}
-
-public enum ChangesMode: Sendable {
-    case files
-    case plan
 }
 
 public struct PlanProgress: Equatable, Sendable {

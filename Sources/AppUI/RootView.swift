@@ -104,14 +104,8 @@ public struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviCommit)) { _ in
             guard let store = selectedStore else { return }
-            // In Plan mode the shortcut means Commit All; a classic commit here
-            // would sweep up whatever happens to be staged.
-            if store.changesMode == .plan {
-                guard store.canCommitAllDrafts else { return }
-                Task { await store.commitAllDrafts() }
-            } else {
-                Task { await store.commit() }
-            }
+            // One commit or several: Commit 1 first, then each planned commit.
+            Task { await store.commitStack() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviFetchRepository)) { _ in
             Task { await selectedStore?.fetch(remote: nil) }

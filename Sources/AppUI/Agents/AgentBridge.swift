@@ -311,7 +311,7 @@ public final class AgentBridge {
         session.select(store.id)
         store.workspaceSelection = .localChanges
         if showPlan {
-            store.changesMode = .plan
+            store.selectedDraftID = store.commitPlan.drafts.first?.id
         }
         store.hasUnseenProposal = false
         NSApp?.activate(ignoringOtherApps: true)

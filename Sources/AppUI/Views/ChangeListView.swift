@@ -2,13 +2,17 @@ import AppKit
 import GitKit
 import SwiftUI
 
+/// The Changes column: unstaged files on top and, below them, the commits you
+/// are about to make. Commit 1 is the staged files; planned commits follow it.
 struct ChangeListView: View {
     let store: RepositoryStore
     var switchToAllCommits: (() -> Void)?
 
     @Bindable private var config = ConfigStore.shared
     @State private var multiSelection: Set<String> = []
-    @State private var activeStagedPane = false
+    @State private var stackSelection: Set<String> = []
+    /// Cmd+A acts on the list you touched last.
+    @State private var stackIsActive = false
     @State private var pendingDiscard: [FileStatus] = []
     @State private var confirmingDiscard = false
 
@@ -36,29 +40,25 @@ struct ChangeListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .aviDiscardSelection)) { _ in
             requestDiscard(selectedUnstagedFiles)
         }
-        .onChange(of: store.selectedDiffSource) { _, source in
-            activeStagedPane = source == .staged
+        // Keep the highlight where the store's selection is: here, or in the stack.
+        .onChange(of: store.selectedPath) { _, _ in
+            syncHighlight()
         }
-        .onChange(of: store.selectedPath) { _, newValue in
-            // Keep multi-selection in sync when the store changes the active file
-            // (e.g. after a stage/unstage shuffle). Only collapse to single when
-            // the view wasn't already in a multi-selection state the user built.
-            if let newValue {
-                if multiSelection != [newValue] {
-                    multiSelection = [newValue]
-                }
-            } else if !multiSelection.isEmpty {
-                multiSelection.removeAll()
-            }
+        .onChange(of: store.selectedDiffSource) { _, _ in
+            syncHighlight()
         }
     }
 
-    /// Hidden button that registers Cmd+A as "select all changed files".
-    /// Lives behind the view so the shortcut is in the responder chain while
-    /// the list has focus, without taking visible space.
+    /// Hidden button that registers Cmd+A as "select all files" in the list you
+    /// used last. Lives behind the view so the shortcut is in the responder chain
+    /// while a list has focus, without taking visible space.
     private var selectAllShortcut: some View {
         Button("Select All Files") {
-            multiSelection = Set((activeStagedPane ? store.stagedEntries : store.unstagedEntries).map(\.path))
+            if stackIsActive {
+                stackSelection = Set(stackFilePaths.map(PlanRowTag.file))
+            } else {
+                multiSelection = Set(unstagedEntries.map(\.path))
+            }
         }
         .keyboardShortcut("a", modifiers: .command)
         .opacity(0)
@@ -70,14 +70,22 @@ struct ChangeListView: View {
         config.config.appearance.fileListMode == "tree"
     }
 
+    private var unstagedEntries: [FileStatus] {
+        store.unplannedUnstagedEntries
+    }
+
+    private var stackFilePaths: [String] {
+        store.stagedCommitEntries.map(\.path) + store.commitPlan.drafts.flatMap(\.files)
+    }
+
     private var sectionToolbar: some View {
         HStack(spacing: 6) {
-            ChangesModeSwitch(store: store)
-            Spacer()
             Text(summary)
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
+            Spacer(minLength: 4)
+            splitButton
             if isTreeMode {
                 Button {
                     store.expandAllFolders()
@@ -125,90 +133,88 @@ struct ChangeListView: View {
         .frame(height: 28)
     }
 
+    /// Splits every change no planned commit holds, staged or not, into commits.
+    private var splitButton: some View {
+        let paths = store.splittablePaths
+        let help = store.canUseAIForPlan
+            ? "Let the AI group every change that is not in a planned commit into commits"
+            : "Turn on AI in Settings > AI Commit Messages"
+        return ViewThatFits(in: .horizontal) {
+            splitButton(paths: paths, help: help, compact: false)
+            splitButton(paths: paths, help: help, compact: true)
+        }
+    }
+
+    private func splitButton(paths: [String], help: String, compact: Bool) -> some View {
+        Button {
+            store.requestSplit(of: paths, title: paths.count == 1 ? "1 changed file" : "\(paths.count) changed files")
+        } label: {
+            if compact {
+                Image(systemName: "rectangle.split.3x1")
+            } else {
+                Label("Split into Commits…", systemImage: "rectangle.split.3x1")
+            }
+        }
+        .controlSize(.small)
+        .fixedSize()
+        .disabled(!store.canUseAIForPlan || paths.count < 2 || store.isRevisingPlan || store.isApplyingPlan)
+        .help(help)
+        .accessibilityLabel("Split into Commits")
+    }
+
     @ViewBuilder
     private var content: some View {
-        if store.entries.isEmpty {
+        if store.entries.isEmpty, store.commitPlan.isEmpty {
             CleanTreeCard(store: store, switchToAllCommits: switchToAllCommits)
         } else {
             VSplitView {
                 unstagedPane
                     .frame(minHeight: unstagedMinHeight, idealHeight: unstagedIdealHeight)
-                stagedPane
-                    .frame(minHeight: stagedMinHeight, idealHeight: stagedIdealHeight)
+                CommitStackView(store: store, selection: $stackSelection) {
+                    stackIsActive = true
+                }
+                .frame(minHeight: 120, idealHeight: 240)
             }
         }
     }
 
     private var unstagedMinHeight: CGFloat {
-        store.unstagedEntries.isEmpty ? 34 : 120
+        unstagedEntries.isEmpty ? 34 : 120
     }
 
     private var unstagedIdealHeight: CGFloat {
-        store.unstagedEntries.isEmpty ? 34 : 240
-    }
-
-    private var stagedMinHeight: CGFloat {
-        store.stagedEntries.isEmpty ? 34 : 100
-    }
-
-    private var stagedIdealHeight: CGFloat {
-        store.stagedEntries.isEmpty ? 34 : 200
+        unstagedEntries.isEmpty ? 34 : 240
     }
 
     private var unstagedPane: some View {
         VStack(spacing: 0) {
             PaneHeader(
                 title: "Unstaged",
-                count: store.unstagedEntries.count,
+                count: unstagedEntries.count,
                 actionLabel: "Stage",
                 actionTint: .accentColor,
                 actionEnabled: !selectedUnstagedFiles.isEmpty
             ) {
                 stageFiles(selectedUnstagedFiles)
             }
-            Divider()
-            paneList(entries: store.unstagedEntries, staged: false, emptyText: "Nothing to stage")
-        }
-    }
-
-    private var stagedPane: some View {
-        VStack(spacing: 0) {
-            PaneHeader(
-                title: "Staged",
-                count: store.stagedEntries.count,
-                actionLabel: "Unstage",
-                actionTint: .secondary,
-                actionEnabled: !selectedStagedFiles.isEmpty
-            ) {
-                unstageFiles(selectedStagedFiles)
+            .dropDestination(for: String.self) { items, _ in
+                dropOnUnstaged(items)
             }
             Divider()
-            paneList(entries: store.stagedEntries, staged: true, emptyText: "Nothing staged")
+            unstagedList
         }
     }
 
-    /// Files currently selected in the unstaged pane. Folder ids in `multiSelection`
+    /// Files currently selected in the unstaged list. Folder ids in `multiSelection`
     /// (from tree mode) are filtered out by intersecting with the entries array.
     private var selectedUnstagedFiles: [FileStatus] {
-        activeStagedPane ? [] : store.unstagedEntries.filter { multiSelection.contains($0.path) }
+        unstagedEntries.filter { multiSelection.contains($0.path) }
     }
 
-    private var selectedStagedFiles: [FileStatus] {
-        activeStagedPane ? store.stagedEntries.filter { multiSelection.contains($0.path) } : []
-    }
-
-    /// A pane's file paths in the order the user sees them: flat-list order, or
-    /// the flattened tree order honoring folder expansion. Passed to the store so
-    /// selection advances to the visually-next file after a stage/unstage.
+    /// The list's file paths in the order you see them. Passed to the store so
+    /// selection advances to the visually-next file after a stage.
     private func visibleOrder(_ entries: [FileStatus]) -> [String] {
-        guard isTreeMode else { return entries.map(\.path) }
-        let tree = FileTreeBuilder.build(entries: entries)
-        return FileTreeBuilder.flatten(tree, expanded: store.expandedFolders).compactMap { node in
-            if case let .file(file) = node.payload {
-                return file.path
-            }
-            return nil
-        }
+        FileTreeBuilder.visiblePaths(entries, expanded: store.expandedFolders, tree: isTreeMode)
     }
 
     /// Stage `files` as a single batch and advance selection to the next unstaged
@@ -216,14 +222,14 @@ struct ChangeListView: View {
     /// through here.
     private func stageFiles(_ files: [FileStatus]) {
         guard !files.isEmpty else { return }
-        let order = visibleOrder(store.unstagedEntries)
+        let order = visibleOrder(unstagedEntries)
         Task { await store.stage(files, advancingFrom: order) }
     }
 
-    /// Files a discard from `file`'s row applies to: the whole selection when the
-    /// row is part of it, otherwise that row alone.
+    /// Files a row action applies to: the whole selection when the row is part
+    /// of it, otherwise that row alone.
     private func discardTargets(for file: FileStatus) -> [FileStatus] {
-        DiscardTargets.resolve(row: file, selection: multiSelection, entries: store.unstagedEntries)
+        DiscardTargets.resolve(row: file, selection: multiSelection, entries: unstagedEntries)
     }
 
     /// Open the confirmation for `files`. Empty input is ignored so the
@@ -238,7 +244,7 @@ struct ChangeListView: View {
     /// unstaged file.
     private func discardFiles(_ files: [FileStatus]) {
         guard !files.isEmpty else { return }
-        let order = visibleOrder(store.unstagedEntries)
+        let order = visibleOrder(unstagedEntries)
         pendingDiscard = []
         Task { await store.discard(files, advancingFrom: order) }
     }
@@ -258,38 +264,27 @@ struct ChangeListView: View {
         return "\(list)\n\nThis cannot be undone."
     }
 
-    /// Unstage `files` as a single batch and advance selection to the next staged file.
-    private func unstageFiles(_ files: [FileStatus]) {
-        guard !files.isEmpty else { return }
-        let order = visibleOrder(store.stagedEntries)
-        Task { await store.unstage(files, advancingFrom: order) }
-    }
-
-    @ViewBuilder
-    private func paneList(entries: [FileStatus], staged: Bool, emptyText: String) -> some View {
+    private var unstagedList: some View {
         ScrollViewReader { proxy in
-            List(selection: paneSelection(staged: staged)) {
-                if entries.isEmpty {
-                    Text(emptyText)
+            List(selection: unstagedSelection) {
+                if unstagedEntries.isEmpty {
+                    Text(store.entries.isEmpty ? "Nothing changed" : "Nothing to stage")
                         .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
                         .padding(.vertical, 2)
                         .listRowSeparator(.hidden)
+                        .dropDestination(for: String.self) { items, _ in
+                            dropOnUnstaged(items)
+                        }
                 } else if isTreeMode {
-                    treeRows(for: entries, staged: staged)
+                    FileTreeRows(store: store, entries: unstagedEntries, fileTag: { $0 }, folderTag: { $0 }) { file in
+                        unstagedRow(file, isTreeRow: true)
+                    }
                 } else {
-                    ForEach(entries) { file in
-                        ChangeRow(
-                            file: file,
-                            staged: staged,
-                            store: store,
-                            onStage: { stageFiles([$0]) },
-                            onUnstage: { unstageFiles([$0]) },
-                            onDiscard: { requestDiscard(discardTargets(for: $0)) },
-                            discardCount: discardTargets(for: file).count
-                        )
-                        .tag(file.path)
-                        .id(file.path)
+                    ForEach(unstagedEntries) { file in
+                        unstagedRow(file, isTreeRow: false)
+                            .tag(file.path)
+                            .id(file.path)
                     }
                 }
             }
@@ -297,7 +292,7 @@ struct ChangeListView: View {
             .scrollContentBackground(.hidden)
             .animation(Glass.Motion.snappy, value: stagingAnimationKey)
             .onChange(of: store.selectedPath) { _, newValue in
-                guard let newValue, entries.contains(where: { $0.path == newValue }) else { return }
+                guard let newValue, unstagedEntries.contains(where: { $0.path == newValue }) else { return }
                 withAnimation(Glass.Motion.snappy) {
                     proxy.scrollTo(newValue, anchor: .center)
                 }
@@ -305,52 +300,105 @@ struct ChangeListView: View {
         }
     }
 
-    /// Drive the diff viewer from multi-selection. When a single FILE row is
+    private func unstagedRow(_ file: FileStatus, isTreeRow: Bool) -> some View {
+        // A row action or drag takes the whole selection when the row is part of it.
+        let targets = discardTargets(for: file)
+        let paths = targets.map(\.path)
+        return ChangeRow(
+            file: file,
+            staged: false,
+            isTreeRow: isTreeRow,
+            store: store,
+            onStage: { stageFiles([$0]) },
+            onUnstage: { _ in },
+            onDiscard: { requestDiscard(discardTargets(for: $0)) },
+            discardCount: targets.count,
+            moveMenu: AnyView(MoveToMenu(store: store, paths: paths, current: .unstaged))
+        )
+        .draggable(paths.joined(separator: PlanRowTag.dragSeparator))
+        .dropDestination(for: String.self) { items, _ in
+            dropOnUnstaged(items)
+        }
+    }
+
+    /// Files dragged here from a commit leave it: staged ones are unstaged.
+    private func dropOnUnstaged(_ items: [String]) -> Bool {
+        let paths = items.flatMap { $0.components(separatedBy: PlanRowTag.dragSeparator) }.filter { !$0.isEmpty }
+        let known = store.changedPathSet.union(store.commitPlan.claimedPaths)
+        let accepted = paths.filter { known.contains($0) }
+        guard !accepted.isEmpty else { return false }
+        Task { await store.move(accepted, to: .unstaged) }
+        return true
+    }
+
+    /// Drive the diff viewer from the selection. When a single FILE row is
     /// selected, load its diff. When 2+ rows or a folder is selected, leave the
     /// diff view on whatever was last shown (mirrors HistoryView's pattern).
     /// When selection is empty, clear the diff.
-    private func paneSelection(staged: Bool) -> Binding<Set<String>> {
+    private var unstagedSelection: Binding<Set<String>> {
         Binding(
-            get: { activeStagedPane == staged ? multiSelection : [] },
+            get: { multiSelection },
             set: { selection in
-                // Deselecting the inactive list must not clear the active pane.
-                guard !selection.isEmpty || activeStagedPane == staged else { return }
-                activeStagedPane = staged
+                // Clearing this list while you work in the stack must not clear the diff.
+                guard !selection.isEmpty || !stackIsActive else { return }
+                stackIsActive = false
                 multiSelection = selection
-                syncSingleSelectionToStore(selection, staged: staged)
+                if selection.count == 1, let id = selection.first,
+                   let file = unstagedEntries.first(where: { $0.path == id }) {
+                    Task { await store.select(file, source: file.isUntracked ? .untracked : .unstaged) }
+                } else if selection.isEmpty {
+                    Task { await store.select(nil) }
+                }
+                // Otherwise (multi-select, or selection landed on a folder header),
+                // leave store.selectedPath alone.
             }
         )
     }
 
-    private func syncSingleSelectionToStore(_ selection: Set<String>, staged: Bool) {
-        if selection.count == 1, let id = selection.first,
-           let file = store.entries.first(where: { $0.path == id }) {
-            Task { await store.select(file, source: staged ? .staged : (file.isUntracked ? .untracked : .unstaged)) }
-        } else if selection.isEmpty {
-            Task { await store.select(nil) }
+    /// Highlights the selected file in the list that shows it and clears the
+    /// other. A partly staged file is listed twice; the diff source decides.
+    private func syncHighlight() {
+        guard let path = store.selectedPath else {
+            if !multiSelection.isEmpty {
+                multiSelection.removeAll()
+            }
+            return
         }
-        // Otherwise (multi-select, or selection landed on a folder header),
-        // leave store.selectedPath alone.
+        let inUnstaged = store.selectedDiffSource != .staged && unstagedEntries.contains { $0.path == path }
+        if inUnstaged {
+            if multiSelection != [path] {
+                multiSelection = [path]
+            }
+            stackSelection = stackSelection.filter { PlanRowTag.path(of: $0) == nil }
+        } else if !multiSelection.isEmpty {
+            multiSelection.removeAll()
+        }
     }
 
     /// Stable key for List animations: counts plus boundary paths. Bulk refreshes
     /// from the watcher won't trip the animation unless the visible boundary moves.
     private var stagingAnimationKey: String {
-        let staged = store.stagedEntries.count
-        let unstaged = store.unstagedEntries.count
-        let firstU = store.unstagedEntries.first?.path ?? ""
-        let lastU = store.unstagedEntries.last?.path ?? ""
-        let firstS = store.stagedEntries.first?.path ?? ""
-        let lastS = store.stagedEntries.last?.path ?? ""
-        return "\(unstaged)|\(staged)|\(firstU)|\(lastU)|\(firstS)|\(lastS)"
+        let unstaged = unstagedEntries
+        return "\(unstaged.count)|\(store.stagedEntries.count)|\(unstaged.first?.path ?? "")|\(unstaged.last?.path ?? "")"
     }
 
-    @ViewBuilder
-    private func treeRows(for entries: [FileStatus], staged: Bool) -> some View {
-        let tree = FileTreeBuilder.build(entries: entries)
-        // Auto-expand root level by adding root folder ids when none are tracked yet for this repo.
-        // (Folders not yet in `expandedFolders` collapse by default; we keep that behavior.)
-        let flat = FileTreeBuilder.flatten(tree, expanded: store.expandedFolders)
+    private var summary: String {
+        let changed = store.entries.count
+        guard changed > 0 else { return store.commitPlan.isEmpty ? "Clean" : "No changes" }
+        return changed == 1 ? "1 changed file" : "\(changed) changed files"
+    }
+}
+
+/// Folder and file rows for `entries` in tree order, honoring folder expansion.
+struct FileTreeRows<FileRow: View>: View {
+    let store: RepositoryStore
+    let entries: [FileStatus]
+    let fileTag: (String) -> String
+    let folderTag: (String) -> String
+    @ViewBuilder let fileRow: (FileStatus) -> FileRow
+
+    var body: some View {
+        let flat = FileTreeBuilder.flatten(FileTreeBuilder.build(entries: entries), expanded: store.expandedFolders)
         ForEach(flat) { node in
             switch node.payload {
             case .folder(let name, _):
@@ -363,46 +411,23 @@ struct ChangeListView: View {
                     onToggle: { store.toggleFolderExpanded(node.id) }
                 )
                 // Tag folder rows so arrow-key navigation traverses them and
-                // selection can cross folder boundaries naturally. The
-                // sync-to-store guard filters folder ids back out so the diff
-                // view isn't asked to render a folder path.
-                .tag(node.id)
+                // selection can cross folder boundaries naturally. Selection
+                // handlers filter folder tags back out so the diff view is
+                // never asked to render a folder path.
+                .tag(folderTag(node.id))
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
             case .file(let file):
-                ChangeRow(
-                    file: file,
-                    staged: staged,
-                    isTreeRow: true,
-                    store: store,
-                    onStage: { stageFiles([$0]) },
-                    onUnstage: { unstageFiles([$0]) },
-                    onDiscard: { requestDiscard(discardTargets(for: $0)) },
-                    discardCount: discardTargets(for: file).count
-                )
-                .tag(file.path)
-                .padding(.leading, CGFloat(node.depth + 1) * 12)
+                fileRow(file)
+                    .tag(fileTag(file.path))
+                    .id(file.path)
+                    .padding(.leading, CGFloat(node.depth + 1) * 12)
             }
         }
     }
-
-    private var summary: String {
-        let staged = store.stagedEntries.count
-        let unstaged = store.unstagedEntries.count
-        if staged == 0, unstaged == 0 {
-            return "Clean"
-        }
-        if staged == 0 {
-            return "\(unstaged) changed"
-        }
-        if unstaged == 0 {
-            return "\(staged) staged"
-        }
-        return "\(staged) staged · \(unstaged) changed"
-    }
 }
 
-private struct PaneHeader: View {
+struct PaneHeader: View {
     let title: String
     let count: Int
     let actionLabel: String
@@ -496,7 +521,7 @@ private struct CleanTreeCard: View {
     }
 }
 
-private struct ChangeRow: View {
+struct ChangeRow: View {
     let file: FileStatus
     let staged: Bool
     var isTreeRow = false
@@ -506,6 +531,8 @@ private struct ChangeRow: View {
     let onDiscard: (FileStatus) -> Void
     /// How many files a discard from this row would touch, so the menu can say so.
     var discardCount: Int = 1
+    /// "Move To" submenu for the stack: Commit 1, a planned commit, or Unstaged.
+    var moveMenu: AnyView?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -556,6 +583,9 @@ private struct ChangeRow: View {
             Button(discardCount > 1 ? "Discard \(discardCount) Files…" : "Discard…", role: .destructive) {
                 onDiscard(file)
             }
+        }
+        if let moveMenu {
+            moveMenu
         }
 
         Divider()
@@ -624,7 +654,7 @@ private struct ChangeRow: View {
     }
 }
 
-private struct FolderTreeRow: View {
+struct FolderTreeRow: View {
     let name: String
     let path: String
     let depth: Int

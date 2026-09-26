@@ -124,10 +124,10 @@ enum AgentSkillContent {
       commit field.
     - `placement: previewCard`: the user was writing a message; yours waits
       beside it.
-    - `placement: plan`: the commits wait in Avi's Plan view.
+    - `placement: plan`: the commits wait as planned commits in Avi's Changes view.
 
     Tell the user in one line what is waiting, for example "3 commits are waiting
-    in Avi's Plan for your review."
+    in Avi for your review."
 
     Errors come back with `ok: false`, exit code 1, and a `code`:
 
