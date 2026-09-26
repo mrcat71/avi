@@ -9,6 +9,9 @@ All notable changes to Avi are documented here. The format is based on
 ### Added
 - Delete Tag now asks whether to delete the tag only here or on the remote too. Delete Locally keeps the pushed copy, as before. Delete Locally and from 'origin' deletes the remote tag first, so if the remote refuses, for example because the tag is protected, the local tag stays for you to retry. The remote is the one Push Tag uses, and only the tag is matched, never a branch with the same name.
 
+### Changed
+- Changes is one screen for one commit or several; the Files | Plan switch is gone. Unstaged files sit on top and, under them, **Commits** lists what you are about to commit: Commit 1 is your staged files, and planned commits from agents, the AI, and you stack under it. Drag files between commits or use Move To: into Commit 1 stages, back to Unstaged unstages, and planned commits never touch the index. **Split into Commits…** in the toolbar has the AI group every change into planned commits, and Commit 1 has its own **Split…**. With one commit you just press Commit; with several, **Commit All** makes Commit 1 first and the planned ones after it, and **Commit This** makes only the selected one. AI > Split Staged Into Commits… is replaced by these.
+
 ## [0.4.2] - 2026-09-26
 
 0.4.1 was tagged but never published, so its fixes ship in this release.

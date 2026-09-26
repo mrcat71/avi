@@ -42,6 +42,18 @@ enum FileTreeBuilder {
         return convert(root, depth: 0).children
     }
 
+    /// File paths in the order a list shows them: status order when flat, tree
+    /// order honoring folder expansion otherwise. Selection advances along it.
+    static func visiblePaths(_ entries: [FileStatus], expanded: Set<String>, tree: Bool) -> [String] {
+        guard tree else { return entries.map(\.path) }
+        return flatten(build(entries: entries), expanded: expanded).compactMap { node in
+            if case let .file(file) = node.payload {
+                return file.path
+            }
+            return nil
+        }
+    }
+
     /// Flatten a tree honoring an expanded-paths set. Files always render; folders'
     /// children render only if the folder's id is in `expanded`.
     static func flatten(_ nodes: [FileTreeNode], expanded: Set<String>) -> [FileTreeNode] {

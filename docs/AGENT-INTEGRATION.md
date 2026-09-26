@@ -2,8 +2,8 @@
 
 Claude Code, Codex, and other local agents hand finished work to Avi instead of
 committing. Avi stages the files and fills its commit message, or lays out
-several commits in Plan mode. You approve every commit in Avi; agents never
-commit or push.
+several commits as planned commits in Changes. You approve every commit in
+Avi; agents never commit or push.
 
 ## Set up
 
@@ -49,7 +49,7 @@ commit to Avi with the avi skill" to your global agent instructions.
 | -------- | ------ |
 | One commit, nothing else pending, nothing else staged | Avi stages exactly its files and fills the commit field. A "Proposed by" banner offers **Withdraw**, which clears the message and unstages what Avi staged. |
 | One commit while the field holds your own text | Your text stays. The proposal waits in a preview card: **Replace**, **Append as body**, or **Discard**. |
-| Several commits, another session's proposal pending, or other files staged | The commits become drafts in Plan mode. Nothing is staged. A proposal already in the commit field moves into the plan as well. |
+| Several commits, another session's proposal pending, or other files staged | The commits become planned commits in Changes. Nothing is staged. A proposal already in the commit field becomes a planned commit as well. |
 | One commit without files | Fills the message only, for whatever is already staged. |
 
 Several agent sessions can work at once:
@@ -65,40 +65,55 @@ Several agent sessions can work at once:
   have not seen, and the Dock badge counts them. `--focus` selects the tab and
   brings Avi forward.
 
-## Plan mode
+## One commit or several
 
-The **Files | Plan** switch in the Changes toolbar shows the plan: drafts
-grouped by who proposed them, then the changed files no draft holds.
+Changes is one screen. Unstaged files are on top; under them, **Commits** lists
+the commits you are about to make, in order:
 
-- Drag files between commits, or select files and use **Move To** from the
-  context menu. Delete moves selected files to Not in Plan.
-- Selecting a file shows everything its commit will take: the working-tree
-  version against `HEAD`. Files with both staged and unstaged changes are
-  marked; the commit takes the whole working-tree version.
-- **Commit All** (Cmd+Return) creates the drafts in order. **Commit This**
-  (Option+Cmd+Return) creates only the selected one and moves to the next.
-  Each draft runs `git commit --only` with exactly its files, so other staged
-  changes stay staged. When drafts come from several sources, each group
-  header offers **Commit These**.
-- Right-click a draft, or use its "…" button or the composer's, for the same
-  menu: **Commit This Now**, **Write Message with AI**, **Revise with AI…**,
+- **Commit 1** is your staged files. Moving a file into it stages the file;
+  moving it out, to Unstaged, unstages it. With nothing else planned it is the
+  only commit, and Changes works like any staging client.
+- **Planned commits** follow: drafts from agent sessions, Avi's AI, and you,
+  grouped by who proposed them. They never touch the index. Each one runs
+  `git commit --only` with exactly its files and takes their working-tree
+  version, so a staged file a planned commit holds leaves the index before
+  Commit 1 is made. While nothing is staged, the planned commits count from 1.
+
+Working with the stack:
+
+- **+ New commit** adds an empty planned commit. Drag files onto any commit,
+  or select files and use **Move To** from the context menu. Delete moves the
+  selected files back to Unstaged. Deleting a planned commit puts its files
+  back where they were: staged ones in Commit 1, the rest in Unstaged.
+- Selecting a file in a planned commit shows everything that commit will
+  take: the working-tree version against `HEAD`. Files with both staged and
+  unstaged changes are marked.
+- **Split into Commits…** in the Changes toolbar asks the AI to group every
+  change no planned commit holds, staged or not, into planned commits. Commit
+  1's **Split…** button does the same for the staged files. Both open a sheet
+  where you can say how to split ("tests in their own commit"). If the AI
+  fails, the files go back where they were; nothing is staged or unstaged.
+- **Commit** makes the only commit. With more than one, **Commit All**
+  (Cmd+Return) makes Commit 1 first, then every planned commit in order, and
+  **Commit This** (Option+Cmd+Return) makes only the selected one. When
+  planned commits come from several sources, each group header offers
+  **Commit These**.
+- Right-click a planned commit, or use its "…" button or the composer's, for
+  **Commit This Now**, **Write Message with AI**, **Revise with AI…**,
   **Split with AI…**, **Move Up/Down**, **Merge with Previous/Next**, and
-  **Delete Commit**. The plan's own "…" menu has **Rethink Plan with AI…**.
-  The composer shows the main ones as buttons under the message.
-- The AI actions ask what should change ("put the tests in their own commit",
-  "merge the docs into the feature commit"), then replace those drafts in
-  place with the AI's answer. They see only those drafts' messages and the
-  changes in their files, and files the AI leaves out move to Not in Plan.
-  They use your AI settings; the prompt is `ai.planRevisionPromptTemplate`
-  in the config file.
-- The first failure, such as a rejecting hook, stops the run. Commits already
-  made stay; the remaining drafts stay in the plan. Nothing is rolled back.
-- **AI > Split Staged Into Commits…** fills the plan with AI drafts. It still
-  refuses partially staged files. Splitting or recomposing existing commits
-  from History keeps its review sheet.
+  **Delete Commit**. The Commits "…" menu has **Split into Commits with AI…**
+  and **Rethink Planned Commits with AI…**.
+- The AI actions replace the commits they work on with the AI's answer. They
+  see only those commits' messages and the changes in their files; files the
+  AI leaves out go back to Commit 1 or Unstaged. They use your AI settings;
+  the prompt is `ai.planRevisionPromptTemplate` in the config file.
+- The first failure, such as a rejecting hook, stops Commit All. Commits
+  already made stay; the rest stay in the stack. Nothing is rolled back.
+  Splitting or recomposing existing commits from History keeps its review
+  sheet.
 
-Plans live in memory: quitting Avi drops them, while files Avi staged stay
-staged.
+Planned commits live in memory: quitting Avi drops them, while files Avi
+staged stay staged.
 
 ## The `avi` command
 

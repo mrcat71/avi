@@ -196,7 +196,9 @@ struct AgentProposalTests {
         #expect(store.commitBody == "Why it matters.")
         #expect(store.fieldProposal?.stagedByAvi == ["a.swift"])
         #expect(store.commitPlan.isEmpty)
-        #expect(store.changesMode == .files)
+        // The composer shows Commit 1, which now holds the proposal.
+        #expect(store.composerDraft == nil)
+        #expect(store.stagedCommitEntries.map(\.path) == ["a.swift"])
     }
 
     @Test func yourOwnMessageIsNeverOverwritten() async throws {
@@ -224,7 +226,10 @@ struct AgentProposalTests {
         #expect(outcome.commits == 2)
         #expect(git.stagePathsCalls.isEmpty)
         #expect(store.commitPlan.drafts.map(\.files) == [["a.swift"], ["b.swift"]])
-        #expect(store.changesMode == .plan)
+        // Nothing is staged, so the planned commits are the whole stack.
+        #expect(store.stackCount == 2)
+        #expect(store.composerDraft?.message == "one")
+        #expect(store.workspaceSelection == .localChanges)
         #expect(store.hasUnseenProposal)
     }
 
@@ -232,7 +237,6 @@ struct AgentProposalTests {
         let (store, _) = await store([modified("a.swift"), modified("b.swift")])
         store.workspaceSelection = .allCommits
         _ = try await store.receiveProposal(proposal([("one", ["a.swift"]), ("two", ["b.swift"])]), revealPlan: false)
-        #expect(store.changesMode == .files)
         #expect(store.workspaceSelection == .allCommits)
         #expect(store.hasUnseenProposal)
     }
@@ -240,10 +244,9 @@ struct AgentProposalTests {
     @Test func aProposalWaitsInChangesWhenYouComeBack() async throws {
         let (store, _) = await store([modified("a.swift")])
         store.workspaceSelection = .allCommits
-        store.changesMode = .plan
         _ = try await store.receiveProposal(proposal([("feat: a", ["a.swift"])]), revealPlan: true)
         #expect(store.workspaceSelection == .localChanges)
-        #expect(store.changesMode == .files)
+        #expect(store.composerDraft == nil)
     }
 
     @Test func asecondSessionMovesTheFieldProposalIntoThePlan() async throws {
@@ -329,17 +332,15 @@ struct CommitPlanApplyTests {
         return (store, git)
     }
 
-    @Test func commitAllCreatesEveryDraftInOrderAndLeavesPlanMode() async {
+    @Test func commitAllCreatesEveryDraftInOrderAndEmptiesThePlan() async {
         let (store, git) = await store(["a", "b"])
         store.commitPlan = CommitPlan(drafts: [
             CommitDraft(message: "one", files: ["a"], source: .manual),
             CommitDraft(message: "two", files: ["b"], source: .manual)
         ])
-        store.changesMode = .plan
-        await store.commitAllDrafts()
+        await store.commitStack()
         #expect(git.commitPlanCalls.first?.commits.map(\.message) == ["one", "two"])
         #expect(store.commitPlan.isEmpty)
-        #expect(store.changesMode == .files)
         #expect(store.planProgress == nil)
     }
 
@@ -393,25 +394,32 @@ struct CommitPlanApplyTests {
         #expect(RepositoryStore.clipped(String(repeating: "x", count: RepositoryStore.aiDiffLimit + 10)).hasSuffix("[diff truncated]\n"))
     }
 
-    @Test func aiSplitKeepsOtherDraftsAndDropsUnknownPaths() async {
+    @Test func splittingTakesOnlyUnplannedFilesAndGivesThemBackWhenItFails() async throws {
         let git = Fixtures.clean()
         git.status = WorkingCopyStatus(branch: git.status.branch, entries: [
             FileStatus(path: "a", index: .modified, worktree: .unmodified),
-            FileStatus(path: "b", index: .modified, worktree: .unmodified),
-            FileStatus(path: "c", index: .modified, worktree: .unmodified)
+            FileStatus(path: "b", index: .unmodified, worktree: .modified),
+            FileStatus(path: "c", index: .unmodified, worktree: .modified)
         ])
+        git.failWorkingTreeDiff = true
         let store = RepositoryStore(git: git)
         await store.open(URL(fileURLWithPath: "/tmp/avi-ai-split", isDirectory: true))
+        store.stopBackgroundObservation()
         store.commitPlan = CommitPlan(drafts: [CommitDraft(message: "agent", files: ["c"], source: .agent(name: "Codex", session: "s", title: nil))])
-        store.adoptAISplit([
-            AICommitGroup(files: ["a", "ghost"], message: "first"),
-            AICommitGroup(files: ["b", "c"], message: "second")
-        ])
-        #expect(store.commitPlan.drafts.map(\.files) == [["c"], ["a"], ["b"]])
-        #expect(store.planNotice?.contains("ghost") == true)
-        #expect(store.planNotice?.contains("c") == true)
-        #expect(store.changesMode == .plan)
-        // The split ran in the background, so the tab says so until you look.
-        #expect(store.hasUnseenProposal)
+        #expect(store.splittablePaths == ["a", "b"])
+
+        let created = store.splitIntoCommits(["a", "b", "c"], instructions: RepositoryStore.splitSuggestion)
+        let id = try #require(created)
+        // While the AI works, the files wait in one planned commit.
+        #expect(store.commitPlan.draft(id: id)?.files == ["a", "b"])
+        #expect(store.commitPlan.draft(id: id)?.source == .ai)
+        #expect(store.selectedDraftID == id)
+
+        await store.planAITask?.value
+        // No revision came back: the files are where they were, nothing staged or unstaged.
+        #expect(store.commitPlan.drafts.map(\.message) == ["agent"])
+        #expect(store.stagedCommitEntries.map(\.path) == ["a"])
+        #expect(store.planNotice?.contains("could not split") == true)
+        #expect(git.stagePathsCalls.isEmpty && git.unstagePathsCalls.isEmpty)
     }
 }

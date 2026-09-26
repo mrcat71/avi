@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 
+/// Bottom-right pane for Commit 1, the staged files: message, AI help, amend,
+/// and Commit, or Commit All once planned commits follow it.
 struct CommitPanelView: View {
     let store: RepositoryStore
 
@@ -89,11 +91,16 @@ struct CommitPanelView: View {
 
     private var header: some View {
         HStack(spacing: 6) {
-            Text("Commit")
+            Text(store.stackCount > 1 ? "Commit 1 of \(store.stackCount)" : "Commit")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
                 .tracking(0.5)
+            if store.stackCount > 1 {
+                Text("staged")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
             Spacer()
             if config.config.ai.enabled {
                 aiMenu
@@ -103,6 +110,22 @@ struct CommitPanelView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
+            if store.stackCount > 1 {
+                Button {
+                    if let next = store.stackOrder.dropFirst().first {
+                        store.selectStackEntry(next)
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Next commit")
+                .accessibilityLabel("Next commit")
+            }
         }
     }
 
@@ -147,12 +170,13 @@ struct CommitPanelView: View {
                 .disabled(store.entries.isEmpty)
 
                 Button {
-                    store.splitStagedWithAI()
+                    let paths = store.stagedCommitEntries.map(\.path)
+                    store.requestSplit(of: paths, title: "Commit 1: \(paths.count) staged files")
                 } label: {
-                    Label("Split Staged Into Commits…", systemImage: "rectangle.split.3x1")
+                    Label("Split into Commits…", systemImage: "rectangle.split.3x1")
                 }
-                .disabled(store.stagedEntries.count < 2)
-                .help("Ask the AI to group the staged files into commits you review in Plan")
+                .disabled(store.stagedCommitEntries.count < 2 || store.isRevisingPlan || store.isApplyingPlan)
+                .help("Ask the AI to split the staged files into several commits")
             }
         } label: {
             HStack(spacing: 4) {
@@ -219,20 +243,58 @@ struct CommitPanelView: View {
 
             Spacer()
 
-            Button {
-                Task { await store.commit() }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: store.amend ? "square.and.pencil" : "checkmark")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(store.amend ? "Amend" : "Commit")
-                        .font(.system(size: 12, weight: .semibold))
+            if store.stackCount > 1 {
+                if let progress = store.planProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Committing \(min(progress.completed + 1, progress.total)) of \(progress.total)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else if let blocker = store.stackBlocker {
+                    Text(blocker)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
                 }
+                Button(store.amend ? "Amend Only This" : "Commit This") {
+                    Task { await store.commit() }
+                }
+                .controlSize(.small)
+                .disabled(!store.canCommit || store.isLoading || store.isApplyingPlan)
+                .keyboardShortcut(.return, modifiers: [.command, .option])
+                .help("Commit only the staged files and move to the next commit (Option+Cmd+Return)")
+
+                Button {
+                    Task { await store.commitStack() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Commit All (\(store.stackCount))")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!store.canCommitStack)
+                .keyboardShortcut(.return, modifiers: [.command])
+                .help("Create every commit in order, Commit 1 first (Cmd+Return)")
+            } else {
+                Button {
+                    Task { await store.commit() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: store.amend ? "square.and.pencil" : "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(store.amend ? "Amend" : "Commit")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!store.canCommit || store.isLoading)
+                .keyboardShortcut(.return, modifiers: [.command])
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(!store.canCommit || store.isLoading)
-            .keyboardShortcut(.return, modifiers: [.command])
         }
     }
 
@@ -246,9 +308,9 @@ struct CommitPanelView: View {
 
     private var commitHint: String {
         if store.amend {
-            return store.stagedEntries.isEmpty ? "Amend last commit message" : "Amend with staged changes"
+            return store.stagedCommitEntries.isEmpty ? "Amend last commit message" : "Amend with staged changes"
         }
-        let count = store.stagedEntries.count
+        let count = store.stagedCommitEntries.count
         if count == 0 {
             return store.entries.isEmpty ? "" : "Stage to commit"
         }

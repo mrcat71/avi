@@ -14,12 +14,82 @@ public extension RepositoryStore {
         Set(entries.map(\.path)).union(entries.compactMap { $0.index == .renamed ? $0.originalPath : nil })
     }
 
-    var unassignedPaths: [String] {
-        commitPlan.unassigned(changed: planChangedPaths)
+    // MARK: The commit stack
+
+    /// Commit 1: staged files that no planned commit holds.
+    var stagedCommitEntries: [FileStatus] {
+        let claimed = commitPlan.claimedPaths
+        return stagedEntries.filter { !claimed.contains($0.path) }
     }
 
-    var selectedDraft: CommitDraft? {
-        selectedDraftID.flatMap { commitPlan.draft(id: $0) } ?? commitPlan.drafts.first
+    /// Unstaged changes that no planned commit holds yet.
+    var unplannedUnstagedEntries: [FileStatus] {
+        let claimed = commitPlan.claimedPaths
+        return unstagedEntries.filter { !claimed.contains($0.path) }
+    }
+
+    /// Commit 1 heads the stack while it has files or you amend, and whenever
+    /// nothing is planned, since it is then the commit you are writing.
+    var showsStagedCommit: Bool {
+        !stagedCommitEntries.isEmpty || amend || commitPlan.isEmpty
+    }
+
+    /// Commits Commit All would make: Commit 1 when shown, then the planned ones.
+    var stackCount: Int {
+        (showsStagedCommit ? 1 : 0) + commitPlan.drafts.count
+    }
+
+    /// A planned commit's position in the stack, counting from 1.
+    func stackNumber(ofDraft id: UUID) -> Int? {
+        commitPlan.drafts.firstIndex { $0.id == id }.map { $0 + (showsStagedCommit ? 2 : 1) }
+    }
+
+    /// The planned commit the composer edits, or nil while it shows Commit 1.
+    var composerDraft: CommitDraft? {
+        if let selectedDraftID, let draft = commitPlan.draft(id: selectedDraftID) {
+            return draft
+        }
+        return showsStagedCommit ? nil : commitPlan.drafts.first
+    }
+
+    /// The first thing stopping Commit All, named by commit number.
+    var stackBlocker: String? {
+        if showsStagedCommit, !stagedCommitEntries.isEmpty || amend,
+           commitSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Commit 1 needs a message"
+        }
+        for draft in commitPlan.drafts {
+            guard let issue = issues(of: draft).first, let number = stackNumber(ofDraft: draft.id) else { continue }
+            switch issue {
+            case .emptyMessage: return "Commit \(number) needs a message"
+            case .noFiles: return "Commit \(number) has no files"
+            case .unchanged: return "Commit \(number) has unchanged files"
+            }
+        }
+        return nil
+    }
+
+    var canCommitStack: Bool {
+        guard !isApplyingPlan, !isLoading, stackBlocker == nil else { return false }
+        return commitPlan.isEmpty ? canCommit : true
+    }
+
+    func selectStagedCommit() {
+        selectedDraftID = nil
+    }
+
+    /// The stack in commit order; nil stands for Commit 1.
+    var stackOrder: [UUID?] {
+        (showsStagedCommit ? [nil] : []) + commitPlan.drafts.map(\.id)
+    }
+
+    /// Selects a stack entry from `stackOrder`: nil for Commit 1, else a planned commit.
+    func selectStackEntry(_ id: UUID?) {
+        if let id {
+            selectDraft(id)
+        } else {
+            selectStagedCommit()
+        }
     }
 
     var isApplyingPlan: Bool {
@@ -37,20 +107,6 @@ public extension RepositoryStore {
     /// The status entry behind a plan path, including the old side of a rename.
     func entry(forPlanPath path: String) -> FileStatus? {
         entries.first { $0.path == path } ?? entries.first { $0.index == .renamed && $0.originalPath == path }
-    }
-
-    func showPlan() {
-        changesMode = .plan
-        hasUnseenProposal = false
-        if commitPlan.isEmpty {
-            selectedDraftID = commitPlan.addDraft()
-        }
-    }
-
-    func showFiles() {
-        changesMode = .files
-        // A draft you opened but never used is not worth keeping.
-        commitPlan.drafts.removeAll { $0.source == .manual && $0.files.isEmpty && $0.message.isEmpty }
     }
 
     func selectDraft(_ id: UUID) {
@@ -90,13 +146,50 @@ public extension RepositoryStore {
         }
     }
 
+    /// Moves files anywhere in the stack. Commit 1 is the index, so moving a
+    /// file in stages it and moving it to Unstaged unstages it. Planned commits
+    /// never touch the index: they commit their files from the working tree.
+    func move(_ paths: [String], to destination: ChangeDestination) async {
+        let files = withRenamePartners(paths)
+        guard !files.isEmpty else { return }
+        switch destination {
+        case .draft(let id):
+            moveFiles(files, to: .draft(id))
+        case .newDraft:
+            moveFiles(files, to: .newDraft)
+        case .staged:
+            commitPlan.move(files, to: .unassigned)
+            let pending = Set(entries.filter { $0.hasUnstagedChanges || $0.isUntracked }.map(\.path))
+            await updateIndex(files.filter(pending.contains), stage: true)
+        case .unstaged:
+            commitPlan.move(files, to: .unassigned)
+            let staged = Set(stagedEntries.flatMap { [$0.path] + [$0.originalPath].compactMap(\.self) })
+            await updateIndex(files.filter(staged.contains), stage: false)
+        }
+    }
+
+    private func updateIndex(_ paths: [String], stage: Bool) async {
+        guard let root, !paths.isEmpty else { return }
+        var failure: String?
+        do {
+            if stage {
+                try await git.stage(paths: paths, in: root)
+            } else {
+                try await git.unstage(paths: paths, in: root)
+            }
+        } catch {
+            failure = error.localizedDescription
+        }
+        await refresh()
+        if let failure {
+            errorMessage = failure
+        }
+    }
+
     func deleteDraft(_ id: UUID) {
         commitPlan.removeDraft(id: id)
         if selectedDraftID == id {
-            selectedDraftID = commitPlan.drafts.first?.id
-        }
-        if commitPlan.isEmpty {
-            changesMode = .files
+            selectedDraftID = showsStagedCommit ? nil : commitPlan.drafts.first?.id
         }
     }
 
@@ -108,8 +201,8 @@ public extension RepositoryStore {
         commitPlan.replaceDrafts(from: source, with: [])
         if commitPlan.isEmpty {
             discardPlan()
-        } else if selectedDraft == nil || selectedDraftID.flatMap({ commitPlan.draft(id: $0) }) == nil {
-            selectedDraftID = commitPlan.drafts.first?.id
+        } else if selectedDraftID.flatMap({ commitPlan.draft(id: $0) }) == nil {
+            selectedDraftID = showsStagedCommit ? nil : commitPlan.drafts.first?.id
         }
     }
 
@@ -117,10 +210,19 @@ public extension RepositoryStore {
         commitPlan = CommitPlan()
         selectedDraftID = nil
         planNotice = nil
-        changesMode = .files
     }
 
     // MARK: Applying
+
+    /// Commit All: Commit 1 first when it has anything to commit, then every
+    /// planned commit in order. A failure stops the run; nothing is rolled back.
+    func commitStack() async {
+        guard canCommitStack else { return }
+        if showsStagedCommit, !stagedCommitEntries.isEmpty || amend {
+            guard await commit() else { return }
+        }
+        await commitAllDrafts()
+    }
 
     func commitAllDrafts() async {
         await commitDrafts(commitPlan.drafts.map(\.id))
@@ -153,10 +255,9 @@ public extension RepositoryStore {
         }
         planProgress = nil
         if let selectedDraftID, commitPlan.draft(id: selectedDraftID) == nil {
-            self.selectedDraftID = commitPlan.drafts.first?.id
+            self.selectedDraftID = showsStagedCommit ? nil : commitPlan.drafts.first?.id
         }
         if commitPlan.isEmpty {
-            changesMode = .files
             planNotice = nil
         }
         await refresh()
@@ -173,7 +274,8 @@ public extension RepositoryStore {
         let order = commitPlan.drafts.map(\.id)
         await commitDrafts([id])
         guard commitPlan.draft(id: id) == nil, let index = order.firstIndex(of: id) else { return }
-        selectedDraftID = order[(index + 1)...].first { commitPlan.draft(id: $0) != nil } ?? commitPlan.drafts.first?.id
+        selectedDraftID = order[(index + 1)...].first { commitPlan.draft(id: $0) != nil }
+            ?? (showsStagedCommit ? nil : commitPlan.drafts.first?.id)
     }
 
     func mergeDraft(_ id: UUID, withNext next: Bool) {
@@ -198,13 +300,38 @@ public extension RepositoryStore {
         let title: String
         if ids.count == drafts.count, drafts.count > 1 {
             title = "All \(drafts.count) commits"
-        } else if ids.count == 1, let index = drafts.firstIndex(where: { $0.id == ids[0] }) {
-            let subject = drafts[index].subject
-            title = "Commit \(index + 1)" + (subject.isEmpty ? "" : ": \(subject)")
+        } else if ids.count == 1, let draft = commitPlan.draft(id: ids[0]), let number = stackNumber(ofDraft: draft.id) {
+            title = "Commit \(number)" + (draft.subject.isEmpty ? "" : ": \(draft.subject)")
         } else {
             title = "\(ids.count) commits"
         }
         revisionRequest = PlanRevisionRequest(draftIDs: ids, title: title, suggestion: suggestion)
+    }
+
+    static let splitSuggestion = "Split these changes into commits, one per logical change."
+
+    /// Changes Split into Commits works on: every changed file no planned commit holds.
+    var splittablePaths: [String] {
+        commitPlan.unassigned(changed: planChangedPaths)
+    }
+
+    /// Opens the sheet where you tell the AI how to split `paths` into commits.
+    func requestSplit(of paths: [String], title: String) {
+        revisionRequest = PlanRevisionRequest(draftIDs: [], files: paths, title: title, suggestion: Self.splitSuggestion)
+    }
+
+    /// Asks the AI to split `paths` into planned commits. The files wait in one
+    /// planned commit while it works and go back where they were if it fails.
+    /// Returns that commit's id, or nil when every file is already planned.
+    @discardableResult
+    func splitIntoCommits(_ paths: [String], instructions: String) -> UUID? {
+        let claimed = commitPlan.claimedPaths
+        let files = withRenamePartners(paths).filter { !claimed.contains($0) }
+        guard !files.isEmpty else { return nil }
+        let id = commitPlan.addDraft(files: files, source: .ai)
+        selectedDraftID = id
+        reviseDrafts([id], instructions: instructions, discardOnFailure: true)
+        return id
     }
 
     func cancelPlanAI() {
@@ -215,8 +342,10 @@ public extension RepositoryStore {
 
     /// Asks the AI to rework the drafts `ids` as `instructions` say: split,
     /// merge, regroup, or rewrite messages. The answer replaces those drafts in
-    /// place; files the AI leaves out go to Not in Plan.
-    func reviseDrafts(_ ids: [UUID], instructions: String) {
+    /// place; files the AI leaves out go back to Commit 1 or Unstaged.
+    /// `discardOnFailure` removes the drafts again, unless you edited them,
+    /// when no revision arrives.
+    func reviseDrafts(_ ids: [UUID], instructions: String, discardOnFailure: Bool = false) {
         let targets = commitPlan.drafts.filter { ids.contains($0.id) }
         guard let root, !targets.isEmpty else { return }
         let config = ConfigStore.shared.config.ai
@@ -225,7 +354,13 @@ public extension RepositoryStore {
         planNotice = nil
         planAITask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.revisingDraftIDs = [] }
+            var revised = false
+            defer {
+                self.revisingDraftIDs = []
+                if discardOnFailure, !revised {
+                    self.discardUntouchedDrafts(targets.map(\.id))
+                }
+            }
             do {
                 let files = targets.flatMap(\.files)
                 let diff = try await git.workingTreeDiff(paths: files, in: root)
@@ -251,10 +386,21 @@ public extension RepositoryStore {
                     return
                 }
                 selectedDraftID = first
-                planNotice = Self.describe(outcome, revised: still.count)
+                planNotice = Self.describe(outcome, revised: still.count, split: discardOnFailure)
+                revised = true
             } catch {
-                report(aiFailure: error, doing: "revise the commits")
+                report(aiFailure: error, doing: discardOnFailure ? "split the changes" : "revise the commits")
             }
+        }
+    }
+
+    /// Removes drafts you have not touched, putting their files back where they were.
+    func discardUntouchedDrafts(_ ids: [UUID]) {
+        let untouched = Set(ids.filter { commitPlan.draft(id: $0)?.isEdited == false })
+        guard !untouched.isEmpty else { return }
+        commitPlan.removeDrafts(ids: untouched)
+        if let selectedDraftID, untouched.contains(selectedDraftID) {
+            self.selectedDraftID = showsStagedCommit ? nil : commitPlan.drafts.first?.id
         }
     }
 
@@ -360,51 +506,18 @@ extension RepositoryStore {
         return String(decoding: data, as: UTF8.self)
     }
 
-    static func describe(_ outcome: CommitPlan.RevisionOutcome, revised count: Int) -> String {
+    static func describe(_ outcome: CommitPlan.RevisionOutcome, revised count: Int, split: Bool = false) -> String {
         let made = outcome.created.count
-        var parts = ["The AI turned \(count == 1 ? "1 commit" : "\(count) commits") into \(made == 1 ? "1" : "\(made)")."]
+        var parts = [split
+            ? "The AI split the changes into \(made == 1 ? "1 commit" : "\(made) commits")."
+            : "The AI turned \(count == 1 ? "1 commit" : "\(count) commits") into \(made == 1 ? "1" : "\(made)")."]
         if !outcome.leftOut.isEmpty {
-            parts.append("Moved to Not in Plan: \(outcome.leftOut.joined(separator: ", ")).")
+            parts.append("Left out, back in Commit 1 or Unstaged: \(outcome.leftOut.joined(separator: ", ")).")
         }
         if !outcome.dropped.isEmpty {
             parts.append("Ignored paths outside these commits: \(outcome.dropped.joined(separator: ", ")).")
         }
         return parts.joined(separator: " ")
-    }
-}
-
-extension RepositoryStore {
-    // MARK: AI split
-
-    /// Turns an AI split of the staged changes into drafts. Files the AI named
-    /// that are not staged, or that another draft already holds, are left out.
-    func adoptAISplit(_ groups: [AICommitGroup]) {
-        let staged = Set(stagedEntries.flatMap { [$0.path] + ($0.index == .renamed ? [$0.originalPath].compactMap(\.self) : []) })
-        var taken = Set(commitPlan.drafts.filter { $0.source != .ai }.flatMap(\.files))
-        var dropped: [String] = []
-        var drafts: [CommitDraft] = []
-        for group in groups {
-            var files: [String] = []
-            for path in group.files {
-                if staged.contains(path), taken.insert(path).inserted {
-                    files.append(path)
-                } else if !files.contains(path) {
-                    dropped.append(path)
-                }
-            }
-            if !files.isEmpty {
-                drafts.append(CommitDraft(message: group.message, files: files, source: .ai))
-            }
-        }
-        commitPlan.replaceDrafts(from: .ai, with: drafts)
-        changesMode = .plan
-        // The split ran in the background; you may have moved on meanwhile.
-        // Changes clears this as soon as you are looking at it.
-        hasUnseenProposal = true
-        selectedDraftID = drafts.first?.id ?? commitPlan.drafts.first?.id
-        planNotice = dropped.isEmpty
-            ? nil
-            : "Left out paths that are not staged or already belong to another draft: \(dropped.joined(separator: ", "))"
     }
 }
 
@@ -497,8 +610,8 @@ extension ProposalRejection: LocalizedError {
 public extension RepositoryStore {
     /// Places an agent proposal. A single commit goes to the commit field when
     /// nothing else is pending and nothing else is staged; everything else
-    /// becomes plan drafts. A session replaces only its own earlier proposal.
-    /// `revealPlan` switches the Changes view to the plan when drafts arrive,
+    /// becomes planned commits. A session replaces only its own earlier proposal.
+    /// `revealPlan` leaves the repository on Changes with the proposal selected,
     /// which callers skip while you are looking at this repository.
     func receiveProposal(_ proposal: AgentProposal, revealPlan: Bool) async throws -> ProposalOutcome {
         guard let root, !isApplyingPlan, !isApplyingAISplit else { throw ProposalRejection.busy }
@@ -564,7 +677,7 @@ public extension RepositoryStore {
         let messageOnly = commits.count == 1 && commits[0].files.isEmpty
         if commits.count == 1, !othersPending, !otherField, messageOnly || !stagedElsewhere {
             if revealPlan {
-                reveal(.files)
+                reveal()
             }
             return try await placeInCommitField(commits[0], source: source, previous: ownField, root: root)
         }
@@ -576,7 +689,7 @@ public extension RepositoryStore {
             aiPendingPreview = AIPendingPreview(subject: subject, body: body, result: Self.proposalRun(for: proposal.agent), proposedBy: proposal.agent)
             hasUnseenProposal = true
             if revealPlan {
-                reveal(.files)
+                reveal()
             }
             return ProposalOutcome(placement: .previewCard, commits: 1, staged: [], notes: [])
         }
@@ -592,7 +705,7 @@ public extension RepositoryStore {
         commitPlan.replaceDrafts(from: source, with: drafts)
         hasUnseenProposal = true
         if revealPlan {
-            reveal(.plan)
+            reveal()
             selectedDraftID = drafts.first?.id
         }
         return ProposalOutcome(placement: .plan, commits: drafts.count, staged: [], notes: notes)
@@ -609,11 +722,11 @@ public extension RepositoryStore {
         }
     }
 
-    /// Staged files that the proposal in the commit field did not ask for.
+    /// Files in Commit 1 that the proposal in the commit field did not ask for.
     var stagedOutsideFieldProposal: [String] {
         guard let field = fieldProposal else { return [] }
         let proposed = Set(field.files)
-        return stagedEntries.map(\.path).filter { !proposed.contains($0) }
+        return stagedCommitEntries.map(\.path).filter { !proposed.contains($0) }
     }
 
     func unstageOutsideFieldProposal() async {
@@ -679,7 +792,7 @@ extension RepositoryStore {
     }
 
     /// Takes a proposal out of the commit field, optionally keeping it as the
-    /// first plan draft, and unstages what Avi staged for it. Returns why the
+    /// first planned commit, and unstages what Avi staged for it. Returns why the
     /// unstaging failed, for the caller to show once its refresh is done.
     @discardableResult
     private func withdrawFieldProposal(_ field: FieldProposal, keepAsDraft: Bool) async -> String? {
@@ -704,11 +817,10 @@ extension RepositoryStore {
         }
     }
 
-    /// Leaves this repository on Changes, in the mode that shows the proposal,
-    /// for when you come back to it. Only called while you are not looking.
-    private func reveal(_ mode: ChangesMode) {
+    /// Leaves this repository on Changes, which shows the proposal, for when
+    /// you come back to it. Only called while you are not looking.
+    private func reveal() {
         workspaceSelection = .localChanges
-        changesMode = mode
     }
 
     func fieldWasEdited(_ field: FieldProposal) -> Bool {

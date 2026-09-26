@@ -62,9 +62,9 @@ separate branch CI workflow is failing, so complete the checks below first.
    resizing with and without a selection, repository switching, and tag
    inspection. Once Avi is open, `--cli status` must report the new version,
    and in a disposable repository you opened in Avi, a `--cli propose` with two
-   commits must land in Plan. Test commit/stage/checkout operations only in a
-   disposable repository. Confirm the version in About Avi and that local
-   changes remain intact when a checkout is refused.
+   commits must land as planned commits in Changes. Test commit/stage/checkout
+   operations only in a disposable repository. Confirm the version in About Avi
+   and that local changes remain intact when a checkout is refused.
 
 ## Commit, then wait for branch CI
 

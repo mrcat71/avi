@@ -85,6 +85,15 @@ public enum DraftMoveTarget: Equatable, Sendable {
     case unassigned
 }
 
+/// Where a file goes when moved in Changes. Commit 1 is the index, so `staged`
+/// and `unstaged` stage and unstage; planned commits leave the index alone.
+public enum ChangeDestination: Equatable, Sendable {
+    case staged
+    case unstaged
+    case draft(UUID)
+    case newDraft
+}
+
 /// Pending commits for one repository, in commit order. Drafts from several
 /// agent sessions, Avi's AI, and you can sit side by side; each file belongs
 /// to at most one draft.
@@ -163,7 +172,7 @@ public struct CommitPlan: Equatable, Sendable {
         return draft.id
     }
 
-    /// Removes a draft; its files return to "Not in plan".
+    /// Removes a draft; its files go back to Commit 1 if staged, else to Unstaged.
     public mutating func removeDraft(id: UUID) {
         drafts.removeAll { $0.id == id }
     }
@@ -246,7 +255,7 @@ public struct CommitPlan: Equatable, Sendable {
     public struct RevisionOutcome: Equatable, Sendable {
         /// Paths the AI named that the revised drafts never held.
         public var dropped: [String] = []
-        /// Paths the revised drafts held that the AI left out; now in Not in Plan.
+        /// Paths the revised drafts held that the AI left out; back in Commit 1 or Unstaged.
         public var leftOut: [String] = []
         /// Ids of the new drafts, in plan order.
         public var created: [UUID] = []

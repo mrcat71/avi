@@ -55,19 +55,22 @@ enum CommandRegistry {
             })
         }
         if store.canCommit {
-            result.append(AppCommand(id: "wc.commit", title: store.amend ? "Amend Commit" : "Commit", subtitle: nil, group: "Working Copy", symbol: "checkmark") {
+            let title = store.amend ? "Amend Commit" : (store.stackCount > 1 ? "Commit Staged Only" : "Commit")
+            result.append(AppCommand(id: "wc.commit", title: title, subtitle: nil, group: "Working Copy", symbol: "checkmark") {
                 Task { await store.commit() }
             })
         }
 
-        // Commit plan
-        result.append(AppCommand(id: "plan.show", title: store.commitPlan.isEmpty ? "Plan Commits…" : "Show Commit Plan", subtitle: "Group changes into several commits", group: "Working Copy", symbol: "rectangle.split.3x1") {
-            setSelection(.localChanges)
-            store.showPlan()
-        })
-        if store.canCommitAllDrafts {
-            result.append(AppCommand(id: "plan.commitAll", title: "Commit All Planned Commits", subtitle: "\(store.commitPlan.drafts.count) commits", group: "Working Copy", symbol: "checkmark") {
-                Task { await store.commitAllDrafts() }
+        // Several commits
+        if store.canUseAIForPlan, store.splittablePaths.count > 1 {
+            result.append(AppCommand(id: "plan.split", title: "Split into Commits…", subtitle: "Let the AI group the changes into several commits", group: "Working Copy", symbol: "rectangle.split.3x1") {
+                setSelection(.localChanges)
+                store.requestSplit(of: store.splittablePaths, title: "\(store.splittablePaths.count) changed files")
+            })
+        }
+        if store.stackCount > 1, store.canCommitStack {
+            result.append(AppCommand(id: "plan.commitAll", title: "Commit All", subtitle: "\(store.stackCount) commits", group: "Working Copy", symbol: "checkmark") {
+                Task { await store.commitStack() }
             })
         }
         if !store.commitPlan.isEmpty, !store.commitPlan.isEdited {

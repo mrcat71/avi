@@ -2,69 +2,25 @@ import AppKit
 import GitKit
 import SwiftUI
 
-/// Switches the Changes workspace between the staged/unstaged file lists and
-/// the commit plan. Shared by both toolbars so it never moves.
-struct ChangesModeSwitch: View {
-    let store: RepositoryStore
-
-    var body: some View {
-        HStack(spacing: 2) {
-            segment("Files", isSelected: store.changesMode == .files, showsDot: false) {
-                store.showFiles()
-            }
-            segment(planLabel, isSelected: store.changesMode == .plan, showsDot: store.hasUnseenProposal && store.changesMode != .plan) {
-                store.showPlan()
-            }
-        }
-        .padding(2)
-        .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.06)))
-        .fixedSize()
-    }
-
-    private var planLabel: String {
-        store.commitPlan.isEmpty ? "Plan" : "Plan \(store.commitPlan.drafts.count)"
-    }
-
-    private func segment(_ title: String, isSelected: Bool, showsDot: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Text(title)
-                    .font(.system(size: 11, weight: isSelected ? .semibold : .medium))
-                if showsDot {
-                    Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 6, height: 6)
-                }
-            }
-            .padding(.horizontal, 9)
-            .frame(height: 20)
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(isSelected ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(Color.clear))
-            )
-            .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(showsDot ? "\(title), new proposal" : title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-/// The commit plan: drafts grouped by who proposed them, then the changed
-/// files no draft holds. Files move by drag and drop or the Move To menu.
+/// The commits you are about to make, in order. Commit 1 is the staged files,
+/// the index; planned commits follow, grouped by who proposed them. Files move
+/// by drag and drop or Move To: into Commit 1 stages them, out of it unstages
+/// them, and planned commits leave the index alone.
 /// Every row is an ordinary list row: pinned section headers on macOS float
 /// over the first row and swallow clicks meant for it.
-struct CommitPlanListView: View {
+struct CommitStackView: View {
     let store: RepositoryStore
+    @Binding var selection: Set<String>
+    /// Called when you use this list, so Cmd+A knows where to act.
+    let onActivate: () -> Void
 
-    @State private var selection: Set<String> = []
+    @Bindable private var config = ConfigStore.shared
     @State private var pendingGroupDiscard: DraftSource?
     @State private var confirmingPlanDiscard = false
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            header
             Divider()
             if store.isRevisingPlan {
                 revisingBanner
@@ -95,9 +51,9 @@ struct CommitPlanListView: View {
                 pendingGroupDiscard = nil
             }
         } message: {
-            Text("The files stay changed and move to Not in Plan.")
+            Text("The files stay changed and go back to Commit 1 or Unstaged.")
         }
-        .confirmationDialog("Discard the whole plan?", isPresented: $confirmingPlanDiscard, titleVisibility: .visible) {
+        .confirmationDialog("Discard every planned commit?", isPresented: $confirmingPlanDiscard, titleVisibility: .visible) {
             Button("Discard Plan", role: .destructive) {
                 store.discardPlan()
             }
@@ -105,28 +61,42 @@ struct CommitPlanListView: View {
         } message: {
             Text("Messages and groupings are lost. The files stay changed.")
         }
-        .onChange(of: store.selectedPath) { _, path in
-            // Keep the list highlight in step when the store picks a file.
-            if let path, !selection.contains(PlanRowTag.file(path)) {
-                selection = [PlanRowTag.file(path)]
-            }
+        .onChange(of: store.selectedPath) { _, _ in
+            syncHighlight()
+        }
+        .onChange(of: store.selectedDiffSource) { _, _ in
+            syncHighlight()
         }
     }
 
-    // MARK: Toolbar
+    private var isTreeMode: Bool {
+        config.config.appearance.fileListMode == "tree"
+    }
 
-    private var toolbar: some View {
+    // MARK: Header
+
+    private var header: some View {
         HStack(spacing: 6) {
-            ChangesModeSwitch(store: store)
+            Text("Commits")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+            Text("\(store.stackCount)")
+                .font(.system(size: 10, weight: .medium))
+                .padding(.horizontal, 5)
+                .frame(minHeight: 14)
+                .background(Capsule().fill(Color.primary.opacity(0.10)))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(store.stackCount == 1 ? "1 commit" : "\(store.stackCount) commits")
             Spacer()
-            Text(summary)
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+            if store.showsStagedCommit {
+                unstageButton
+            }
             Button {
                 store.addDraft()
             } label: {
-                Image(systemName: "plus.rectangle.on.rectangle")
+                Image(systemName: "plus")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(width: 22, height: 22)
@@ -148,18 +118,31 @@ struct CommitPlanListView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("Plan actions")
-            .accessibilityLabel("Plan actions")
+            .help("Commit actions")
+            .accessibilityLabel("Commit actions")
         }
         .padding(.horizontal, 12)
-        .frame(height: 28)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial)
     }
 
-    private var summary: String {
-        let drafts = store.commitPlan.drafts.count
-        let free = store.unassignedPaths.count
-        let commits = drafts == 1 ? "1 commit" : "\(drafts) commits"
-        return free == 0 ? commits : "\(commits) · \(free) not in plan"
+    private var unstageButton: some View {
+        Button {
+            unstage(selectedStagedFiles)
+        } label: {
+            Text("Unstage")
+                .font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 10)
+                .frame(height: 22)
+                .foregroundStyle(selectedStagedFiles.isEmpty ? Color.secondary : Color.primary)
+                .background(Capsule(style: .continuous).fill(.thinMaterial))
+                .overlay(Capsule(style: .continuous).strokeBorder(Glass.edgeStroke, lineWidth: 0.6))
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(selectedStagedFiles.isEmpty)
+        .opacity(selectedStagedFiles.isEmpty ? 0.5 : 1)
+        .help("Unstage the selected files of Commit 1")
     }
 
     private var revisingBanner: some View {
@@ -211,8 +194,18 @@ struct CommitPlanListView: View {
 
     private var list: some View {
         let groups = store.commitPlan.groups
-        let numbers = Dictionary(uniqueKeysWithValues: store.commitPlan.drafts.enumerated().map { ($1.id, $0 + 1) })
         return List(selection: selectionBinding) {
+            if store.showsStagedCommit {
+                StagedCommitHeaderRow(store: store, isSelected: store.composerDraft == nil, onSplit: requestStagedSplit)
+                    .tag(PlanRowTag.stagedCommit)
+                    .contextMenu {
+                        StagedCommitMenu(store: store, onSplit: requestStagedSplit)
+                    }
+                    .dropDestination(for: String.self) { items, _ in
+                        drop(items, on: .staged)
+                    }
+                stagedRows
+            }
             ForEach(groups) { group in
                 PlanGroupHeaderRow(
                     store: store,
@@ -224,31 +217,11 @@ struct CommitPlanListView: View {
                 .selectionDisabled()
                 .listRowSeparator(.hidden)
                 ForEach(group.drafts) { draft in
-                    draftRows(draft, number: numbers[draft.id] ?? 0)
+                    draftRows(draft)
                 }
             }
             newDraftDropRow
                 .selectionDisabled()
-            Text("Not in plan (\(store.unassignedPaths.count))")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.top, 6)
-                .selectionDisabled()
-                .listRowSeparator(.hidden)
-                .dropDestination(for: String.self) { items, _ in
-                    drop(items, on: .unassigned)
-                }
-            if store.unassignedPaths.isEmpty {
-                Text("Every changed file is in a commit.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .selectionDisabled()
-                    .listRowSeparator(.hidden)
-            } else {
-                ForEach(store.unassignedPaths, id: \.self) { path in
-                    fileRow(path, owner: nil)
-                }
-            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -256,18 +229,64 @@ struct CommitPlanListView: View {
         .onDeleteCommand {
             let paths = selectedPaths
             guard !paths.isEmpty else { return }
-            store.moveFiles(paths, to: .unassigned)
+            Task { await store.move(paths, to: .unstaged) }
         }
     }
 
     @ViewBuilder
-    private func draftRows(_ draft: CommitDraft, number: Int) -> some View {
+    private var stagedRows: some View {
+        let entries = store.stagedCommitEntries
+        if entries.isEmpty {
+            Text(store.commitPlan.isEmpty ? "Nothing staged. Stage files, or drag them here." : "Drag files here to stage them")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .padding(.leading, 24)
+                .selectionDisabled()
+                .listRowSeparator(.hidden)
+                .dropDestination(for: String.self) { items, _ in
+                    drop(items, on: .staged)
+                }
+        } else if isTreeMode {
+            FileTreeRows(store: store, entries: entries, fileTag: PlanRowTag.file, folderTag: PlanRowTag.folder) { file in
+                stagedRow(file, isTreeRow: true)
+            }
+        } else {
+            ForEach(entries) { file in
+                stagedRow(file, isTreeRow: false)
+                    .padding(.leading, 24)
+                    .tag(PlanRowTag.file(file.path))
+                    .id(file.path)
+            }
+        }
+    }
+
+    private func stagedRow(_ file: FileStatus, isTreeRow: Bool) -> some View {
+        let targets = moveTargets(for: file.path)
+        return ChangeRow(
+            file: file,
+            staged: true,
+            isTreeRow: isTreeRow,
+            store: store,
+            onStage: { _ in },
+            onUnstage: { unstage([$0]) },
+            onDiscard: { _ in },
+            moveMenu: AnyView(MoveToMenu(store: store, paths: targets, current: .staged))
+        )
+        .draggable(targets.joined(separator: PlanRowTag.dragSeparator))
+        .dropDestination(for: String.self) { items, _ in
+            drop(items, on: .staged)
+        }
+    }
+
+    @ViewBuilder
+    private func draftRows(_ draft: CommitDraft) -> some View {
+        let number = store.stackNumber(ofDraft: draft.id) ?? 0
         DraftHeaderRow(
             store: store,
             draft: draft,
             number: number,
             issues: store.issues(of: draft),
-            isSelected: store.selectedDraftID == draft.id,
+            isSelected: store.composerDraft?.id == draft.id,
             isRevising: store.revisingDraftIDs.contains(draft.id)
         )
         .tag(PlanRowTag.draft(draft.id))
@@ -289,7 +308,7 @@ struct CommitPlanListView: View {
                 }
         }
         ForEach(displayedFiles(of: draft), id: \.self) { path in
-            fileRow(path, owner: draft)
+            draftFileRow(path, owner: draft, number: number)
         }
     }
 
@@ -311,66 +330,63 @@ struct CommitPlanListView: View {
         }
     }
 
-    private func fileRow(_ path: String, owner: CommitDraft?) -> some View {
+    private func draftFileRow(_ path: String, owner: CommitDraft, number: Int) -> some View {
         let entry = store.entry(forPlanPath: path)
+        let targets = moveTargets(for: path)
         return PlanFileRow(
             path: path,
             entry: entry,
             isChanged: store.changedPathSet.contains(path)
         )
         .tag(PlanRowTag.file(path))
-        .padding(.leading, owner == nil ? 0 : 24)
-        .draggable(dragPayload(for: path))
+        .padding(.leading, 24)
+        .draggable(targets.joined(separator: PlanRowTag.dragSeparator))
         .dropDestination(for: String.self) { items, _ in
-            drop(items, on: owner.map { .draft($0.id) } ?? .unassigned)
+            drop(items, on: .draft(owner.id))
         }
         .contextMenu {
-            fileMenu(path, entry: entry, owner: owner)
+            MoveToMenu(store: store, paths: targets, current: .draft(owner.id))
+            Divider()
+            Menu("Commit \(number)") {
+                DraftActionsMenu(store: store, draftID: owner.id)
+            }
+            if let entry {
+                Divider()
+                Button("Open File") {
+                    store.openFile(entry)
+                }
+                Button("Reveal in Finder") {
+                    store.revealInFinder(entry)
+                }
+                Menu("Copy Path") {
+                    Button("Relative") {
+                        store.copyRelativePath(entry)
+                    }
+                    Button("Absolute") {
+                        store.copyAbsolutePath(entry)
+                    }
+                }
+            }
         }
     }
 
-    @ViewBuilder
-    private func fileMenu(_ path: String, entry: FileStatus?, owner: CommitDraft?) -> some View {
-        let targets = moveTargets(for: path)
-        Menu(targets.count > 1 ? "Move \(targets.count) Files To" : "Move To") {
-            ForEach(Array(store.commitPlan.drafts.enumerated()), id: \.element.id) { index, draft in
-                Button("\(index + 1). \(draft.subject.isEmpty ? "Untitled" : draft.subject)") {
-                    store.moveFiles(targets, to: .draft(draft.id))
-                }
-                .disabled(draft.id == owner?.id && targets == [path])
-            }
-            Divider()
-            Button("New Commit") {
-                store.moveFiles(targets, to: .newDraft)
-            }
-            Button("Not in Plan") {
-                store.moveFiles(targets, to: .unassigned)
-            }
-            .disabled(owner == nil && targets == [path])
-        }
-        if let owner {
-            Divider()
-            Menu("Commit \(store.commitPlan.drafts.firstIndex { $0.id == owner.id }.map { "\($0 + 1)" } ?? "")") {
-                DraftActionsMenu(store: store, draftID: owner.id)
-            }
-        }
-        if let entry {
-            Divider()
-            Button("Open File") {
-                store.openFile(entry)
-            }
-            Button("Reveal in Finder") {
-                store.revealInFinder(entry)
-            }
-            Menu("Copy Path") {
-                Button("Relative") {
-                    store.copyRelativePath(entry)
-                }
-                Button("Absolute") {
-                    store.copyAbsolutePath(entry)
-                }
-            }
-        }
+    // MARK: Actions
+
+    private func requestStagedSplit() {
+        let paths = store.stagedCommitEntries.map(\.path)
+        store.requestSplit(of: paths, title: "Commit 1: \(paths.count) staged files")
+    }
+
+    /// Unstages `files` and moves the selection to the next file of Commit 1.
+    private func unstage(_ files: [FileStatus]) {
+        guard !files.isEmpty else { return }
+        let order = FileTreeBuilder.visiblePaths(store.stagedCommitEntries, expanded: store.expandedFolders, tree: isTreeMode)
+        Task { await store.unstage(files, advancingFrom: order) }
+    }
+
+    private var selectedStagedFiles: [FileStatus] {
+        let chosen = Set(selection.compactMap(PlanRowTag.path(of:)))
+        return store.stagedCommitEntries.filter { chosen.contains($0.path) }
     }
 
     // MARK: Selection and drag
@@ -384,21 +400,16 @@ struct CommitPlanListView: View {
 
     private var selectedPaths: [String] {
         let chosen = Set(selection.compactMap(PlanRowTag.path(of:)))
-        let ordered = store.commitPlan.drafts.flatMap(\.files) + store.unassignedPaths
+        let ordered = store.stagedCommitEntries.map(\.path) + store.commitPlan.drafts.flatMap(\.files)
         return ordered.filter { chosen.contains($0) }
     }
 
-    /// Dragging a selected row carries the whole selection.
-    private func dragPayload(for path: String) -> String {
-        moveTargets(for: path).joined(separator: PlanRowTag.dragSeparator)
-    }
-
-    private func drop(_ items: [String], on target: DraftMoveTarget) -> Bool {
+    private func drop(_ items: [String], on destination: ChangeDestination) -> Bool {
         let paths = items.flatMap { $0.components(separatedBy: PlanRowTag.dragSeparator) }.filter { !$0.isEmpty }
         let known = store.changedPathSet.union(store.commitPlan.claimedPaths)
         let accepted = paths.filter { known.contains($0) }
         guard !accepted.isEmpty else { return false }
-        store.moveFiles(accepted, to: target)
+        Task { await store.move(accepted, to: destination) }
         return true
     }
 
@@ -416,12 +427,21 @@ struct CommitPlanListView: View {
             get: { selection },
             set: { newValue in
                 selection = newValue
+                onActivate()
                 guard newValue.count == 1, let tag = newValue.first else { return }
-                if let path = PlanRowTag.path(of: tag) {
+                if tag == PlanRowTag.stagedCommit {
+                    store.selectStagedCommit()
+                    if let first = store.stagedCommitEntries.first {
+                        Task { await store.select(first, source: .staged) }
+                    }
+                } else if let path = PlanRowTag.path(of: tag) {
                     if let owner = store.commitPlan.owner(of: path) {
                         store.selectDraft(owner.id)
+                        Task { await store.selectPlanFile(path) }
+                    } else if let file = store.stagedCommitEntries.first(where: { $0.path == path }) {
+                        store.selectStagedCommit()
+                        Task { await store.select(file, source: .staged) }
                     }
-                    Task { await store.selectPlanFile(path) }
                 } else if let id = PlanRowTag.draftID(of: tag) {
                     store.selectDraft(id)
                     if let first = store.commitPlan.draft(id: id)?.files.first {
@@ -432,10 +452,165 @@ struct CommitPlanListView: View {
         )
     }
 
+    /// Keeps the list highlight in step when the store picks a file, and drops
+    /// file highlights once the selection moves to Unstaged.
+    private func syncHighlight() {
+        guard let path = store.selectedPath else { return }
+        let inStack = store.commitPlan.owner(of: path) != nil
+            || (store.selectedDiffSource == .staged && store.stagedCommitEntries.contains { $0.path == path })
+        if inStack {
+            let tag = PlanRowTag.file(path)
+            if !selection.contains(tag) {
+                selection = [tag]
+            }
+        } else if selection.contains(where: { PlanRowTag.path(of: $0) != nil }) {
+            selection = selection.filter { PlanRowTag.path(of: $0) == nil }
+        }
+    }
+
     private var discardPrompt: String {
         guard let source = pendingGroupDiscard else { return "" }
         let count = store.commitPlan.drafts(from: source).count
         return "Discard \(count == 1 ? "the commit" : "\(count) commits") from \(source.displayName)?"
+    }
+}
+
+/// "Move To" for files anywhere in Changes: Commit 1, a planned commit, a new
+/// one, or Unstaged. Moving into Commit 1 stages; moving to Unstaged unstages.
+struct MoveToMenu: View {
+    let store: RepositoryStore
+    let paths: [String]
+    /// Where the files are now; that entry is disabled.
+    let current: ChangeDestination
+
+    var body: some View {
+        Menu(paths.count > 1 ? "Move \(paths.count) Files To" : "Move To") {
+            Button("Staged (Commit 1)") {
+                move(.staged)
+            }
+            .disabled(current == .staged)
+            ForEach(store.commitPlan.drafts) { draft in
+                Button("\(store.stackNumber(ofDraft: draft.id) ?? 0). \(draft.subject.isEmpty ? "Untitled" : draft.subject)") {
+                    move(.draft(draft.id))
+                }
+                .disabled(current == .draft(draft.id) && paths.allSatisfy(draft.files.contains))
+            }
+            Divider()
+            Button("New Commit") {
+                move(.newDraft)
+            }
+            Button("Unstaged") {
+                move(.unstaged)
+            }
+            .disabled(current == .unstaged)
+        }
+    }
+
+    private func move(_ destination: ChangeDestination) {
+        Task { await store.move(paths, to: destination) }
+    }
+}
+
+/// Commit 1's heading: the staged files, and what you can do with them.
+private struct StagedCommitHeaderRow: View {
+    let store: RepositoryStore
+    let isSelected: Bool
+    let onSplit: () -> Void
+
+    var body: some View {
+        let count = store.stagedCommitEntries.count
+        HStack(spacing: 6) {
+            Text("1")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .padding(.horizontal, 5)
+                .frame(minWidth: 18, minHeight: 16)
+                .background(Capsule().fill(Color.accentColor.opacity(isSelected ? 0.30 : 0.16)))
+                .foregroundStyle(Color.accentColor)
+                .accessibilityLabel("Commit 1")
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(store.commitSummary.isEmpty ? .secondary : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(store.amend ? "Staged · amends the last commit" : "Staged")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .layoutPriority(1)
+            Spacer(minLength: 4)
+            Text("\(count)")
+                .font(.system(size: 10, weight: .medium))
+                .padding(.horizontal, 5)
+                .frame(minHeight: 14)
+                .background(Capsule().fill(Color.primary.opacity(0.10)))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+                .accessibilityLabel("\(count) staged file\(count == 1 ? "" : "s")")
+            Button(action: onSplit) {
+                Image(systemName: "rectangle.split.3x1")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!store.canUseAIForPlan || count < 2 || store.isRevisingPlan || store.isApplyingPlan)
+            .help(store.canUseAIForPlan ? "Split Commit 1 into several commits with AI" : "Turn on AI in Settings > AI Commit Messages")
+            .accessibilityLabel("Split Commit 1 with AI")
+            Menu {
+                StagedCommitMenu(store: store, onSplit: onSplit)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Commit 1 actions")
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var title: String {
+        let summary = store.commitSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        return summary.isEmpty ? "Staged changes" : summary
+    }
+}
+
+/// Everything you can do with Commit 1, on right-click and behind its "..." button.
+private struct StagedCommitMenu: View {
+    let store: RepositoryStore
+    let onSplit: () -> Void
+
+    var body: some View {
+        let count = store.stagedCommitEntries.count
+        let aiReady = store.canUseAIForPlan && !store.isRevisingPlan && !store.isApplyingPlan
+        if store.stackCount > 1 {
+            Button("Commit Only This") {
+                Task { await store.commit() }
+            }
+            .disabled(!store.canCommit || store.isLoading)
+            Divider()
+        }
+        Button("Write Message with AI") {
+            store.generateCommitMessage(config: ConfigStore.shared.config.ai)
+        }
+        .disabled(!aiReady || count == 0 || store.isGeneratingCommitMessage)
+        Button("Split with AI…", action: onSplit)
+            .disabled(!aiReady || count < 2)
+        if !store.canUseAIForPlan {
+            Text("Turn on AI in Settings > AI Commit Messages")
+        }
+        Divider()
+        Button("Unstage All") {
+            Task { await store.move(store.stagedCommitEntries.map(\.path), to: .unstaged) }
+        }
+        .disabled(count == 0)
     }
 }
 
@@ -498,7 +673,7 @@ struct DraftActionsMenu: View {
     }
 }
 
-/// Actions on the plan as a whole.
+/// Actions on the whole stack of commits.
 struct PlanActionsMenu: View {
     let store: RepositoryStore
     let confirmDiscard: () -> Void
@@ -506,16 +681,21 @@ struct PlanActionsMenu: View {
     var body: some View {
         let drafts = store.commitPlan.drafts
         let aiReady = store.canUseAIForPlan && !store.isRevisingPlan && !store.isApplyingPlan
-        Button(drafts.count == 1 ? "Commit" : "Commit All (\(drafts.count))") {
-            Task { await store.commitAllDrafts() }
+        let splittable = store.splittablePaths
+        Button(store.stackCount > 1 ? "Commit All (\(store.stackCount))" : "Commit") {
+            Task { await store.commitStack() }
         }
-        .disabled(!store.canCommitAllDrafts)
+        .disabled(!store.canCommitStack)
         Button("New Commit") {
             store.addDraft()
         }
         .disabled(store.isApplyingPlan)
         Divider()
-        Button("Rethink Plan with AI…") {
+        Button("Split into Commits with AI…") {
+            store.requestSplit(of: splittable, title: splittable.count == 1 ? "1 changed file" : "\(splittable.count) changed files")
+        }
+        .disabled(!aiReady || splittable.count < 2)
+        Button("Rethink Planned Commits with AI…") {
             store.requestRevision(of: drafts.map(\.id))
         }
         .disabled(!aiReady || drafts.isEmpty)
@@ -523,7 +703,7 @@ struct PlanActionsMenu: View {
             Text("Turn on AI in Settings > AI Commit Messages")
         }
         Divider()
-        Button("Discard Plan…", role: .destructive) {
+        Button("Discard Planned Commits…", role: .destructive) {
             if store.commitPlan.isEdited {
                 confirmDiscard()
             } else {
@@ -535,7 +715,7 @@ struct PlanActionsMenu: View {
 }
 
 /// One source's run of drafts: who proposed them and what to do with them together.
-private struct PlanGroupHeaderRow: View {
+struct PlanGroupHeaderRow: View {
     let store: RepositoryStore
     let source: DraftSource
     let drafts: [CommitDraft]
@@ -603,7 +783,7 @@ private struct PlanGroupHeaderRow: View {
     }
 }
 
-/// List tags for plan rows. Files and drafts share one selection set.
+/// List tags for commit stack rows. Files, commits, and folders share one selection set.
 enum PlanRowTag {
     static let dragSeparator = "\u{1F}"
 
@@ -613,6 +793,13 @@ enum PlanRowTag {
 
     static func draft(_ id: UUID) -> String {
         "d:" + id.uuidString
+    }
+
+    /// Commit 1, the staged files.
+    static let stagedCommit = "s:staged"
+
+    static func folder(_ id: String) -> String {
+        "dir:" + id
     }
 
     static func path(of tag: String) -> String? {
@@ -634,7 +821,7 @@ extension DraftSource {
     }
 }
 
-private struct DraftHeaderRow: View {
+struct DraftHeaderRow: View {
     let store: RepositoryStore
     let draft: CommitDraft
     let number: Int
@@ -713,7 +900,7 @@ private struct DraftHeaderRow: View {
     }
 }
 
-private struct PlanFileRow: View {
+struct PlanFileRow: View {
     let path: String
     let entry: FileStatus?
     let isChanged: Bool
