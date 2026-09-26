@@ -6,10 +6,12 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.4.1] - 2026-09-25
+## [0.4.2] - 2026-09-26
+
+0.4.1 was tagged but never published, so its fixes ship in this release.
 
 ### Fixed
-- Avi 0.4.0 quit as soon as an AI action started: writing a commit message, splitting staged changes, rewording, revising a plan, or checking the AI settings. The release was built with Swift 6.3, which miscompiles `Task.sleep(for:)` when more than one module calls it ([swiftlang/swift#86204](https://github.com/swiftlang/swift/issues/86204)), so the task aborted the moment its timeout sleep ended. Avi now sleeps through the Swift runtime's clock, which also fixes the other waits that used it: settings saves, hover popovers, and Git lock retries. A test fails if `sleep(for:)` comes back, and `--self-test` runs the AI check so CI catches a broken release build.
+- Avi 0.4.0 quit as soon as an AI action started: writing a commit message, splitting staged changes, rewording, revising a plan, or checking the AI settings. The release was built with Swift 6.3, which miscompiles `Task.sleep(for:)` when more than one module calls it ([swiftlang/swift#86204](https://github.com/swiftlang/swift/issues/86204)), so the task aborted the moment its timeout sleep ended. Avi now sleeps through the Swift runtime's clock, which also fixes the other waits that used it: settings saves, hover popovers, and Git lock retries. A test fails if `sleep(for:)` comes back, and the release workflow now runs `--self-test`, including the AI check, on the packaged app before publishing it.
 - Waiting for an AI command could resume twice when the command exited just as Avi started waiting for it, which also crashed.
 - An AI tool that hangs on `--version` no longer stalls the check that runs before every AI action and in Settings > External Tools > Test. Avi gives up after 5 seconds, as intended.
 
