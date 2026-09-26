@@ -7,6 +7,7 @@ struct AgentsSettingsView: View {
     private let bridge = AgentBridge.shared
     private let installer = AgentInstaller()
 
+    @Environment(\.openWindow) private var openWindow
     @State private var states: [AgentInstaller.Target: AgentInstaller.State] = [:]
     @State private var confirmation: Confirmation?
     @State private var lastError: String?
@@ -52,6 +53,9 @@ struct AgentsSettingsView: View {
                             .textSelection(.enabled)
                     }
                     Spacer()
+                    Button("How to Use…") {
+                        openWindow(id: AgentGuideView.windowID)
+                    }
                     Button("Install All", action: installAll)
                         .disabled(!canInstallAny)
                 }
@@ -268,7 +272,7 @@ final class SettingsNavigation {
     var requested: SettingsSection?
 }
 
-/// Help > Install Agent Skills..., which opens Settings > Agents.
+/// Agents > Install Agent Skills... (also in Help), which opens Settings > Agents.
 public struct InstallAgentSkillsCommand: View {
     @Environment(\.openSettings) private var openSettings
 
