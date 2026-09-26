@@ -546,11 +546,21 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
-    /// Deletes the tag locally. A tag already on the remote stays there, so a
-    /// published release keeps the commit it was built from.
-    public func deleteTag(named name: String) async {
-        await perform {
+    /// Deletes the tag locally. Without `remote`, a copy already pushed stays
+    /// there, so a published release keeps the commit it was built from. With
+    /// `remote`, the tag is deleted there first: if the remote refuses, the
+    /// local tag is still in the sidebar to retry from.
+    public func deleteTag(named name: String, remote: String? = nil) async {
+        guard let remote else {
+            await perform {
+                try await $0.deleteTag(named: name, in: $1)
+            }
+            return
+        }
+        await performRemoteOperation {
+            let result = try await $0.deleteRemoteTag(named: name, remote: remote, in: $1)
             try await $0.deleteTag(named: name, in: $1)
+            return result
         }
     }
 

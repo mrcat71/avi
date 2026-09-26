@@ -247,6 +247,11 @@ public struct CLIGitProvider: GitProviding {
         try await run(["tag", "-d", "--", name], in: repository)
     }
 
+    public func deleteRemoteTag(named name: String, remote: String, in repository: URL) async throws -> GitRemoteOperationResult {
+        let result = try await run(["push", "--delete", "--", remote, "refs/tags/\(name)"], in: repository)
+        return remoteResult(result)
+    }
+
     public func pushTag(name: String, remote: String?, in repository: URL) async throws -> GitRemoteOperationResult {
         let target = remote ?? "origin"
         let result = try await run(["push", target, "refs/tags/\(name)"], in: repository)

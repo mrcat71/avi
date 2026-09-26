@@ -42,8 +42,9 @@ around provider authentication, OAuth, and multi-account flows.
 - Changed-files tree that defaults to fully expanded, with expand-all and
   collapse-all controls.
 - Sidebar sections for branches, tags, stashes, and linked worktrees: checkout,
-  push and delete tags, apply / pop / drop stashes, open a worktree in its own
-  tab, and clean up local branches whose upstream is gone.
+  push tags and delete them locally or on the remote too, apply / pop / drop
+  stashes, open a worktree in its own tab, and clean up local branches whose
+  upstream is gone.
 - Push sheet that states whether the push updates, adopts, or creates the remote
   branch, plus "Push and Open Pull Request" for GitHub and GitLab.
 - AI-assisted commit message generation through a configurable command or the

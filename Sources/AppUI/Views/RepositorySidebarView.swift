@@ -1094,7 +1094,7 @@ private struct TagRow: View {
             checkout: checkout,
             pushRemote: store.defaultRemoteName,
             pushTag: { tag in Task { await store.pushTag(name: tag.name) } },
-            deleteTag: { tag in Task { await store.deleteTag(named: tag.name) } }
+            deleteTag: { tag, remote in Task { await store.deleteTag(named: tag.name, remote: remote) } }
         ) {
             rowLabel
         }

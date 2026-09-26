@@ -19,20 +19,67 @@ final class TagActionMenuTests: XCTestCase {
         }
     }
 
-    func testDeleteAsksFirstAndOnlyDeletesOnConfirmation() throws {
+    func testDeleteAsksFirstAndCanStayLocal() throws {
         try MainActor.assumeIsolated {
             let fixture = Fixture()
             defer { fixture.close() }
 
             try fixture.choose("Delete Tag...")
             XCTAssertTrue(fixture.calls.deleted.isEmpty, "Delete must be confirmed first")
+            let content = try XCTUnwrap(fixture.dialog(button: "Delete Locally")?.contentView)
+            XCTAssertTrue(fixture.text(in: content).joined().contains("leaves the pushed copy on 'origin'"))
+            try XCTUnwrap(fixture.button(in: content, title: "Delete Locally")).performClick(nil)
+            fixture.settle()
+
+            XCTAssertEqual(fixture.calls.deleted, [.init(tag: fixture.ref, remote: nil)])
+            XCTAssertTrue(fixture.calls.pushed.isEmpty)
+        }
+    }
+
+    func testDeleteCanAlsoRemoveTheTagFromTheRemote() throws {
+        try MainActor.assumeIsolated {
+            let fixture = Fixture()
+            defer { fixture.close() }
+
+            try fixture.choose("Delete Tag...")
+            let title = "Delete Locally and from 'origin'"
+            let content = try XCTUnwrap(fixture.dialog(button: title)?.contentView)
+            try XCTUnwrap(fixture.button(in: content, title: title)).performClick(nil)
+            fixture.settle()
+
+            XCTAssertEqual(fixture.calls.deleted, [.init(tag: fixture.ref, remote: "origin")])
+            XCTAssertTrue(fixture.calls.pushed.isEmpty)
+        }
+    }
+
+    func testReturnNeverConfirmsADelete() throws {
+        try MainActor.assumeIsolated {
+            let fixture = Fixture()
+            defer { fixture.close() }
+
+            try fixture.choose("Delete Tag...")
+            let content = try XCTUnwrap(fixture.dialog(button: "Delete Locally")?.contentView)
+            let deletes = fixture.buttons(in: content).filter { $0.title.hasPrefix("Delete") }
+            XCTAssertEqual(deletes.count, 2)
+            for button in deletes {
+                XCTAssertNotEqual(button.keyEquivalent, "\r", "\(button.title) must be clicked, not confirmed with Return")
+            }
+        }
+    }
+
+    func testWithoutARemoteOnlyTheLocalDeleteIsOffered() throws {
+        try MainActor.assumeIsolated {
+            let fixture = Fixture(pushRemote: nil)
+            defer { fixture.close() }
+
+            XCTAssertFalse(try fixture.menuTitles().contains(where: { $0.hasPrefix("Push Tag") }))
+            try fixture.choose("Delete Tag...")
             let content = try XCTUnwrap(fixture.dialog(button: "Delete Tag")?.contentView)
-            XCTAssertTrue(fixture.text(in: content).joined().contains("stays on the remote"))
+            XCTAssertFalse(fixture.buttons(in: content).contains { $0.title.contains("from '") })
             try XCTUnwrap(fixture.button(in: content, title: "Delete Tag")).performClick(nil)
             fixture.settle()
 
-            XCTAssertEqual(fixture.calls.deleted, [fixture.ref])
-            XCTAssertTrue(fixture.calls.pushed.isEmpty)
+            XCTAssertEqual(fixture.calls.deleted, [.init(tag: fixture.ref, remote: nil)])
         }
     }
 
@@ -49,9 +96,14 @@ final class TagActionMenuTests: XCTestCase {
 
     @MainActor
     private final class Fixture {
+        struct Deletion: Equatable {
+            let tag: GitReference
+            let remote: String?
+        }
+
         final class Calls {
             var pushed: [GitReference] = []
-            var deleted: [GitReference] = []
+            var deleted: [Deletion] = []
         }
 
         let ref: GitReference
@@ -60,7 +112,7 @@ final class TagActionMenuTests: XCTestCase {
         let window: NSWindow
         let existingWindows: Set<ObjectIdentifier>
 
-        init(kind: GitReferenceKind = .tag) {
+        init(kind: GitReferenceKind = .tag, pushRemote: String? = "origin") {
             _ = NSApplication.shared
             existingWindows = Set(NSApp.windows.map(ObjectIdentifier.init))
             ref = GitReference(
@@ -73,9 +125,9 @@ final class TagActionMenuTests: XCTestCase {
                 ReferenceActionButton(
                     ref: ref, hasLocalChanges: false,
                     select: {}, checkout: { _ in },
-                    pushRemote: "origin",
+                    pushRemote: pushRemote,
                     pushTag: { calls.pushed.append($0) },
-                    deleteTag: { calls.deleted.append($0) }
+                    deleteTag: { calls.deleted.append(Deletion(tag: $0, remote: $1)) }
                 ) {
                     Text(ref.name).frame(width: 260, height: 40)
                 }
@@ -134,6 +186,10 @@ final class TagActionMenuTests: XCTestCase {
                 return button
             }
             return view.subviews.compactMap { button(in: $0, title: title) }.first
+        }
+
+        func buttons(in view: NSView) -> [NSButton] {
+            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
         }
 
         func text(in view: NSView) -> [String] {

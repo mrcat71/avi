@@ -24,6 +24,10 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public private(set) var deleteTagCalls: [String] = []
     /// Tag names passed to `pushTag`, with the resolved remote.
     public private(set) var pushTagCalls: [(name: String, remote: String?)] = []
+    /// Tag names passed to `deleteRemoteTag`, with the remote they were deleted from.
+    public private(set) var deleteRemoteTagCalls: [(name: String, remote: String)] = []
+    /// Tags whose remote delete the server refuses, like a protected tag.
+    public var protectedRemoteTags: Set<String> = []
     /// Branches that `deleteBranch` refuses, mirroring `git branch -d` on unmerged work.
     public var unmergedBranches: Set<String> = []
     /// Branches whose deletion fails for a reason forcing cannot fix.
@@ -243,6 +247,18 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func pushTag(name: String, remote: String?, in _: URL) async throws -> GitRemoteOperationResult {
         pushTagCalls.append((name: name, remote: remote))
         return GitRemoteOperationResult(output: "ok")
+    }
+
+    public func deleteRemoteTag(named name: String, remote: String, in _: URL) async throws -> GitRemoteOperationResult {
+        deleteRemoteTagCalls.append((name: name, remote: remote))
+        if protectedRemoteTags.contains(name) {
+            throw GitError.commandFailed(
+                command: "git push --delete -- \(remote) refs/tags/\(name)",
+                exitCode: 1,
+                stderr: " ! [remote rejected] \(name) (protected tag)\nerror: failed to push some refs"
+            )
+        }
+        return GitRemoteOperationResult(output: " - [deleted]         \(name)")
     }
 
     public func commitMessage(for _: String, in _: URL) async throws -> String? {
