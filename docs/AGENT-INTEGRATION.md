@@ -7,8 +7,10 @@ Avi; agents never commit or push.
 
 ## Set up
 
-1. In Avi, open **Settings > Agents** (or **Help > Install Agent Skills…**) and
-   click **Install All**. This writes:
+1. In Avi, choose **Agents > Install Agent Skills…** (also in the Help menu),
+   which opens **Settings > Agents**, and click **Install All**. **Agents > How
+   to Use Avi with AI Agents…** shows these steps and prompts to copy. This
+   writes:
 
    | Target | Location |
    | ------ | -------- |

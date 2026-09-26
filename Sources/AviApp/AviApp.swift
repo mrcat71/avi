@@ -63,6 +63,11 @@ struct AviApp: App {
             RootView()
         }
 
+        Window("Using Avi with AI Agents", id: AgentGuideView.windowID) {
+            AgentGuideView()
+        }
+        .windowResizability(.contentSize)
+
         Settings {
             SettingsRoot()
         }
@@ -73,6 +78,7 @@ struct AviApp: App {
                 }
             }
             CommandGroup(after: .help) {
+                AgentGuideCommand()
                 InstallAgentSkillsCommand()
             }
             CommandMenu("Repository") {
@@ -157,6 +163,11 @@ struct AviApp: App {
                     NotificationCenter.default.post(name: .aviToggleHistoryScope, object: nil)
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+            }
+
+            CommandMenu("Agents") {
+                AgentGuideCommand()
+                InstallAgentSkillsCommand()
             }
         }
     }

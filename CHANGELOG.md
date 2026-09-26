@@ -7,6 +7,7 @@ All notable changes to Avi are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- An **Agents** menu in the menu bar. **How to Use Avi with AI Agents…** opens a short guide: install the skill, open the repository once, the Codex sandbox setting, prompts to copy, and the line that makes handing commits to Avi your agents' default. **Install Agent Skills…** opens Settings > Agents, which now links to the guide as well. Both are also in the Help menu.
 - Delete Tag now asks whether to delete the tag only here or on the remote too. Delete Locally keeps the pushed copy, as before. Delete Locally and from 'origin' deletes the remote tag first, so if the remote refuses, for example because the tag is protected, the local tag stays for you to retry. The remote is the one Push Tag uses, and only the tag is matched, never a branch with the same name.
 
 ### Changed

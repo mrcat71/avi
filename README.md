@@ -35,7 +35,7 @@ around provider authentication, OAuth, and multi-account flows.
 - Agent hand-off: the `avi` command lets Claude Code, Codex, and other local
   agents stage files and fill the commit message, or propose a whole commit
   plan, from several sessions at once. Nothing is committed until you approve
-  it. Settings > Agents installs the command and the agent skill.
+  it. Agents > Install Agent Skills… installs the command and the agent skill.
 - Native selectable diff text with Find support, horizontal scrolling, and
   separate old / new line-number gutters.
 - Commit graph view with per-commit file diffs, scoped to the current branch or
@@ -94,8 +94,9 @@ builds, packages, and publishes the app. Local builds use the same SwiftPM and
 
 ## Agent integration
 
-1. **Settings > Agents > Install All** installs `~/.local/bin/avi` and the `avi`
-   skill for Claude Code and Codex.
+1. **Agents > Install Agent Skills…** opens Settings > Agents; **Install All**
+   installs `~/.local/bin/avi` and the `avi` skill for Claude Code and Codex.
+   **Agents > How to Use Avi with AI Agents…** walks through the rest.
 2. Open the repository in Avi once; agents can only use repositories you have
    opened.
 3. Ask your agent to send its work to Avi, or let the skill do it when a task is
