@@ -11,9 +11,37 @@ separate branch CI workflow is failing, so complete the checks below first.
 
 ## Prepare and verify the complete revision
 
-1. Update `Sources/GitKit/GitKit.swift`, the matching version assertion in
-   `Tests/GitKitTests/SmokeTests.swift`, and `CHANGELOG.md`.
-2. Inspect staged, unstaged, and untracked files. A version-only commit does
+1. Pick the version. Avi follows Semantic Versioning: a release with only
+   **Fixed** entries is a patch (`0.4.2` to `0.4.3`); anything under **Added**
+   or **Changed** is a minor (`0.4.2` to `0.5.0`). A version whose tag was
+   already pushed is taken even without a release: reuse it only by moving the
+   tag as in [Tag pushed before the version bump](#tag-pushed-before-the-version-bump),
+   otherwise skip it. A skipped version gets no changelog section.
+2. Bump the version in all five places. The release workflow fails when the
+   tag and `GitKit.version` differ and `swift test` fails when the smoke test
+   disagrees, but the other three files go stale silently. Before editing,
+   note the current version:
+
+   ```sh
+   OLD=$(sed -n 's/.*version = "\(.*\)"/\1/p' Sources/GitKit/GitKit.swift)
+   ```
+
+   | File | Change |
+   | ---- | ------ |
+   | `Sources/GitKit/GitKit.swift` | `public static let version = "X.Y.Z"` |
+   | `Tests/GitKitTests/SmokeTests.swift` | `#expect(GitKit.version == "X.Y.Z")` |
+   | `CHANGELOG.md` | Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and add a new, empty `## [Unreleased]` above it. After a skipped version, start the section with a line such as "0.4.1 was tagged but never published, so its fixes ship in this release." |
+   | `README.md` | `The current release is vX.Y.Z.` |
+   | `docs/AGENT-INTEGRATION.md` | `"version":"X.Y.Z"` in the sample `avi propose` response |
+
+   The bundle's `Info.plist` version comes from the argument to
+   `scripts/package-app.sh`. After the bump this must print nothing:
+
+   ```sh
+   grep -rn -F "$OLD" --exclude-dir=.build --exclude-dir=dist --exclude-dir=.git --exclude='*.zip' --exclude=SHA256SUMS --exclude=CHANGELOG.md --exclude=RELEASE.md .
+   ```
+
+3. Inspect staged, unstaged, and untracked files. A version-only commit does
    not include uncommitted application changes. Include required new source
    files and tests; exclude local configuration, credentials, and build output.
 
@@ -25,7 +53,7 @@ separate branch CI workflow is failing, so complete the checks below first.
    git diff --check
    ```
 
-3. On a Mac with full Xcode, run the same checks used by CI. All must pass.
+4. On a Mac with full Xcode, run the same checks used by CI. All must pass.
 
    ```sh
    swiftformat --lint .
@@ -44,7 +72,7 @@ separate branch CI workflow is failing, so complete the checks below first.
    access Avi's user configuration; use a disposable macOS account for an
    isolated release check.
 
-4. Smoke-test packaging locally. The packaging script replaces `dist/` and
+5. Smoke-test packaging locally. The packaging script replaces `dist/` and
    the ZIP for this version, so preserve any earlier artifacts first.
 
    ```sh
@@ -75,7 +103,7 @@ and tests. Review the final index before committing:
 git diff --cached --check
 git diff --cached --stat
 git diff --cached
-git commit -m "chore(release): prepare v0.2.0"
+git commit -m "chore(release): prepare Avi 0.2.0"
 ```
 
 Push the reviewed branch through the normal merge process. For a release
@@ -132,8 +160,8 @@ a competing manual release while the workflow is running.
 
 `Verify in-app version matches tag` fails when `GitKit.version` still holds the
 previous version. That gate runs before the build, so nothing is packaged and no
-release is created: the tag is unused and may be moved instead of burned. Update
-the three files from step 1, rerun the checks in step 3, commit, push `main`, and
+release is created: the tag is unused and may be moved instead of burned. Bump
+the version as in step 2, rerun the checks in step 4, commit, push `main`, and
 move the tag onto the release commit:
 
 ```sh
