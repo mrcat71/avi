@@ -87,7 +87,8 @@ public protocol GitProviding: Sendable {
 
     /// Delete a local branch using Git's safe non-force delete.
     /// `force` maps to `git branch -D`, which also deletes a branch holding
-    /// commits HEAD cannot reach. Recoverable through the reflog, not beyond it.
+    /// commits HEAD cannot reach. The branch's own reflog goes with it, so those
+    /// commits stay recoverable only from HEAD's reflog, if they were checked out.
     func deleteBranch(named name: String, force: Bool, in repository: URL) async throws
 
     /// Create a tag at `targetOID`. When `message` is nil, creates a lightweight tag;
