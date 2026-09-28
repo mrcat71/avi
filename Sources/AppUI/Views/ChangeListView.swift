@@ -290,6 +290,14 @@ struct ChangeListView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .arrowKeysStepThroughFiles(selection: unstagedSelection) { direction, selection in
+                arrowTarget(
+                    moving: direction,
+                    rows: FileTreeBuilder.visibleRows(unstagedEntries, expanded: store.expandedFolders, tree: isTreeMode),
+                    files: Set(unstagedEntries.map(\.path)),
+                    selection: selection
+                )
+            }
             .animation(Glass.Motion.snappy, value: stagingAnimationKey)
             .onChange(of: store.selectedPath) { _, newValue in
                 guard let newValue, unstagedEntries.contains(where: { $0.path == newValue }) else { return }

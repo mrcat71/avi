@@ -54,6 +54,13 @@ enum FileTreeBuilder {
         }
     }
 
+    /// Every row a list shows for `entries`, in order: folder ids and file paths
+    /// in tree mode, honoring folder expansion, and file paths alone when flat.
+    static func visibleRows(_ entries: [FileStatus], expanded: Set<String>, tree: Bool) -> [String] {
+        guard tree else { return entries.map(\.path) }
+        return flatten(build(entries: entries), expanded: expanded).map(\.id)
+    }
+
     /// Flatten a tree honoring an expanded-paths set. Files always render; folders'
     /// children render only if the folder's id is in `expanded`.
     static func flatten(_ nodes: [FileTreeNode], expanded: Set<String>) -> [FileTreeNode] {
