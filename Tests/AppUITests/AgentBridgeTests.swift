@@ -186,7 +186,7 @@ struct AgentProtocolTests {
     }
 
     @Test func responsesTolerateFieldsFromNewerApps() throws {
-        let raw = #"{"v":1,"ok":true,"future":1,"result":{"app":{"version":"0.5.0","commit":"abc"},"placement":"plan","commits":2}}"#
+        let raw = #"{"v":1,"ok":true,"future":1,"result":{"app":{"version":"9.9.9","commit":"abc"},"placement":"plan","commits":2}}"#
         let response = try JSONDecoder().decode(AgentResponse.self, from: Data(raw.utf8))
         #expect(response.result?.placement == .plan)
         #expect(response.result?.commits == 2)

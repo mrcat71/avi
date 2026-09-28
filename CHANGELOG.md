@@ -6,6 +6,14 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-28
+
+### Changed
+- Up and Down arrows in Unstaged and Commits step from file to file, and the diff follows. They pass over folder rows in the tree view and over commit headings, where they used to stop and leave the diff unchanged. Shift with an arrow still extends the selection.
+
+### Fixed
+- The gone-branch cleanup dialog said force-deleted branches stay reachable through the reflog. Deleting a branch deletes its own reflog too, so their commits stay only in HEAD's reflog, and only if you had the branch checked out. The dialog now says that, and that any gone branch Git refuses is force-deleted, not only squash-merged ones.
+
 ## [0.5.0] - 2026-09-26
 
 ### Added
