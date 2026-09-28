@@ -193,6 +193,44 @@ struct CommitStackView: View {
     // MARK: List
 
     private var list: some View {
+        ScrollViewReader { proxy in
+            stackList
+                .arrowKeysStepThroughFiles(selection: selectionBinding) { direction, selection in
+                    let rows = arrowRows
+                    return arrowTarget(
+                        moving: direction,
+                        rows: rows,
+                        files: Set(rows.filter { PlanRowTag.path(of: $0) != nil }),
+                        selection: selection
+                    )
+                } didMove: { tag in
+                    // The list no longer moves itself, so keep the file in view.
+                    if let path = PlanRowTag.path(of: tag) {
+                        proxy.scrollTo(path)
+                    }
+                }
+        }
+    }
+
+    /// The tags of the rows `stackList` shows, in order. Arrow keys step through
+    /// the file rows among them and pass over commit headings and folders.
+    private var arrowRows: [String] {
+        var rows: [String] = []
+        if store.showsStagedCommit {
+            rows.append(PlanRowTag.stagedCommit)
+            let entries = store.stagedCommitEntries
+            let files = Set(entries.map(\.path))
+            rows += FileTreeBuilder.visibleRows(entries, expanded: store.expandedFolders, tree: isTreeMode)
+                .map { files.contains($0) ? PlanRowTag.file($0) : PlanRowTag.folder($0) }
+        }
+        for draft in store.commitPlan.groups.flatMap(\.drafts) {
+            rows.append(PlanRowTag.draft(draft.id))
+            rows += displayedFiles(of: draft).map(PlanRowTag.file)
+        }
+        return rows
+    }
+
+    private var stackList: some View {
         let groups = store.commitPlan.groups
         return List(selection: selectionBinding) {
             if store.showsStagedCommit {
