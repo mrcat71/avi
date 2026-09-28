@@ -170,7 +170,8 @@ struct RepositorySidebarView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Their upstream branch no longer exists on the remote. They are removed on this Mac only - nothing on the remote changes.\n\n"
-                + "A squash-merged branch looks unmerged to Git, so those are force-deleted and stay reachable through the reflog until it expires.")
+                + "Git sees a squash-merged branch as unmerged, so any of them Git refuses is force-deleted. "
+                + "Its commits then stay in HEAD's reflog for about 30 days, and only if you had it checked out.")
         }
 
         if branchesExpanded {
