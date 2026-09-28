@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.5.0. The config schema, the UI, and the
+Alpha. The current release is v0.6.0. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -26,7 +26,8 @@ around provider authentication, OAuth, and multi-account flows.
 
 - Tab-based repository view with status bar, branch info, and remote actions.
 - Staged / unstaged file lists in Fork-style ordering, with selection-preserving
-  stage and unstage operations.
+  stage and unstage operations and arrow keys that step from file to file,
+  past folders.
 - One Changes screen for one commit or several: unstaged files on top, then the
   commits you are about to make. Commit 1 is your staged files; planned commits
   from agents, the AI, and you stack under it. Drag files between commits, let
