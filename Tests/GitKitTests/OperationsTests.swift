@@ -195,6 +195,35 @@ struct OperationsTests {
         }
     }
 
+    @Test func discardNeverDeletesANestedRepository() async throws {
+        try await withTempRepo { repo in
+            try repo.write("kept.txt", "v1\n")
+            try await repo.git("add", "kept.txt")
+            try await repo.git("commit", "-q", "-m", "init")
+            try repo.write("u.txt", "junk\n")
+            let nested = GitFixture(url: repo.url.appendingPathComponent("tools/nested"))
+            try FileManager.default.createDirectory(at: nested.url, withIntermediateDirectories: true)
+            try await nested.git("init", "-q")
+            try nested.write("work.txt", "not pushed anywhere\n")
+
+            // Git shows the whole repository as one untracked folder.
+            let untracked = try await provider(repo).status(in: repo.url).entries.filter(\.isUntracked)
+            #expect(untracked.map(\.path).sorted() == ["tools/nested/", "u.txt"])
+            let folder = try #require(untracked.first { $0.path == "tools/nested/" })
+
+            await #expect(throws: GitError.self) {
+                try await provider(repo).discard(untracked, in: repo.url)
+            }
+            await #expect(throws: GitError.self) {
+                try await provider(repo).discard(folder, in: repo.url)
+            }
+
+            #expect(FileManager.default.fileExists(atPath: nested.url.appendingPathComponent(".git").path))
+            #expect(try nested.read("work.txt") == "not pushed anywhere\n")
+            #expect(try repo.read("u.txt") == "junk\n", "a refusal leaves the rest of the selection alone")
+        }
+    }
+
     @Test func discardBatchLeavesUnselectedFilesAlone() async throws {
         try await withTempRepo { repo in
             try repo.write("a.txt", "v1\n")

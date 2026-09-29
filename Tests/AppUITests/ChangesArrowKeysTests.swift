@@ -13,8 +13,8 @@ final class ChangesArrowKeysTests: XCTestCase {
             defer { fixture.close() }
 
             fixture.focus(fixture.unstagedList)
-            XCTAssertEqual(fixture.press(.down, times: 4), ["Sources/App/a.swift", "Sources/App/b.swift", "Sources/Kit/c.swift", "Sources/Kit/c.swift"])
-            XCTAssertEqual(fixture.press(.up, times: 3), ["Sources/App/b.swift", "Sources/App/a.swift", "Sources/App/a.swift"])
+            fixture.press(.down, expecting: ["Sources/App/a.swift", "Sources/App/b.swift", "Sources/Kit/c.swift", "Sources/Kit/c.swift"])
+            fixture.press(.up, expecting: ["Sources/App/b.swift", "Sources/App/a.swift", "Sources/App/a.swift"])
             XCTAssertEqual(fixture.store.selectedDiffSource, .unstaged)
         }
     }
@@ -26,15 +26,15 @@ final class ChangesArrowKeysTests: XCTestCase {
 
             fixture.focus(fixture.stackList)
             // In a tree, the docs/notes folder sits between x.md and z.md.
-            XCTAssertEqual(fixture.press(.down, times: 4), ["docs/guide/x.md", "docs/notes/z.md", "docs/y.md", "LICENSE"])
+            fixture.press(.down, expecting: ["docs/guide/x.md", "docs/notes/z.md", "docs/y.md", "LICENSE"])
             XCTAssertEqual(fixture.store.selectedDiffSource, .staged)
             XCTAssertNil(fixture.store.selectedDraftID, "a staged file belongs to Commit 1")
 
             // Past the planned commit's heading, straight to its file.
-            XCTAssertEqual(fixture.press(.down, times: 2), ["README.md", "README.md"])
+            fixture.press(.down, expecting: ["README.md", "README.md"])
             XCTAssertEqual(fixture.store.selectedDraftID, fixture.draftID)
 
-            XCTAssertEqual(fixture.press(.up, times: 5), ["LICENSE", "docs/y.md", "docs/notes/z.md", "docs/guide/x.md", "docs/guide/x.md"])
+            fixture.press(.up, expecting: ["LICENSE", "docs/y.md", "docs/notes/z.md", "docs/guide/x.md", "docs/guide/x.md"])
         }
     }
 
@@ -86,6 +86,8 @@ final class ChangesArrowKeysTests: XCTestCase {
             window.contentView = host
             window.makeKeyAndOrderFront(nil)
             settle()
+            // The first render in a cold process can take longer than a settle.
+            waitUntil { self.tables(in: self.host).count == 2 }
         }
 
         /// The Unstaged list sits above the commit stack.
@@ -108,31 +110,47 @@ final class ChangesArrowKeysTests: XCTestCase {
             settle()
         }
 
-        /// Presses `key` `times` times and returns the selected file after each press.
-        func press(_ direction: ArrowDirection, times: Int) -> [String?] {
-            (0 ..< times).map { _ in
-                let code: UInt16 = direction == .down ? 125 : 126
-                let scalar = UnicodeScalar(direction == .down ? NSDownArrowFunctionKey : NSUpArrowFunctionKey)!
-                let characters = String(Character(scalar))
-                let event = NSEvent.keyEvent(
-                    with: .keyDown, location: .zero, modifierFlags: [.numericPad, .function],
-                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-                    context: nil, characters: characters, charactersIgnoringModifiers: characters,
-                    isARepeat: false, keyCode: code
-                )!
-                window.sendEvent(event)
+        /// Presses `direction` once per entry in `expected` and checks that each
+        /// press selects that file. SwiftUI handles the key a few run loop turns
+        /// after `sendEvent`, and the store follows in a task, so a cold CI runner
+        /// can take longer than a settle: each press waits for its file instead.
+        func press(_ direction: ArrowDirection, expecting expected: [String], file: StaticString = #filePath, line: UInt = #line) {
+            let selected = expected.map { path -> String? in
+                window.sendEvent(keyDown(direction))
                 settle()
+                waitUntil { self.store.selectedPath == path }
                 return store.selectedPath
             }
+            XCTAssertEqual(selected, expected.map(Optional.some), file: file, line: line)
         }
 
         func close() {
             window.close()
         }
 
+        private func keyDown(_ direction: ArrowDirection) -> NSEvent {
+            let code: UInt16 = direction == .down ? 125 : 126
+            let scalar = UnicodeScalar(direction == .down ? NSDownArrowFunctionKey : NSUpArrowFunctionKey)!
+            let characters = String(Character(scalar))
+            return NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [.numericPad, .function],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                isARepeat: false, keyCode: code
+            )!
+        }
+
         private func settle() {
             RunLoop.current.run(until: Date().addingTimeInterval(0.15))
             host.layoutSubtreeIfNeeded()
+        }
+
+        /// Runs the main run loop until `condition` holds or `timeout` passes.
+        private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) {
+            let deadline = Date().addingTimeInterval(timeout)
+            while !condition(), Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            }
         }
 
         private func tables(in view: NSView) -> [NSTableView] {

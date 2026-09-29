@@ -427,6 +427,7 @@ public struct CLIGitProvider: GitProviding {
     public func discard(_ file: FileStatus, in repository: URL) async throws {
         if file.isUntracked {
             // Untracked files are unknown to git; discarding means deleting them.
+            try refuseNestedRepositories([file], in: repository)
             try removeUntracked(file.path, in: repository)
         } else {
             try await run(["--literal-pathspecs", "restore", "--", file.path], in: repository)
@@ -435,13 +436,34 @@ public struct CLIGitProvider: GitProviding {
 
     public func discard(_ files: [FileStatus], in repository: URL) async throws {
         guard !files.isEmpty else { return }
-        for file in files where file.isUntracked {
+        let untracked = files.filter(\.isUntracked)
+        // Checked before anything is deleted, so a refusal leaves the whole selection alone.
+        try refuseNestedRepositories(untracked, in: repository)
+        for file in untracked {
             try removeUntracked(file.path, in: repository)
         }
         let tracked = files.filter { !$0.isUntracked }.map(\.path)
         guard !tracked.isEmpty else { return }
         // One restore for the whole selection instead of N processes.
         try await run(["--literal-pathspecs", "restore", "--"] + tracked, in: repository)
+    }
+
+    /// Git lists another repository inside the working tree as one untracked
+    /// folder ("tools/nested/") and never looks inside it, and `git clean` skips
+    /// such folders unless forced twice. Deleting one would take its history and
+    /// unpushed work with it, so discarding refuses.
+    private func refuseNestedRepositories(_ files: [FileStatus], in repository: URL) throws {
+        let nested = files.map(\.path).filter { path in
+            let marker = repository.appendingPathComponent(path, isDirectory: true).appendingPathComponent(".git")
+            return FileManager.default.fileExists(atPath: marker.path)
+        }
+        guard !nested.isEmpty else { return }
+        let one = nested.count == 1
+        throw GitError.invalidInput(
+            "\(nested.joined(separator: ", ")) \(one ? "is another Git repository" : "are other Git repositories"). "
+                + "Discarding would delete \(one ? "it" : "them") with \(one ? "its" : "their") history, so nothing was discarded. "
+                + "Delete \(one ? "it" : "them") in Finder if you mean to."
+        )
     }
 
     /// Deletes an untracked file, then any folders that deleting it left empty,
