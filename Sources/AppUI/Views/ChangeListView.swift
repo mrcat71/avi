@@ -31,6 +31,9 @@ struct ChangeListView: View {
             Button(pendingDiscard.count > 1 ? "Discard \(pendingDiscard.count) Files" : "Discard", role: .destructive) {
                 discardFiles(pendingDiscard)
             }
+            // A destructive button gets no key of its own, so Return did nothing.
+            // Cmd+Shift+D then Return discards; Escape still cancels.
+            .keyboardShortcut(.defaultAction)
             Button("Cancel", role: .cancel) {
                 pendingDiscard = []
             }

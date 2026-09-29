@@ -6,12 +6,16 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.6.0] - 2026-09-28
+## [0.6.1] - 2026-09-29
+
+0.6.0 was tagged but never published, so its changes ship in this release.
 
 ### Changed
 - Up and Down arrows in Unstaged and Commits step from file to file, and the diff follows. They pass over folder rows in the tree view and over commit headings, where they used to stop and leave the diff unchanged. Shift with an arrow still extends the selection.
 
 ### Fixed
+- Return now confirms the discard dialog that Cmd+Shift+D and a file's Discard… open, so Cmd+Shift+D then Return discards the selection. The Discard button had no key of its own, so Return did nothing. Escape still cancels.
+- Discarding an untracked folder that is another Git repository, such as a tool cloned inside the working tree, deleted that whole repository, its history and unpushed commits included. Git shows such a folder as one untracked entry ending in `/`, and `git clean` skips it unless forced twice. Avi now refuses too, says why, and discards nothing from that selection.
 - The gone-branch cleanup dialog said force-deleted branches stay reachable through the reflog. Deleting a branch deletes its own reflog too, so their commits stay only in HEAD's reflog, and only if you had the branch checked out. The dialog now says that, and that any gone branch Git refuses is force-deleted, not only squash-merged ones.
 
 ## [0.5.0] - 2026-09-26
