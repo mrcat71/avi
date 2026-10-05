@@ -93,6 +93,18 @@ builds, packages, and publishes the app. Local builds use the same SwiftPM and
 `scripts/package-app.sh` flow. See
 [`docs/RELEASE.md`](docs/RELEASE.md) for the full runbook.
 
+### Dependency updates
+
+Renovate waits seven days from release for updates subject to release-age
+checks before creating a branch (`internalChecksFilter: strict`). CI runs on
+`renovate/**` before a PR exists. Once branch checks pass, Renovate opens the PR
+and assigns `mrcat71`, including PRs configured for automerge. There is no weekly
+creation window or second seven-day wait inside the PR. Internal release-age
+checks do not substitute for CI. Updates missing required release timestamps
+remain pending in the Dependency Dashboard. Vulnerability alerts skip the age
+delay but still wait for successful branch checks. PR merge-commit checks run
+again after creation. The policy lives in `.github/renovate.json`.
+
 ## Agent integration
 
 1. **Agents > Install Agent Skills…** opens Settings > Agents; **Install All**
