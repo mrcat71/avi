@@ -21,7 +21,12 @@ struct RepositoryView: View {
     @State private var showingCommandPalette = false
     @Environment(\.openSettings) private var openSettings
 
+    /// Split into functions so the type checker handles each modifier chain.
     var body: some View {
+        sheets(receivingCommands(layout))
+    }
+
+    private var layout: some View {
         HSplitView {
             RepositorySidebarView(
                 selection: selectionBinding,
@@ -45,6 +50,17 @@ struct RepositoryView: View {
                     openRepositoryPicker: openRepositoryPicker
                 )
                 Divider()
+                // In the layout, not a safe-area inset: the split view ignores
+                // insets, so an inset banner covered the tabs and the sidebar.
+                if let operation = store.operationState {
+                    OperationBanner(store: store, operation: operation)
+                } else if let head = store.detachedHead {
+                    // A rebase detaches HEAD too; its own banner covers that.
+                    DetachedHeadBanner(store: store, head: head)
+                }
+                if store.isAIWorking {
+                    aiWorkBanner
+                }
                 workspace
             }
             .frame(minWidth: 760)
@@ -66,80 +82,112 @@ struct RepositoryView: View {
                 selection = .localChanges
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .aviCreateBranch)) { notification in
-            createBranchStartPoint = notification.object as? String
-            showingCreateBranch = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aviCreateTag)) { notification in
-            createTagTargetOID = notification.object as? String
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aviOpenCommandPalette)) { _ in
-            showingCommandPalette = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aviOpenAgentSettings)) { _ in
-            SettingsNavigation.shared.requested = .agents
-            openSettings()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aviGoToLocalChanges)) { _ in
-            selection = .localChanges
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aviGoToAllCommits)) { _ in
-            selection = .allCommits
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aviToggleHistoryScope)) { _ in
-            let next: HistoryFilter.Scope
-            switch store.historyFilter.scope {
-            case .currentBranch: next = .allBranches
-            case .allBranches, .ref: next = .currentBranch
+    }
+
+    /// Menu-bar and sidebar requests that reach this repository as notifications.
+    private func receivingCommands(_ content: some View) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .aviCreateBranch)) { notification in
+                createBranchStartPoint = notification.object as? String
+                showingCreateBranch = true
             }
-            Task { await store.setHistoryFilter(HistoryFilter(scope: next, hideMerges: store.historyFilter.hideMerges)) }
-        }
-        .sheet(isPresented: $showingCreateBranch, onDismiss: { createBranchStartPoint = nil }) {
-            CreateBranchSheet(store: store, startPoint: createBranchStartPoint)
-        }
-        .sheet(item: Binding(
-            get: { createTagTargetOID.map { CreateTagSheet.Target(oid: $0) } },
-            set: { createTagTargetOID = $0?.oid }
-        )) { target in
-            CreateTagSheet(store: store, targetOID: target.oid)
-        }
-        .sheet(isPresented: $showingCommandPalette) {
-            CommandPalette(
-                commands: CommandRegistry.commands(
-                    store: store,
-                    setSelection: { selection = $0 },
-                    openCreateBranch: { showingCommandPalette = false; showingCreateBranch = true }
+            .onReceive(NotificationCenter.default.publisher(for: .aviCreateTag)) { notification in
+                createTagTargetOID = notification.object as? String
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aviNewBranch)) { _ in
+                // Like Fork: start from whatever is selected, else from HEAD.
+                createBranchStartPoint = selectedStartPoint
+                showingCreateBranch = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aviNewTag)) { _ in
+                createTagTargetOID = selectedTagTarget
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aviOpenCommandPalette)) { _ in
+                showingCommandPalette = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aviOpenAgentSettings)) { _ in
+                SettingsNavigation.shared.requested = .agents
+                openSettings()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aviGoToLocalChanges)) { _ in
+                selection = .localChanges
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aviGoToAllCommits)) { _ in
+                selection = .allCommits
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .aviToggleHistoryScope)) { _ in
+                let next: HistoryFilter.Scope
+                switch store.historyFilter.scope {
+                case .currentBranch: next = .allBranches
+                case .allBranches, .ref: next = .currentBranch
+                }
+                Task { await store.setHistoryFilter(HistoryFilter(scope: next, hideMerges: store.historyFilter.hideMerges)) }
+            }
+    }
+
+    private func sheets(_ content: some View) -> some View {
+        content
+            .sheet(isPresented: $showingCreateBranch, onDismiss: { createBranchStartPoint = nil }) {
+                CreateBranchSheet(store: store, startPoint: createBranchStartPoint)
+            }
+            .sheet(item: Binding(
+                get: { createTagTargetOID.map { CreateTagSheet.Target(oid: $0) } },
+                set: { createTagTargetOID = $0?.oid }
+            )) { target in
+                CreateTagSheet(store: store, targetOID: target.oid)
+            }
+            .sheet(isPresented: $showingCommandPalette) {
+                CommandPalette(
+                    commands: CommandRegistry.commands(
+                        store: store,
+                        setSelection: { selection = $0 },
+                        openCreateBranch: { showingCommandPalette = false; showingCreateBranch = true }
+                    ),
+                    isPresented: $showingCommandPalette
+                )
+                .padding(.top, 80)
+                .background(Color.clear)
+            }
+            .alert(
+                store.pendingCheckout.map { $0.leftBehind == 1 ? "Leave 1 Commit Behind?" : "Leave \($0.leftBehind) Commits Behind?" } ?? "",
+                isPresented: Binding(
+                    get: { store.pendingCheckout != nil },
+                    set: {
+                        if !$0 {
+                            store.pendingCheckout = nil
+                        }
+                    }
                 ),
-                isPresented: $showingCommandPalette
-            )
-            .padding(.top, 80)
-            .background(Color.clear)
-        }
-        .alert("Git Error", isPresented: errorPresented) {
-            Button("OK", role: .cancel) { store.dismissError() }
-        } message: {
-            Text(store.errorMessage ?? "")
-        }
-        .sheet(isPresented: aiRewordPresented) {
-            if let preview = store.aiRewordPreview {
-                AIRewordSheet(store: store, preview: preview)
-            }
-        }
-        .sheet(isPresented: aiSplitPresented) {
-            if let preview = store.aiSplitPreview {
-                AISplitSheet(store: store, preview: preview)
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                if store.rebaseInProgress {
-                    rebaseBanner
+                presenting: store.pendingCheckout
+            ) { pending in
+                Button("Create Branch First…") {
+                    createBranchStartPoint = store.detachedHead?.oid
+                    showingCreateBranch = true
                 }
-                if store.isAIWorking {
-                    aiWorkBanner
+                Button("Switch Anyway", role: .destructive) {
+                    Task { await store.checkoutLeavingCommits(pending) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { pending in
+                Text("HEAD is detached, and \(pending.leftBehind == 1 ? "its last commit is" : "its last \(pending.leftBehind) commits are") on no branch. "
+                    + "After switching to \(pending.ref.name), only the reflog keeps \(pending.leftBehind == 1 ? "it" : "them"), for about 30 days. "
+                    + "Create a branch to keep \(pending.leftBehind == 1 ? "it" : "them").")
+            }
+            .alert("Git Error", isPresented: errorPresented) {
+                Button("OK", role: .cancel) { store.dismissError() }
+            } message: {
+                Text(store.errorMessage ?? "")
+            }
+            .sheet(isPresented: aiRewordPresented) {
+                if let preview = store.aiRewordPreview {
+                    AIRewordSheet(store: store, preview: preview)
                 }
             }
-        }
+            .sheet(isPresented: aiSplitPresented) {
+                if let preview = store.aiSplitPreview {
+                    AISplitSheet(store: store, preview: preview)
+                }
+            }
     }
 
     private var aiRewordPresented: Binding<Bool> {
@@ -187,34 +235,32 @@ struct RepositoryView: View {
         }
     }
 
-    private var rebaseBanner: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Rebase in progress")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Resolve any conflicts in the working tree, then run `git rebase --continue` in a terminal.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Open Terminal") {
-                if let root = store.root {
-                    NSWorkspace.shared.open(root)
-                }
-            }
-            .controlSize(.small)
-            Button("Abort rebase", role: .destructive) {
-                store.cancelOngoingRebase()
-            }
-            .controlSize(.small)
+    /// The ref or commit selected in the sidebar or History, as a start point
+    /// for a new branch. Nil starts from HEAD.
+    private var selectedStartPoint: String? {
+        switch selection ?? .allCommits {
+        case .branch(let name), .remoteBranch(let name), .tag(let name):
+            return name
+        case .allCommits:
+            return store.selectedCommitOID
+        case .localChanges, .stash:
+            return nil
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.thinMaterial)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(Glass.edgeStroke).frame(height: 0.6)
+    }
+
+    /// The commit a new tag goes on: the selected ref's or commit, else HEAD.
+    private var selectedTagTarget: String? {
+        switch selection ?? .allCommits {
+        case .branch(let name):
+            return store.refs.localBranches.first { $0.name == name }?.oid
+        case .remoteBranch(let name):
+            return store.refs.remoteBranches.first { $0.name == name }?.oid
+        case .tag(let name):
+            return store.refs.tags.first { $0.name == name }?.targetOID
+        case .allCommits:
+            return store.selectedCommitOID ?? store.branch?.oid
+        case .localChanges, .stash:
+            return store.branch?.oid
         }
     }
 
@@ -284,6 +330,176 @@ struct RepositoryView: View {
                 }
             }
         )
+    }
+}
+
+/// HEAD is detached, as agents often leave it: where it points, whether
+/// commits here are on no branch, and the ways to give them one.
+private struct DetachedHeadBanner: View {
+    let store: RepositoryStore
+    let head: DetachedHead
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(stranded ? .orange : .secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text("HEAD is detached at \(head.shortOID)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .textSelection(.enabled)
+                    if !head.subject.isEmpty {
+                        Text(head.subject)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(stranded ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if let branch = switchTarget {
+                Button("Switch to '\(branch.name)'") {
+                    Task { await store.checkout(branch) }
+                }
+                .help("\(branch.name) is at this commit, so switching loses nothing")
+            }
+            Button("Create Branch Here…") {
+                NotificationCenter.default.post(name: .aviCreateBranch, object: head.oid)
+            }
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Glass.edgeStroke).frame(height: 0.6)
+        }
+    }
+
+    private var stranded: Bool {
+        (head.unreferencedCount ?? 0) > 0
+    }
+
+    /// A branch at this commit that no other worktree holds.
+    private var switchTarget: GitReference? {
+        head.branchesHere.lazy
+            .filter { store.branchHolders[$0] == nil }
+            .compactMap { name in store.refs.localBranches.first { $0.name == name } }
+            .first
+    }
+
+    private var detail: String {
+        if let count = head.unreferencedCount, count > 0 {
+            return "\(count == 1 ? "1 commit here is" : "\(count) commits here are") on no branch. "
+                + "Create a branch to keep \(count == 1 ? "it" : "them") before switching away."
+        }
+        if !head.branchesHere.isEmpty {
+            let names = head.branchesHere.map { "'\($0)'" }.joined(separator: ", ")
+            return "Same commit as \(names). New commits made here would be on no branch."
+        }
+        return "New commits made here would be on no branch."
+    }
+}
+
+/// A merge or rebase that stopped: what Git needs from you, and the ways out.
+private struct OperationBanner: View {
+    let store: RepositoryStore
+    let operation: GitOperationState
+
+    @State private var showingDetails = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: operation == .merge ? "arrow.triangle.merge" : "arrow.triangle.2.circlepath")
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(guidance)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if let notice = store.operationNotice {
+                Button {
+                    showingDetails.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("What Git said")
+                .accessibilityLabel("What Git said")
+                .popover(isPresented: $showingDetails, arrowEdge: .bottom) {
+                    ScrollView {
+                        Text(notice)
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                    }
+                    .frame(width: 460, height: 220)
+                }
+            }
+            switch operation {
+            case .rebase:
+                Button("Continue") {
+                    Task { await store.continueRebase() }
+                }
+                .disabled(conflictCount > 0)
+                .help(conflictCount > 0 ? "Resolve and stage every conflicted file first" : "git rebase --continue")
+                Button("Skip Commit") {
+                    Task { await store.skipRebaseCommit() }
+                }
+                .help("Drop the commit the rebase stopped at and go on")
+                Button("Abort Rebase", role: .destructive) {
+                    Task { await store.abortOperation() }
+                }
+            case .merge:
+                Button("Abort Merge", role: .destructive) {
+                    Task { await store.abortOperation() }
+                }
+            }
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Glass.edgeStroke).frame(height: 0.6)
+        }
+    }
+
+    private var conflictCount: Int {
+        store.entries.filter(\.isConflicted).count
+    }
+
+    private var title: String {
+        switch operation {
+        case .merge: return "Merge in progress"
+        case .rebase: return conflictCount > 0 ? "Rebase stopped on a conflict" : "Rebase paused"
+        }
+    }
+
+    private var guidance: String {
+        let files = conflictCount == 1 ? "the conflicted file" : "the \(conflictCount) conflicted files"
+        switch operation {
+        case .merge:
+            return conflictCount > 0
+                ? "Resolve \(files) in Changes and stage them, then commit to finish the merge."
+                : "Conflicts are resolved. Commit to finish the merge, or abort it."
+        case .rebase:
+            return conflictCount > 0
+                ? "Resolve \(files) in Changes and stage them, then Continue."
+                : "Amend the commit or stage your resolution if you need to, then Continue."
+        }
     }
 }
 
@@ -719,6 +935,9 @@ struct LocalChangesWorkspaceView: View {
         .sheet(item: Binding(get: { store.revisionRequest }, set: { store.revisionRequest = $0 })) { request in
             PlanRevisionSheet(store: store, request: request)
         }
+        .sheet(item: Binding(get: { store.fileStashRequest }, set: { store.fileStashRequest = $0 })) { request in
+            StashFilesSheet(store: store, request: request)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             markSeenIfFrontmost()
         }
@@ -1037,6 +1256,14 @@ private struct BranchSwitcherRow: View {
     }
 }
 
+/// Commit IDs read better short; ref names stay as they are.
+enum RefNameDisplay {
+    static func short(_ name: String) -> String {
+        let isOID = (name.count == 40 || name.count == 64) && name.allSatisfy(\.isHexDigit)
+        return isOID ? String(name.prefix(8)) : name
+    }
+}
+
 struct CreateBranchSheet: View {
     let store: RepositoryStore
     var startPoint: String?
@@ -1050,7 +1277,7 @@ struct CreateBranchSheet: View {
                 .font(.system(size: 14, weight: .semibold))
 
             if let startPoint {
-                Text("From \(startPoint)")
+                Text("From \(RefNameDisplay.short(startPoint))")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             } else if let current = store.branch?.name {

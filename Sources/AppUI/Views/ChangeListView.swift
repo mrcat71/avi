@@ -15,6 +15,8 @@ struct ChangeListView: View {
     @State private var stackIsActive = false
     @State private var pendingDiscard: [FileStatus] = []
     @State private var confirmingDiscard = false
+    /// Keyboard focus for the Unstaged list, so the arrow keys reach it.
+    @FocusState private var unstagedFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,6 +44,19 @@ struct ChangeListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviDiscardSelection)) { _ in
             requestDiscard(selectedUnstagedFiles)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aviStageSelection)) { _ in
+            stageFiles(selectedUnstagedFiles)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aviOpenSelectedFile)) { _ in
+            if let file = store.selectedFile {
+                store.openFile(file)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aviExternalDiffSelectedFile)) { _ in
+            if let file = store.selectedFile, !file.isUntracked {
+                store.openExternalDiff(for: file, staged: store.selectedDiffSource == .staged)
+            }
         }
         // Keep the highlight where the store's selection is: here, or in the stack.
         .onChange(of: store.selectedPath) { _, _ in
@@ -293,6 +308,11 @@ struct ChangeListView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .focused($unstagedFocused)
+            .onCopyCommand {
+                let paths = selectedUnstagedFiles.map(\.path)
+                return paths.isEmpty ? [] : [NSItemProvider(object: paths.joined(separator: "\n") as NSString)]
+            }
             .arrowKeysStepThroughFiles(selection: unstagedSelection) { direction, selection in
                 arrowTarget(
                     moving: direction,
@@ -320,11 +340,12 @@ struct ChangeListView: View {
             staged: false,
             isTreeRow: isTreeRow,
             store: store,
-            onStage: { stageFiles([$0]) },
+            onStage: { stageFiles(discardTargets(for: $0)) },
             onUnstage: { _ in },
             onDiscard: { requestDiscard(discardTargets(for: $0)) },
             discardCount: targets.count,
-            moveMenu: AnyView(MoveToMenu(store: store, paths: paths, current: .unstaged))
+            moveMenu: AnyView(MoveToMenu(store: store, paths: paths, current: .unstaged)),
+            targets: targets
         )
         .draggable(paths.joined(separator: PlanRowTag.dragSeparator))
         .dropDestination(for: String.self) { items, _ in
@@ -354,6 +375,11 @@ struct ChangeListView: View {
                 guard !selection.isEmpty || !stackIsActive else { return }
                 stackIsActive = false
                 multiSelection = selection
+                // A click on a file row goes to the row's drag gesture, which
+                // selects without focusing the list, so the arrows went nowhere.
+                if !selection.isEmpty {
+                    unstagedFocused = true
+                }
                 if selection.count == 1, let id = selection.first,
                    let file = unstagedEntries.first(where: { $0.path == id }) {
                     Task { await store.select(file, source: file.isUntracked ? .untracked : .unstaged) }
@@ -544,6 +570,10 @@ struct ChangeRow: View {
     var discardCount: Int = 1
     /// "Move To" submenu for the stack: Commit 1, a planned commit, or Unstaged.
     var moveMenu: AnyView?
+    /// Files the menu acts on: the whole selection when this row is part of it.
+    var targets: [FileStatus] = []
+
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HStack(spacing: 6) {
@@ -581,19 +611,61 @@ struct ChangeRow: View {
         discardCount > 1 ? "Discard \(discardCount) files" : "Discard"
     }
 
+    private var menuFiles: [FileStatus] {
+        targets.isEmpty ? [file] : targets
+    }
+
+    /// Laid out like Fork's: open, inspect, stage or discard, ignore, set
+    /// aside, copy.
     @ViewBuilder
     private var fileContextMenu: some View {
+        let files = menuFiles
+        let onDisk = store.absoluteURL(for: file).map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let hasHistory = !file.isUntracked && file.index != .added
+
+        Button("Open") {
+            store.openFile(file)
+        }
+        .keyboardShortcut("o", modifiers: [.command, .option, .shift])
+        .disabled(!onDisk)
+        OpenWithMenu(store: store, file: file)
+            .disabled(!onDisk)
+        Button("External Diff") {
+            store.openExternalDiff(for: file, staged: staged)
+        }
+        .keyboardShortcut("d", modifiers: .command)
+        .disabled(file.isUntracked)
+        Button("Show in Finder") {
+            store.revealInFinder(file)
+        }
+        .disabled(!onDisk)
+
+        Divider()
+
+        Button("Blame/Timeline…") {
+            openHistory(.blame)
+        }
+        .disabled(!hasHistory)
+        Button("History…") {
+            openHistory(.history)
+        }
+        .disabled(!hasHistory)
+
+        Divider()
+
         if staged {
-            Button("Unstage") {
+            Button(files.count > 1 ? "Unstage \(files.count) Files" : "Unstage") {
                 onUnstage(file)
             }
         } else {
-            Button("Stage") {
+            Button(files.count > 1 ? "Stage \(files.count) Files" : "Stage") {
                 onStage(file)
             }
-            Button(discardCount > 1 ? "Discard \(discardCount) Files…" : "Discard…", role: .destructive) {
+            .keyboardShortcut("s", modifiers: .command)
+            Button(discardCount > 1 ? "Discard \(discardCount) Files…" : "Discard Changes…", role: .destructive) {
                 onDiscard(file)
             }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
         }
         if let moveMenu {
             moveMenu
@@ -601,21 +673,54 @@ struct ChangeRow: View {
 
         Divider()
 
-        Button("Open File") {
-            store.openFile(file)
-        }
-        Button("Reveal in Finder") {
-            store.revealInFinder(file)
+        if staged {
+            Button("Unstage All") {
+                Task { await store.move(store.stagedCommitEntries.map(\.path), to: .unstaged) }
+            }
+            .keyboardShortcut("u", modifiers: [.command, .shift])
+        } else {
+            Button("Stage All") {
+                Task { await store.stageAll() }
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(!store.canStageAll)
         }
 
-        Menu("Copy Path") {
-            Button("Relative") {
-                store.copyRelativePath(file)
-            }
-            Button("Absolute") {
-                store.copyAbsolutePath(file)
-            }
+        Divider()
+
+        IgnoreMenu(store: store, files: files)
+
+        Divider()
+
+        Button(files.count == 1 ? "Stash 1 File…" : "Stash \(files.count) Files…") {
+            store.requestStash(of: files)
         }
+        Button("Save as Patch…") {
+            PatchSaver.save(files, staged: staged, store: store)
+        }
+
+        Divider()
+
+        Button("Copy Path") {
+            copy(files.map(\.path))
+        }
+        .keyboardShortcut("c", modifiers: .command)
+        Button("Copy Full Path") {
+            copy(files.compactMap { store.absoluteURL(for: $0)?.path })
+        }
+    }
+
+    /// A staged rename has no history under its new name yet.
+    private func openHistory(_ mode: FileHistoryRequest.Mode) {
+        guard let root = store.root else { return }
+        let path = file.index == .renamed ? (file.originalPath ?? file.path) : file.path
+        openWindow(value: FileHistoryRequest(repository: root, path: path, mode: mode))
+    }
+
+    private func copy(_ lines: [String]) {
+        guard !lines.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
     }
 
     private func inlineAction(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {

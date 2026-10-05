@@ -6,6 +6,31 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-05
+
+### Added
+- The branch menu in the sidebar now has everything Fork's has, in the same order. **Checkout…** asks what to do with uncommitted changes: bring them along (stash, switch, put them back; if they conflict with the branch they also stay in the stash) or check out and let Git keep what it can. **Checkout as Worktree…** checks the branch out in a new folder next to the repository and opens it in a tab. **Fast-Forward to '<upstream>'** moves a branch that is only behind to the upstream you already fetched, without the network and without checking it out. **Push to '<remote>'…** opens the push sheet for that branch. **Create Pull Request on '<remote>'** (or Merge Request on GitLab) asks before pushing commits the remote does not have yet.
+- **Merge into '<current>'…** merges the branch with a choice of fast-forward if possible, always a merge commit, fast-forward only, or squash into one staged change. **Rebase on '<branch>'…** replays the current branch onto it, stashing uncommitted changes if you like. **Interactively Rebase on '<branch>'…** lists the commits it replays: drag them into a new order and pick, reword, edit, squash, fixup, or drop each. Avi refuses to start when the commits changed since you planned, so a stale plan can never drop newer work.
+- A merge or rebase that stops, on a conflict or at a commit to edit, shows a banner above the workspace with Continue, Skip Commit, and Abort, and what Git said. A stopped merge puts Git's message in the commit field and can be committed once its conflicts are resolved. This also covers a merge or rebase started in a terminal.
+- **New Branch…** (Shift+Cmd+B) starts from the branch, tag, or commit you selected; **New Tag…** (Shift+Cmd+G) tags it. Both are in the Repository menu and the branch menu. **Tracking** lists the remote branches with the same name, plus Other Remote Branch… and Stop Tracking. **Delete…** can delete the upstream branch on the remote too, never the remote's default branch, and asks before forcing an unmerged delete.
+- The changed-file menu now has everything Fork's has: Open (Option+Shift+Cmd+O), Open With, External Diff (Cmd+D), Show in Finder, Blame/Timeline…, History…, Stage (Cmd+S), Discard Changes… (Shift+Cmd+D), Stage All, Ignore, Stash N Files…, Save as Patch…, and Copy Path (Cmd+C). External Diff uses the diff tool from Settings > External Tools, or Git's `diff.tool`.
+- **History…** and **Blame/Timeline…** open a window per file, following renames: the commits that changed the file with each one's diff, or the file blamed line by line at any of those commits or in the working copy. Clicking a blamed run of lines goes to its commit.
+- **Ignore** adds the file, all files with its extension, or a folder above it to `.gitignore`, or with Ignore Locally to `.git/info/exclude`. Names are escaped so a pattern matches only that file.
+- A detached HEAD, as AI agents often leave it, shows a banner with the commit and whether commits there are on no branch, plus **Create Branch Here…** and, when a branch is at that commit, **Switch to '<branch>'**. Checking out something else asks first when it would leave commits on no branch, and offers to create a branch for them.
+- The Worktrees section shows each worktree's uncommitted changes and a detached worktree's commit. Its menu adds **Create Branch Here…** for a detached worktree and **Remove Worktree…**, which asks again before deleting uncommitted changes; the branch stays. The section offers to forget worktrees whose folders are gone, and a tab open on a removed worktree closes.
+
+### Changed
+- Stage from a file's menu or its + button stages the whole selection when the file is part of it, as Discard already did. Copy Path copies the relative paths of the selection; Copy Full Path the absolute ones.
+- In the branch menu, Create Branch From Here is now New Branch…, the upstream items moved into Tracking, and Push and Open Pull Request… is now Create Pull Request. The branch's Push and Pull items are replaced by Push to '<remote>'… and Fast-Forward.
+
+### Fixed
+- Up and Down did nothing after you clicked a file in Unstaged or Commits. The click selected the file without giving the list keyboard focus, so the arrows reached nothing until something else focused it. Selecting a file now focuses its list.
+- Pull failed with "Need to specify how to reconcile divergent branches" when you had commits of your own and the remote had new ones, unless Git was configured with `pull.rebase` or `pull.ff`. Avi now merges in that case, as it promised; a `pull.rebase`, `pull.ff`, or `branch.<name>.rebase` you set still decides. A pull that stops on conflicts shows the merge banner instead of an error.
+- Worktrees inside the repository folder, such as an agent's `.claude/worktrees/...`, showed up in Changes as untracked folders, and Stage All added them as embedded repositories. They are hidden now and never staged.
+- Pushing a branch other than the checked-out one decided whether to set an upstream from the checked-out branch, so a branch without an upstream never got one.
+- The rebase banner never appeared in a linked worktree, or for a rebase Avi had not started itself.
+- The AI and rebase banners covered the repository tabs and the top of the sidebar. They now sit above the workspace.
+
 ## [0.6.1] - 2026-09-29
 
 0.6.0 was tagged but never published, so its changes ship in this release.

@@ -63,6 +63,23 @@ struct AviApp: App {
             RootView()
         }
 
+        // Opened from a changed file's History… or Blame/Timeline…, never empty
+        // from File > New, so the scene adds no menu commands.
+        WindowGroup("File History", for: FileHistoryRequest.self) { $request in
+            if let request {
+                FileHistoryWindow(request: request)
+            } else {
+                ContentUnavailableView(
+                    "No File",
+                    systemImage: "clock",
+                    description: Text("Right-click a changed file and choose History… or Blame/Timeline….")
+                )
+                .frame(minWidth: 480, minHeight: 320)
+            }
+        }
+        .defaultSize(width: 1040, height: 680)
+        .commandsRemoved()
+
         Window("Using Avi with AI Agents", id: AgentGuideView.windowID) {
             AgentGuideView()
         }
@@ -96,6 +113,11 @@ struct AviApp: App {
 
                 Divider()
 
+                Button("Stage Selected Files") {
+                    NotificationCenter.default.post(name: .aviStageSelection, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command])
+
                 Button("Stage All") {
                     NotificationCenter.default.post(name: .aviStageAll, object: nil)
                 }
@@ -115,6 +137,30 @@ struct AviApp: App {
                     NotificationCenter.default.post(name: .aviCommit, object: nil)
                 }
                 .keyboardShortcut(.return, modifiers: [.command])
+
+                Divider()
+
+                Button("Open Selected File") {
+                    NotificationCenter.default.post(name: .aviOpenSelectedFile, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: [.command, .option, .shift])
+
+                Button("External Diff") {
+                    NotificationCenter.default.post(name: .aviExternalDiffSelectedFile, object: nil)
+                }
+                .keyboardShortcut("d", modifiers: [.command])
+
+                Divider()
+
+                Button("New Branch...") {
+                    NotificationCenter.default.post(name: .aviNewBranch, object: nil)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+
+                Button("New Tag...") {
+                    NotificationCenter.default.post(name: .aviNewTag, object: nil)
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
 
                 Divider()
 

@@ -38,7 +38,7 @@ A complete example with every section is in
 | `clone`          | Default clone directory, protocol preference, gh/glab vs git fallback.  |
 | `ai`             | AI commit-message backend (command / openai), model (default `gpt-6-luna`), prompts, limits, timeout. |
 | `agents`         | `enabled`: accept proposals from local agents through the `avi` command. See [`AGENT-INTEGRATION.md`](AGENT-INTEGRATION.md). |
-| `externalTools`  | Override paths to `git`, `gh`, `glab`, `codex`, `claude`, editors.      |
+| `externalTools`  | Override paths to `git`, `gh`, `glab`, `codex`, `claude`, editors. `diffToolPath` is the tool **External Diff** opens; empty uses Git's `diff.tool`. |
 | `advanced`       | History limit, verbose logging.                                         |
 | `integrations`   | Provider accounts (PAT + CLI). Tokens themselves are in the Keychain.   |
 

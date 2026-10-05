@@ -111,9 +111,10 @@ public protocol GitProviding: Sendable {
     /// Fetch from one remote or all configured remotes when nil.
     func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult
 
-    /// Pull the current branch using git's default merge strategy.
-    /// Diverged branches produce a merge commit. A dirty working tree
-    /// still aborts the pull (git refuses to overwrite local changes).
+    /// Pull the current branch. Diverged branches are merged unless Git is
+    /// configured to rebase (`pull.rebase`, `branch.<name>.rebase`) or to
+    /// fast-forward only (`pull.ff`). A dirty working tree still aborts the
+    /// pull (git refuses to overwrite local changes).
     func pull(in repository: URL) async throws -> GitRemoteOperationResult
 
     /// Pull a branch using git's default merge strategy. When `branch` is nil,
@@ -238,6 +239,85 @@ public protocol GitProviding: Sendable {
 
     /// Unified diff for one file inside a stash (`<ref>^1 <ref> -- <path>`).
     func stashDiff(ref: String, path: String, in repository: URL) async throws -> FileDiff
+
+    // MARK: - Branch actions
+
+    /// Check out `ref`, taking uncommitted changes along when `carryingLocalChanges`
+    /// is true: they are stashed, the branch switches, and the stash is applied
+    /// back. A conflict leaves the changes in the working tree and in the stash.
+    func checkout(_ ref: GitReference, carryingLocalChanges: Bool, in repository: URL) async throws -> CheckoutOutcome
+
+    /// Check out the local branch `branch` in a new linked worktree at `path`.
+    func addWorktree(at path: URL, branch: String, in repository: URL) async throws
+
+    /// Move `branch` forward to its upstream as already fetched, without
+    /// touching the network. Refuses anything but a fast-forward.
+    func fastForward(branch: String, in repository: URL) async throws
+
+    /// Merge the local branch `branch` into the current branch.
+    func merge(branch: String, mode: MergeMode, in repository: URL) async throws -> IntegrationOutcome
+
+    /// Rebase the current branch onto the local branch `branch`.
+    func rebase(onto branch: String, autostash: Bool, in repository: URL) async throws -> IntegrationOutcome
+
+    /// Commits a rebase of the current branch onto `branch` would replay, in
+    /// the order Git replays them: oldest first, merges and commits already
+    /// in `branch` left out.
+    func rebaseCandidates(onto branch: String, in repository: URL) async throws -> [CommitSummary]
+
+    /// Rebase the current branch onto `branch` with `plan`'s order and actions.
+    func interactiveRebase(onto branch: String, plan: InteractiveRebasePlan, autostash: Bool, in repository: URL) async throws -> IntegrationOutcome
+
+    /// `git rebase --continue` without opening an editor.
+    func continueRebase(in repository: URL) async throws -> IntegrationOutcome
+
+    /// `git rebase --skip`: drops the commit the rebase stopped at.
+    func skipRebaseCommit(in repository: URL) async throws -> IntegrationOutcome
+
+    /// `git merge --abort` or `git rebase --abort`. Unlike `rebaseAbort`, a
+    /// failure is reported.
+    func abortOperation(_ operation: GitOperationState, in repository: URL) async throws
+
+    /// Delete `branch` on `remote` (`git push --delete -- <remote> refs/heads/<branch>`).
+    func deleteRemoteBranch(named branch: String, remote: String, in repository: URL) async throws -> GitRemoteOperationResult
+
+    // MARK: - Detached HEAD and worktrees
+
+    /// Commits HEAD reaches that no branch, tag, or remote-tracking branch
+    /// does: with a detached HEAD, what checking out something else leaves
+    /// only in the reflog.
+    func unreferencedCommitCount(in repository: URL) async throws -> Int
+
+    /// `git worktree remove`. Git refuses a worktree with uncommitted changes
+    /// unless `force` is true; see `GitError.indicatesDirtyWorktree`.
+    func removeWorktree(at path: URL, force: Bool, in repository: URL) async throws
+
+    /// `git worktree prune`: forget worktrees whose folders are gone. Returns
+    /// what Git pruned.
+    func pruneWorktrees(in repository: URL) async throws -> String
+
+    // MARK: - File actions
+
+    /// Stash only `paths`, staged and unstaged changes alike.
+    func stash(paths: [String], message: String?, includeUntracked: Bool, in repository: URL) async throws
+
+    /// A `git apply`-able patch of `files`: their staged changes, or their
+    /// unstaged ones with new files in full.
+    func patch(for files: [FileStatus], staged: Bool, in repository: URL) async throws -> Data
+
+    /// Commits that changed `path`, newest first, following renames.
+    func fileHistory(path: String, limit: Int, in repository: URL) async throws -> [FileHistoryEntry]
+
+    /// One file's change in `commitOID`. Passing `oldPath` shows a rename as one.
+    func diff(commitOID: String, path: String, oldPath: String?, in repository: URL) async throws -> FileDiff
+
+    /// Who last changed each line of `path` at `revision`, or in the working
+    /// tree when `revision` is nil.
+    func blame(path: String, revision: String?, in repository: URL) async throws -> [BlameLine]
+
+    /// Open `path` in an external diff tool: `toolPath` when set, else Git's
+    /// `diff.tool`. Returns once the tool exits.
+    func launchDiffTool(path: String, staged: Bool, toolPath: String?, in repository: URL) async throws
 }
 
 public enum GitResetMode: String, Sendable {
@@ -310,5 +390,91 @@ public extension GitProviding {
         for file in files {
             try await discard(file, in: repository)
         }
+    }
+
+    func checkout(_ ref: GitReference, carryingLocalChanges: Bool, in repository: URL) async throws -> CheckoutOutcome {
+        guard !carryingLocalChanges else { throw unsupported("carry local changes across a checkout") }
+        try await checkout(ref, in: repository)
+        return .switched
+    }
+
+    func addWorktree(at _: URL, branch _: String, in _: URL) async throws {
+        throw unsupported("create worktrees")
+    }
+
+    func fastForward(branch _: String, in _: URL) async throws {
+        throw unsupported("fast-forward branches")
+    }
+
+    func merge(branch _: String, mode _: MergeMode, in _: URL) async throws -> IntegrationOutcome {
+        throw unsupported("merge branches")
+    }
+
+    func rebase(onto _: String, autostash _: Bool, in _: URL) async throws -> IntegrationOutcome {
+        throw unsupported("rebase branches")
+    }
+
+    func rebaseCandidates(onto _: String, in _: URL) async throws -> [CommitSummary] {
+        throw unsupported("rebase interactively")
+    }
+
+    func interactiveRebase(onto _: String, plan _: InteractiveRebasePlan, autostash _: Bool, in _: URL) async throws -> IntegrationOutcome {
+        throw unsupported("rebase interactively")
+    }
+
+    func continueRebase(in _: URL) async throws -> IntegrationOutcome {
+        throw unsupported("continue a rebase")
+    }
+
+    func skipRebaseCommit(in _: URL) async throws -> IntegrationOutcome {
+        throw unsupported("skip a rebase commit")
+    }
+
+    func abortOperation(_: GitOperationState, in _: URL) async throws {
+        throw unsupported("abort a merge or rebase")
+    }
+
+    func deleteRemoteBranch(named _: String, remote _: String, in _: URL) async throws -> GitRemoteOperationResult {
+        throw unsupported("delete remote branches")
+    }
+
+    func unreferencedCommitCount(in _: URL) async throws -> Int {
+        0
+    }
+
+    func removeWorktree(at _: URL, force _: Bool, in _: URL) async throws {
+        throw unsupported("remove worktrees")
+    }
+
+    func pruneWorktrees(in _: URL) async throws -> String {
+        throw unsupported("prune worktrees")
+    }
+
+    func stash(paths _: [String], message _: String?, includeUntracked _: Bool, in _: URL) async throws {
+        throw unsupported("stash files")
+    }
+
+    func patch(for _: [FileStatus], staged _: Bool, in _: URL) async throws -> Data {
+        throw unsupported("save patches")
+    }
+
+    func fileHistory(path _: String, limit _: Int, in _: URL) async throws -> [FileHistoryEntry] {
+        throw unsupported("show file history")
+    }
+
+    func diff(commitOID: String, path: String, oldPath _: String?, in repository: URL) async throws -> FileDiff {
+        try await diff(commitOID: commitOID, path: path, in: repository)
+    }
+
+    func blame(path _: String, revision _: String?, in _: URL) async throws -> [BlameLine] {
+        throw unsupported("blame files")
+    }
+
+    func launchDiffTool(path _: String, staged _: Bool, toolPath _: String?, in _: URL) async throws {
+        throw unsupported("open an external diff tool")
+    }
+
+    private func unsupported(_ action: String) -> GitError {
+        GitError.invalidInput("This Git provider cannot \(action).")
     }
 }

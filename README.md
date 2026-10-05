@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.6.1. The config schema, the UI, and the
+Alpha. The current release is v0.7.0. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -47,8 +47,26 @@ around provider authentication, OAuth, and multi-account flows.
   push tags and delete them locally or on the remote too, apply / pop / drop
   stashes, open a worktree in its own tab, and clean up local branches whose
   upstream is gone.
+- Fork's branch menu on every local branch: check out (bringing uncommitted
+  changes along if you like) or check out as a new worktree, fast-forward to the
+  fetched upstream, push, create a pull or merge request, merge into the current
+  branch, rebase or interactively rebase the current branch onto it, new branch
+  (Shift+Cmd+B) and tag (Shift+Cmd+G), tracking, rename, delete here and on the
+  remote too, copy the name.
+- Fork's changed-file menu: open or open with, external diff (Cmd+D), Show in
+  Finder, Blame/Timeline and History windows, stage (Cmd+S), discard, ignore
+  through `.gitignore` or `.git/info/exclude`, stash only those files, save as
+  patch, copy path.
+- A merge or rebase that stops on a conflict, or at a commit to edit, shows a
+  banner with Continue, Skip, and Abort; a stopped merge's message is already in
+  the commit field.
+- Built for agents' habits: a detached HEAD says whether its commits are on
+  no branch and offers to create one, and checking out something else asks
+  before stranding them. Worktrees show their uncommitted changes and detached
+  commits, can get a branch or be removed, and worktrees inside the repository
+  folder never appear in Changes or get staged.
 - Push sheet that states whether the push updates, adopts, or creates the remote
-  branch, plus "Push and Open Pull Request" for GitHub and GitLab.
+  branch, for the current branch or any other.
 - AI-assisted commit message generation through a configurable command or the
   OpenAI API (default model `gpt-6-luna`), with an IDE-style debug drawer for
   the underlying run.
@@ -98,8 +116,10 @@ builds, packages, and publishes the app. Local builds use the same SwiftPM and
 Renovate waits seven days from release for updates subject to release-age
 checks before creating a branch (`internalChecksFilter: strict`). CI runs on
 `renovate/**` before a PR exists. Once branch checks pass, Renovate opens the PR
-and assigns `mrcat71`, including PRs configured for automerge. There is no weekly
-creation window or second seven-day wait inside the PR. Internal release-age
+and assigns `mrcat71` and requests their review, including automerge PRs
+(`assignAutomerge: true`). Review requests are added at PR creation, not
+retroactively to existing PRs. There is no weekly creation window or second
+seven-day wait inside the PR. Internal release-age
 checks do not substitute for CI. Updates missing required release timestamps
 remain pending in the Dependency Dashboard. Vulnerability alerts skip the age
 delay but still wait for successful branch checks. PR merge-commit checks run

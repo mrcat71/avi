@@ -93,6 +93,13 @@ public struct RootView: View {
                 openRepositoryPicker()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .aviWorktreeRemoved)) { notification in
+            // A tab on a removed worktree has nothing left to show.
+            guard let removed = notification.object as? URL else { return }
+            for repository in repositories where repository.root?.standardizedFileURL.path == removed.standardizedFileURL.path {
+                closeRepository(repository.id)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .aviRefreshRepository)) { _ in
             Task { await selectedStore?.refresh() }
         }

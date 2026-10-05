@@ -19,6 +19,20 @@ final class ChangesArrowKeysTests: XCTestCase {
         }
     }
 
+    /// A click on a file row goes to the row's drag gesture, which selects the
+    /// file without focusing the list, so the arrows used to reach nothing.
+    func testClickingAFileGivesTheListTheArrowKeys() throws {
+        try MainActor.assumeIsolated {
+            let fixture = try Fixture()
+            defer { fixture.close() }
+
+            fixture.click("Sources/App/a.swift", in: fixture.unstagedList)
+            XCTAssertTrue(fixture.window.firstResponder === fixture.unstagedList, "the click must focus the list")
+            fixture.press(.down, expecting: ["Sources/App/b.swift", "Sources/Kit/c.swift"])
+            fixture.press(.up, expecting: ["Sources/App/b.swift"])
+        }
+    }
+
     func testArrowsStepThroughStagedAndPlannedFilesAndSkipHeadings() throws {
         try MainActor.assumeIsolated {
             let fixture = try Fixture()
@@ -122,6 +136,26 @@ final class ChangesArrowKeysTests: XCTestCase {
                 return store.selectedPath
             }
             XCTAssertEqual(selected, expected.map(Optional.some), file: file, line: line)
+        }
+
+        /// Clicks `path`'s row over its name, as a person would.
+        func click(_ path: String, in table: NSTableView, file: StaticString = #filePath, line: UInt = #line) {
+            let tree = ConfigStore.shared.config.appearance.fileListMode == "tree"
+            let rows = FileTreeBuilder.visibleRows(store.unplannedUnstagedEntries, expanded: store.expandedFolders, tree: tree)
+            guard let row = rows.firstIndex(of: path) else {
+                return XCTFail("\(path) is not in \(rows)", file: file, line: line)
+            }
+            let rect = table.rect(ofRow: row)
+            let point = table.convert(NSPoint(x: rect.minX + 70, y: rect.midY), to: nil)
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                window.sendEvent(NSEvent.mouseEvent(
+                    with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1
+                )!)
+            }
+            settle()
+            waitUntil { self.store.selectedPath == path }
+            XCTAssertEqual(store.selectedPath, path, file: file, line: line)
         }
 
         func close() {

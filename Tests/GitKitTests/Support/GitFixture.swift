@@ -46,6 +46,11 @@ struct GitFixture {
         try contents.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 
+    /// True when `key` is set in any config Git reads for this repository.
+    func gitConfigured(_ key: String) async throws -> Bool {
+        try await ProcessRunner.run(executable: gitURL, arguments: ["config", "--get", key], workingDirectory: url).exitCode == 0
+    }
+
     func read(_ relativePath: String) throws -> String {
         try String(contentsOf: url.appendingPathComponent(relativePath), encoding: .utf8)
     }
