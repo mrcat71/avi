@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Fork-style confirmation sheet for `git push`. Surfaces the current branch
+/// Fork-style confirmation sheet for `git push`. Surfaces the branch
 /// (read-only), lets the user pick the target remote, and exposes "push all
 /// tags" + "force push" (mapped to `--force-with-lease` for safety) toggles.
 struct PushSheet: View {
     let store: RepositoryStore
+    /// The branch to push; nil pushes the current branch.
+    var branchName: String?
     let dismiss: () -> Void
 
     @State private var selectedRemote: String = ""
@@ -142,7 +144,13 @@ struct PushSheet: View {
     // MARK: - Derived state
 
     private var currentBranchName: String? {
-        store.branch?.name
+        branchName ?? store.branch?.name
+    }
+
+    /// The pushed branch's upstream, which need not be HEAD's.
+    private var branchUpstream: String? {
+        guard let name = currentBranchName, name != store.branch?.name else { return store.branch?.upstream }
+        return store.refs.localBranches.first { $0.name == name }?.upstream
     }
 
     /// Spells out whether the push updates a remote branch or creates one, so
@@ -168,7 +176,7 @@ struct PushSheet: View {
         Self.outcome(
             branch: currentBranchName,
             remote: selectedRemote,
-            upstream: store.branch?.upstream,
+            upstream: branchUpstream,
             remoteBranches: store.refs.remoteBranches.map(\.name)
         )
     }
@@ -182,7 +190,7 @@ struct PushSheet: View {
     }
 
     private var upstreamRemote: String? {
-        guard let upstream = store.branch?.upstream,
+        guard let upstream = branchUpstream,
               let head = upstream.split(separator: "/", maxSplits: 1).first
         else { return nil }
         return String(head)

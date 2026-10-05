@@ -23,12 +23,16 @@ public struct FileStatus: Sendable, Equatable, Identifiable {
     public let originalPath: String?
     public let index: FileState
     public let worktree: FileState
+    /// Unmerged: a merge, rebase, or stash apply stopped on a conflict in this
+    /// file. Git reports it apart from ordinary changes, whatever X and Y say.
+    public let isConflicted: Bool
 
-    public init(path: String, originalPath: String? = nil, index: FileState, worktree: FileState) {
+    public init(path: String, originalPath: String? = nil, index: FileState, worktree: FileState, isConflicted: Bool = false) {
         self.path = path
         self.originalPath = originalPath
         self.index = index
         self.worktree = worktree
+        self.isConflicted = isConflicted
     }
 
     public var isUntracked: Bool {

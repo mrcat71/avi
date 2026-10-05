@@ -12,6 +12,18 @@ public extension Notification.Name {
     static let aviPushRepository = Notification.Name("avi.pushRepository")
     static let aviCreateBranch = Notification.Name("avi.createBranch")
     static let aviCreateTag = Notification.Name("avi.createTag")
+    /// New branch from the selected ref or commit (Shift+Cmd+B).
+    static let aviNewBranch = Notification.Name("avi.newBranch")
+    /// New tag on the selected ref or commit (Shift+Cmd+G).
+    static let aviNewTag = Notification.Name("avi.newTag")
+    /// Stage the files selected in Unstaged (Cmd+S).
+    static let aviStageSelection = Notification.Name("avi.stageSelection")
+    /// Open the selected changed file in its default app (Option+Shift+Cmd+O).
+    static let aviOpenSelectedFile = Notification.Name("avi.openSelectedFile")
+    /// Show the selected changed file in the external diff tool (Cmd+D).
+    static let aviExternalDiffSelectedFile = Notification.Name("avi.externalDiffSelectedFile")
+    /// A linked worktree was removed; its object is the folder that is gone.
+    static let aviWorktreeRemoved = Notification.Name("avi.worktreeRemoved")
     static let aviOpenCommandPalette = Notification.Name("avi.openCommandPalette")
     static let aviOpenBranchSwitcher = Notification.Name("avi.openBranchSwitcher")
     static let aviGoToLocalChanges = Notification.Name("avi.goToLocalChanges")

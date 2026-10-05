@@ -56,6 +56,12 @@ extension GitError {
         stderr.contains("is not fully merged")
     }
 
+    /// True when `git worktree remove` refused because the worktree has
+    /// uncommitted or untracked files, which `--force` would delete.
+    public static func indicatesDirtyWorktree(_ stderr: String) -> Bool {
+        stderr.contains("contains modified or untracked files")
+    }
+
     static func indicatesLockContention(_ stderr: String) -> Bool {
         // index.lock: "Another git process seems to be running in this repository"
         // ref/index .lock: "... Unable to create '/path/X.lock': File exists."

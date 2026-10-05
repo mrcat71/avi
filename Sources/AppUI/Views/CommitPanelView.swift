@@ -60,7 +60,8 @@ struct CommitPanelView: View {
     }
 
     private var isFormDisabled: Bool {
-        !store.amend && store.entries.isEmpty
+        // A merge with every conflict resolved still needs its commit.
+        !store.amend && store.entries.isEmpty && store.operationState != .merge
     }
 
     @ViewBuilder

@@ -17,6 +17,8 @@ struct CommitStackView: View {
     @Bindable private var config = ConfigStore.shared
     @State private var pendingGroupDiscard: DraftSource?
     @State private var confirmingPlanDiscard = false
+    /// Keyboard focus for the list, so the arrow keys reach it.
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -264,6 +266,11 @@ struct CommitStackView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .disabled(store.isApplyingPlan)
+        .focused($isFocused)
+        .onCopyCommand {
+            let paths = selectedPaths
+            return paths.isEmpty ? [] : [NSItemProvider(object: paths.joined(separator: "\n") as NSString)]
+        }
         .onDeleteCommand {
             let paths = selectedPaths
             guard !paths.isEmpty else { return }
@@ -300,15 +307,17 @@ struct CommitStackView: View {
 
     private func stagedRow(_ file: FileStatus, isTreeRow: Bool) -> some View {
         let targets = moveTargets(for: file.path)
+        let targetFiles = store.stagedCommitEntries.filter { targets.contains($0.path) }
         return ChangeRow(
             file: file,
             staged: true,
             isTreeRow: isTreeRow,
             store: store,
             onStage: { _ in },
-            onUnstage: { unstage([$0]) },
+            onUnstage: { _ in unstage(targetFiles.isEmpty ? [file] : targetFiles) },
             onDiscard: { _ in },
-            moveMenu: AnyView(MoveToMenu(store: store, paths: targets, current: .staged))
+            moveMenu: AnyView(MoveToMenu(store: store, paths: targets, current: .staged)),
+            targets: targetFiles
         )
         .draggable(targets.joined(separator: PlanRowTag.dragSeparator))
         .dropDestination(for: String.self) { items, _ in
@@ -466,6 +475,10 @@ struct CommitStackView: View {
             set: { newValue in
                 selection = newValue
                 onActivate()
+                // Dragging rows select without focusing the list; see ChangeListView.
+                if !newValue.isEmpty {
+                    isFocused = true
+                }
                 guard newValue.count == 1, let tag = newValue.first else { return }
                 if tag == PlanRowTag.stagedCommit {
                     store.selectStagedCommit()

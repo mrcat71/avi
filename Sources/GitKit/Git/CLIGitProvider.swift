@@ -1,6 +1,6 @@
 import Foundation
 
-private extension Array {
+extension Array {
     /// Split into consecutive chunks of at most `size` elements. Used to keep
     /// batched `git` argument lists under the OS argument-length limit.
     func chunked(into size: Int) -> [[Element]] {
@@ -15,7 +15,7 @@ private extension Array {
 public struct CLIGitProvider: GitProviding {
     public let gitURL: URL
     /// Only a private copy inside an existing queue slot may bypass re-enqueueing.
-    private var ownsCommandSlot = false
+    var ownsCommandSlot = false
 
     public init(gitURL: URL = URL(fileURLWithPath: "/usr/bin/git")) {
         self.gitURL = gitURL
@@ -297,8 +297,23 @@ public struct CLIGitProvider: GitProviding {
             return remoteResult(result)
         }
 
-        let result = try await run(["pull"], in: repository)
+        let strategy = try await pullStrategyArguments(branch: targetBranch, in: repository)
+        let result = try await run(["pull"] + strategy, in: repository, environment: nonInteractiveEnvironment())
         return remoteResult(result)
+    }
+
+    /// Since Git 2.33, `git pull` refuses diverged branches until it is told
+    /// whether to merge or rebase. With nothing configured, Avi merges, Git's
+    /// old default; a `pull.rebase`, `pull.ff`, or `branch.<name>.rebase` you
+    /// set still decides.
+    func pullStrategyArguments(branch: String?, in repository: URL) async throws -> [String] {
+        let keys = ["pull.rebase", "pull.ff"] + [branch.map { "branch.\($0).rebase" }].compactMap(\.self)
+        for key in keys {
+            if try await execute(["config", "--get", key], in: repository).exitCode == 0 {
+                return []
+            }
+        }
+        return ["--no-rebase"]
     }
 
     public func push(in repository: URL) async throws -> GitRemoteOperationResult {
@@ -316,12 +331,23 @@ public struct CLIGitProvider: GitProviding {
         guard let branchName = (branch ?? currentStatus.branch.name) else {
             throw GitError.invalidInput("Cannot push from detached HEAD.")
         }
+        // The pushed branch's own upstream decides the default remote and -u,
+        // so pushing a branch that is not checked out never borrows HEAD's.
+        let upstream: String?
+        if branchName == currentStatus.branch.name {
+            upstream = currentStatus.branch.upstream
+        } else {
+            guard let ref = try await refs(in: repository).localBranches.first(where: { $0.name == branchName }) else {
+                throw GitError.invalidInput("Branch '\(branchName)' not found.")
+            }
+            upstream = ref.upstream
+        }
 
         // Resolve target remote: explicit > upstream > origin fallback.
         let targetRemote: String
         if let remote, !remote.isEmpty {
             targetRemote = remote
-        } else if let upstream = currentStatus.branch.upstream,
+        } else if let upstream,
                   let head = upstream.split(separator: "/", maxSplits: 1).first {
             targetRemote = String(head)
         } else {
@@ -339,7 +365,7 @@ public struct CLIGitProvider: GitProviding {
         if force {
             args.append("--force-with-lease")
         }
-        if currentStatus.branch.upstream == nil {
+        if upstream == nil {
             args.append("-u")
         }
         args.append(targetRemote)
@@ -794,12 +820,9 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func isRebaseInProgress(in repository: URL) async -> Bool {
-        let gitDir = repository.appendingPathComponent(".git", isDirectory: true)
-        let candidates = [
-            gitDir.appendingPathComponent("rebase-merge"),
-            gitDir.appendingPathComponent("rebase-apply")
-        ]
-        return candidates.contains { FileManager.default.fileExists(atPath: $0.path) }
+        // A linked worktree's `.git` is a file, so ask Git where its git dir is.
+        guard let gitDir = try? await location(of: repository).gitDir else { return false }
+        return GitOperationState.detect(gitDir: gitDir) == .rebase
     }
 
     // MARK: - Stashes
@@ -917,12 +940,12 @@ public struct CLIGitProvider: GitProviding {
 
     /// Quote a path for inclusion in GIT_SEQUENCE_EDITOR / GIT_EDITOR.
     /// Wraps in single quotes and escapes any embedded single quote.
-    private func shellQuote(_ path: String) -> String {
+    func shellQuote(_ path: String) -> String {
         "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     @discardableResult
-    private func run(
+    func run(
         _ arguments: [String],
         in repository: URL,
         allowedExitCodes: Set<Int32> = [0]
@@ -945,7 +968,7 @@ public struct CLIGitProvider: GitProviding {
     /// adds a short backoff so a transient external lock doesn't fail the command
     /// outright. Pass a custom `environment` for editor-driven commands like
     /// interactive rebase; otherwise the standard git environment is used.
-    private func execute(
+    func execute(
         _ arguments: [String],
         in repository: URL,
         environment: [String: String]? = nil
@@ -1009,7 +1032,7 @@ public struct CLIGitProvider: GitProviding {
         }
     }
 
-    private func gitEnvironment() -> [String: String] {
+    func gitEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         // Never block waiting on an interactive credential prompt; surface the failure instead.
         env["GIT_TERMINAL_PROMPT"] = "0"
@@ -1018,7 +1041,7 @@ public struct CLIGitProvider: GitProviding {
         return env
     }
 
-    private func remoteResult(_ result: ProcessResult) -> GitRemoteOperationResult {
+    func remoteResult(_ result: ProcessResult) -> GitRemoteOperationResult {
         let output = [result.stdoutString, result.stderrString]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }

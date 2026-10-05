@@ -109,7 +109,7 @@ public enum StatusParser {
             throw GitError.parseFailed(field)
         }
         let xy = Array(parts[1])
-        return FileStatus(path: String(parts[10]), index: state(xy[0]), worktree: state(xy[1]))
+        return FileStatus(path: String(parts[10]), index: state(xy[0]), worktree: state(xy[1]), isConflicted: true)
     }
 
     private static func pathAfterMarker(_ field: String) -> String {

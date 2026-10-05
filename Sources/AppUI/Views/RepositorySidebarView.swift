@@ -13,6 +13,20 @@ struct RepositorySidebarView: View {
     @State private var stashesExpanded = true
     @State private var worktreesExpanded = true
     @State private var confirmingGoneCleanup = false
+    @State private var branchSheet: BranchSheet?
+    @State private var renaming: GitReference?
+    @State private var renameValue = ""
+    @State private var trackingOther: GitReference?
+    @State private var upstreamValue = ""
+    @State private var checkoutPending: GitReference?
+    @State private var pullRequestPending: GitReference?
+    @State private var forceDeletePending: GitReference?
+    @State private var worktreeBranchTarget: Worktree?
+    @State private var worktreeBranchName = ""
+    @State private var worktreeToRemove: Worktree?
+    @State private var worktreeForceRemove: Worktree?
+    /// Focus for Delete and Cmd+C on the selected branch; clicking a branch takes it.
+    @FocusState private var isFocused: Bool
 
     private var goneCleanupTitle: String {
         let count = store.goneBranches.count
@@ -37,6 +51,18 @@ struct RepositorySidebarView: View {
                 }
                 .padding(.bottom, 12)
             }
+            .focusable()
+            .focused($isFocused)
+            .focusEffectDisabled()
+            .onDeleteCommand {
+                if let ref = selectedLocalBranch, !ref.isCurrent {
+                    branchSheet = .delete(ref)
+                }
+            }
+            .onCopyCommand {
+                guard let ref = selectedLocalBranch else { return [] }
+                return [NSItemProvider(object: ref.name as NSString)]
+            }
         }
         .background(DS.Palette.surface)
         .overlay(alignment: .trailing) {
@@ -44,6 +70,228 @@ struct RepositorySidebarView: View {
                 .fill(Glass.edgeStroke)
                 .frame(width: 0.6)
         }
+        .sheet(item: $branchSheet) { sheet in
+            branchSheetView(sheet)
+        }
+        .alert("Rename Branch", isPresented: presented($renaming), presenting: renaming) { ref in
+            TextField("New name", text: $renameValue)
+            Button("Rename") {
+                let target = renameValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !target.isEmpty, target != ref.name else { return }
+                Task { await store.renameBranch(from: ref.name, to: target) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { ref in
+            Text("Rename \(ref.name) to:")
+        }
+        .alert("Track a Remote Branch", isPresented: presented($trackingOther), presenting: trackingOther) { ref in
+            TextField("origin/<branch>", text: $upstreamValue)
+            Button("Track") {
+                let target = upstreamValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !target.isEmpty else { return }
+                Task { await store.setUpstream(branch: ref.name, upstream: target) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { ref in
+            Text("Which remote branch should \(ref.name) pull from and push to?")
+        }
+        .confirmationDialog(
+            checkoutPending.map { "Check out \($0.name)?" } ?? "",
+            isPresented: presented($checkoutPending),
+            titleVisibility: .visible,
+            presenting: checkoutPending
+        ) { ref in
+            Button("Bring My Changes Along") {
+                Task { await store.checkout(ref, carryingLocalChanges: true) }
+            }
+            Button("Check Out") {
+                Task { await store.checkout(ref) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text(checkoutMessage)
+        }
+        .alert(
+            pullRequestPending.map { "Push \($0.name) First?" } ?? "",
+            isPresented: presented($pullRequestPending),
+            presenting: pullRequestPending
+        ) { ref in
+            Button("Push and Create") {
+                Task { await store.openPullRequestPage(branch: ref.name, pushFirst: true) }
+            }
+            if store.branchExistsOnPullRequestRemote(ref) {
+                Button("Create Without Pushing") {
+                    Task { await store.openPullRequestPage(branch: ref.name, pushFirst: false) }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { ref in
+            Text(pullRequestMessage(for: ref))
+        }
+        .alert(
+            forceDeletePending.map { "\($0.name) Is Not Fully Merged" } ?? "",
+            isPresented: presented($forceDeletePending),
+            presenting: forceDeletePending
+        ) { ref in
+            Button("Delete Anyway", role: .destructive) {
+                Task { _ = await store.deleteBranch(ref, alsoOnRemote: false, force: true) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("The current branch does not have all of its commits. Deleting it also deletes its reflog, "
+                + "so those commits stay in HEAD's reflog for about 30 days, and only if you had it checked out.")
+        }
+        .alert("Create Branch in Worktree", isPresented: presented($worktreeBranchTarget), presenting: worktreeBranchTarget) { worktree in
+            TextField("Branch name", text: $worktreeBranchName)
+            Button("Create") {
+                let name = worktreeBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                Task { await store.createBranch(named: name, inWorktree: worktree) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { worktree in
+            Text("\(worktree.path.lastPathComponent) is detached at \(worktree.headOID.map { String($0.prefix(8)) } ?? "a commit"). "
+                + "The new branch starts there and the worktree switches to it, so its commits belong to a branch.")
+        }
+        .confirmationDialog(
+            worktreeToRemove.map { "Remove the worktree \($0.path.lastPathComponent)?" } ?? "",
+            isPresented: presented($worktreeToRemove),
+            titleVisibility: .visible,
+            presenting: worktreeToRemove
+        ) { worktree in
+            Button("Remove Worktree", role: .destructive) {
+                Task {
+                    if await store.removeWorktree(worktree, force: false) == .needsForce {
+                        worktreeForceRemove = worktree
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { worktree in
+            Text("Deletes the folder \(worktree.path.path)\(worktree.branch.map { ". The branch \($0) stays" } ?? ""). "
+                + "Git refuses if it has uncommitted changes; Avi then asks again.")
+        }
+        .alert(
+            worktreeForceRemove.map { "\($0.path.lastPathComponent) Has Uncommitted Changes" } ?? "",
+            isPresented: presented($worktreeForceRemove),
+            presenting: worktreeForceRemove
+        ) { worktree in
+            Button("Delete Changes and Remove", role: .destructive) {
+                Task { _ = await store.removeWorktree(worktree, force: true) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { worktree in
+            let count = store.worktreeChanges[worktree.id]
+            Text("\(count.map { $0 == 1 ? "1 changed file" : "\($0) changed files" } ?? "Its changes") will be deleted with the folder and cannot be recovered. "
+                + "Commits on its branch stay.")
+        }
+    }
+
+    // MARK: Branch actions
+
+    private var selectedLocalBranch: GitReference? {
+        guard case let .branch(name) = selection else { return nil }
+        return store.refs.localBranches.first { $0.name == name }
+    }
+
+    private func performBranchAction(_ action: BranchMenuAction, on ref: GitReference) {
+        switch action {
+        case .checkout:
+            guard !ref.isCurrent else { return }
+            if store.entries.isEmpty {
+                Task { await store.checkout(ref) }
+            } else {
+                checkoutPending = ref
+            }
+        case .openHolder:
+            if let holder = store.branchHolders[ref.name] {
+                NotificationCenter.default.post(name: .aviOpenRepository, object: holder.path)
+            }
+        case .checkoutAsWorktree:
+            branchSheet = .worktree(ref)
+        case .fastForward:
+            Task { await store.fastForward(branch: ref.name) }
+        case .push:
+            branchSheet = .push(ref)
+        case .createPullRequest:
+            if store.pullRequestNeedsPush(ref) {
+                pullRequestPending = ref
+            } else {
+                Task { await store.openPullRequestPage(branch: ref.name, pushFirst: false) }
+            }
+        case .merge:
+            branchSheet = .merge(ref)
+        case .rebase:
+            branchSheet = .rebase(ref)
+        case .interactiveRebase:
+            branchSheet = .interactiveRebase(ref)
+        case .newBranch:
+            NotificationCenter.default.post(name: .aviCreateBranch, object: ref.name)
+        case .newTag:
+            NotificationCenter.default.post(name: .aviCreateTag, object: ref.oid)
+        case .track(let upstream):
+            Task { await store.setUpstream(branch: ref.name, upstream: upstream) }
+        case .trackOther:
+            upstreamValue = ref.upstream ?? "\(store.pushRemoteName(for: ref.name) ?? "origin")/\(ref.name)"
+            trackingOther = ref
+        case .stopTracking:
+            Task { await store.unsetUpstream(branch: ref.name) }
+        case .rename:
+            renameValue = ref.name
+            renaming = ref
+        case .delete:
+            guard !ref.isCurrent else { return }
+            branchSheet = .delete(ref)
+        case .copyName:
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(ref.name, forType: .string)
+        }
+    }
+
+    @ViewBuilder
+    private func branchSheetView(_ sheet: BranchSheet) -> some View {
+        switch sheet {
+        case .worktree(let ref):
+            WorktreeCheckoutSheet(store: store, branch: ref)
+        case .push(let ref):
+            PushSheet(store: store, branchName: ref.name, dismiss: { branchSheet = nil })
+        case .merge(let ref):
+            MergeBranchSheet(store: store, branch: ref)
+        case .rebase(let ref):
+            RebaseBranchSheet(store: store, onto: ref)
+        case .interactiveRebase(let ref):
+            InteractiveRebaseSheet(store: store, onto: ref)
+        case .delete(let ref):
+            DeleteBranchSheet(store: store, branch: ref) { forceDeletePending = $0 }
+        }
+    }
+
+    private var checkoutMessage: String {
+        let count = store.entries.count
+        let files = count == 1 ? "1 changed file" : "\(count) changed files"
+        return "You have \(files). Bring My Changes Along stashes them, switches, and puts them back; "
+            + "if they conflict with the branch they stay in the stash as well. "
+            + "Check Out keeps them in place when they do not touch the same files, and stops otherwise."
+    }
+
+    private func pullRequestMessage(for ref: GitReference) -> String {
+        let remote = store.pushRemoteName(for: ref.name) ?? "the remote"
+        guard store.branchExistsOnPullRequestRemote(ref), let ahead = ref.ahead, ahead > 0 else {
+            return "The pull request is opened for the branch on '\(remote)', which does not have \(ref.name) yet."
+        }
+        return "'\(remote)' does not have \(ahead == 1 ? "1 commit" : "\(ahead) commits") of \(ref.name) yet, "
+            + "so the pull request would not include \(ahead == 1 ? "it" : "them")."
+    }
+
+    private func presented(_ value: Binding<(some Any)?>) -> Binding<Bool> {
+        Binding(
+            get: { value.wrappedValue != nil },
+            set: {
+                if !$0 {
+                    value.wrappedValue = nil
+                }
+            }
+        )
     }
 
     private var header: some View {
@@ -184,11 +432,13 @@ struct RepositorySidebarView: View {
                         isSelected: selection == .branch(name: ref.name),
                         select: {
                             selection = .branch(name: ref.name)
+                            isFocused = true
                             Task { await store.selectCommit(commitForRef(ref)) }
                         },
                         checkout: {
                             Task { await store.checkout(ref) }
-                        }
+                        },
+                        perform: { performBranchAction($0, on: ref) }
                     )
                 }
                 if filteredLocalBranches.isEmpty {
@@ -280,7 +530,24 @@ struct RepositorySidebarView: View {
                 title: "Worktrees",
                 count: store.worktrees.count,
                 isExpanded: $worktreesExpanded
-            )
+            ) {
+                let prunable = store.worktrees.filter(\.isPrunable).count
+                if prunable > 0 {
+                    let title = prunable == 1 ? "Forget 1 worktree whose folder is gone" : "Forget \(prunable) worktrees whose folders are gone"
+                    Button {
+                        Task { await store.pruneWorktrees() }
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: DS.IconScale.xs, weight: .semibold))
+                            .foregroundStyle(DS.Palette.textSecondary)
+                            .frame(width: 16, height: 16)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(title)
+                    .accessibilityLabel(title)
+                }
+            }
 
             if worktreesExpanded {
                 VStack(spacing: 1) {
@@ -288,8 +555,18 @@ struct RepositorySidebarView: View {
                         WorktreeRow(
                             worktree: worktree,
                             isCurrent: worktree.path.standardizedFileURL == store.currentWorktree?.path.standardizedFileURL,
+                            isMain: worktree.id == store.worktrees.first?.id,
+                            changes: store.worktreeChanges[worktree.id],
+                            subject: worktree.headOID.flatMap { store.worktreeSubjects[$0] },
                             open: {
                                 NotificationCenter.default.post(name: .aviOpenRepository, object: worktree.path)
+                            },
+                            createBranch: {
+                                worktreeBranchName = ""
+                                worktreeBranchTarget = worktree
+                            },
+                            remove: {
+                                worktreeToRemove = worktree
                             }
                         )
                     }
@@ -402,8 +679,8 @@ struct RepositorySidebarView: View {
         if let name = branch.name {
             return name
         }
-        if branch.isDetached {
-            return "Detached HEAD"
+        if branch.isDetached, let oid = branch.oid {
+            return "Detached at \(oid.prefix(8))"
         }
         return "No commits"
     }
@@ -512,14 +789,11 @@ struct LocalBranchRow: View {
     let isSelected: Bool
     let select: () -> Void
     let checkout: () -> Void
+    /// Runs a branch menu action; the sidebar owns the sheets and alerts.
+    var perform: (BranchMenuAction) -> Void = { _ in }
 
     @Environment(\.aviDensity) private var density
     @State private var isHovering = false
-    @State private var showingRename = false
-    @State private var renameValue = ""
-    @State private var showingSetUpstream = false
-    @State private var upstreamValue = ""
-    @State private var confirmingDelete = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -578,37 +852,7 @@ struct LocalBranchRow: View {
         .onHover { isHovering = $0 }
         .help(tooltip)
         .contextMenu {
-            branchContextMenu
-        }
-        .alert("Rename branch", isPresented: $showingRename) {
-            TextField("New name", text: $renameValue)
-            Button("Rename") {
-                let target = renameValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !target.isEmpty else { return }
-                Task { await store.renameBranch(from: ref.name, to: target) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Rename \(ref.name) to:")
-        }
-        .alert("Set upstream", isPresented: $showingSetUpstream) {
-            TextField("origin/<branch>", text: $upstreamValue)
-            Button("Set") {
-                let target = upstreamValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !target.isEmpty else { return }
-                Task { await store.setUpstream(branch: ref.name, upstream: target) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Track which remote branch?")
-        }
-        .confirmationDialog("Delete branch \(ref.name)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                Task { await store.deleteBranch(named: ref.name) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Git will refuse if the branch has unmerged changes.")
+            LocalBranchMenu(ref: ref, store: store, heldBy: heldBy, perform: perform)
         }
     }
 
@@ -625,81 +869,6 @@ struct LocalBranchRow: View {
                 .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.secondary)
                 .help("Checked out in \(name)")
                 .accessibilityLabel("Checked out in worktree \(name)")
-        }
-    }
-
-    @ViewBuilder
-    private var branchContextMenu: some View {
-        if let heldBy {
-            Button("Checked Out in \(heldBy.path.lastPathComponent)") {
-                NotificationCenter.default.post(name: .aviOpenRepository, object: heldBy.path)
-            }
-        } else if !ref.isCurrent {
-            Button("Checkout", action: checkout)
-        }
-        Button("Create Branch From Here") {
-            NotificationCenter.default.post(name: .aviCreateBranch, object: ref.name)
-        }
-        Divider()
-        Button("Rename…") {
-            renameValue = ref.name
-            showingRename = true
-        }
-        if !ref.isCurrent {
-            Button("Delete…", role: .destructive) {
-                confirmingDelete = true
-            }
-        }
-        Divider()
-        Button("Push") {
-            Task { await store.push(branch: ref.name) }
-        }
-        .disabled(ref.upstream == nil)
-        Button("Pull") {
-            Task { await store.pull(branch: ref.name) }
-        }
-        .disabled(ref.upstream == nil)
-        Button(pushAndOpenPRLabel) {
-            Task { await store.pushAndOpenPullRequestPage(branch: ref.name) }
-        }
-        .disabled(store.remotes.isEmpty)
-        Divider()
-        Button(ref.upstream == nil ? "Set Upstream…" : "Change Upstream…") {
-            upstreamValue = ref.upstream ?? "origin/\(ref.name)"
-            showingSetUpstream = true
-        }
-        if ref.upstream != nil {
-            Button("Unset Upstream") {
-                Task { await store.unsetUpstream(branch: ref.name) }
-            }
-        }
-        Divider()
-        Button("Copy Branch Name") {
-            let pasteboard = NSPasteboard.general
-            pasteboard.clearContents()
-            pasteboard.setString(ref.name, forType: .string)
-        }
-    }
-
-    private var pushAndOpenPRLabel: String {
-        // Prefer the branch's upstream remote, else origin, else the first remote.
-        let remoteName: String? = {
-            if let upstream = ref.upstream,
-               let head = upstream.split(separator: "/", maxSplits: 1).first {
-                return String(head)
-            }
-            if store.remotes.contains(where: { $0.name == "origin" }) {
-                return "origin"
-            }
-            return store.remotes.first?.name
-        }()
-        guard let remoteName, let remote = store.remotes.first(where: { $0.name == remoteName }) else {
-            return "Push and Open PR Page…"
-        }
-        switch RemoteURLParser.hint(from: remote) {
-        case .github: return "Push and Open Pull Request…"
-        case .gitlab: return "Push and Open Merge Request…"
-        case .unknown: return "Push and Open PR Page…"
         }
     }
 
@@ -979,11 +1148,19 @@ private struct RemoteBranchRow: View {
 }
 
 /// One linked worktree. Opening it adds a tab for that working tree; the
-/// worktree this tab already shows is not openable again.
+/// worktree this tab already shows is not openable again. A detached worktree,
+/// as agents often leave them, names its commit.
 private struct WorktreeRow: View {
     let worktree: Worktree
     let isCurrent: Bool
+    let isMain: Bool
+    /// Uncommitted changes in it, once counted.
+    let changes: Int?
+    /// The detached commit's subject, once loaded.
+    let subject: String?
     let open: () -> Void
+    let createBranch: () -> Void
+    let remove: () -> Void
 
     @Environment(\.aviDensity) private var density
     @State private var isHovering = false
@@ -1001,9 +1178,9 @@ private struct WorktreeRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
 
-                Text(worktree.branch ?? (worktree.isBare ? "bare" : "detached"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                Text(headLabel)
+                    .font(.system(size: 10, design: worktree.isDetached ? .monospaced : .default))
+                    .foregroundStyle(worktree.isDetached ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
                     .truncationMode(.middle)
 
@@ -1015,6 +1192,17 @@ private struct WorktreeRow: View {
                 }
 
                 Spacer(minLength: 4)
+
+                if let changes, changes > 0 {
+                    Text("\(changes)")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.orange.opacity(0.16)))
+                        .foregroundStyle(.orange)
+                        .help(changes == 1 ? "1 uncommitted change" : "\(changes) uncommitted changes")
+                        .accessibilityLabel(changes == 1 ? "1 uncommitted change" : "\(changes) uncommitted changes")
+                }
 
                 if isCurrent {
                     Image(systemName: "checkmark")
@@ -1036,14 +1224,36 @@ private struct WorktreeRow: View {
         .help(tooltip)
         .accessibilityLabel(tooltip)
         .contextMenu {
+            Button("Open in New Tab", action: open)
+                .disabled(isCurrent || worktree.isPrunable)
             Button("Reveal in Finder") {
                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: worktree.path.path)
             }
+            .disabled(worktree.isPrunable)
             Button("Copy Path") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(worktree.path.path, forType: .string)
             }
+            if worktree.isDetached, !worktree.isPrunable {
+                Divider()
+                Button("Create Branch Here…", action: createBranch)
+            }
+            if !isMain, !isCurrent {
+                Divider()
+                Button("Remove Worktree…", role: .destructive, action: remove)
+                    .disabled(worktree.isLocked)
+            }
         }
+    }
+
+    private var headLabel: String {
+        if let branch = worktree.branch {
+            return branch
+        }
+        if worktree.isBare {
+            return "bare"
+        }
+        return worktree.headOID.map { "detached \($0.prefix(8))" } ?? "detached"
     }
 
     private func badge(_ text: String, color: Color) -> some View {
@@ -1060,7 +1270,17 @@ private struct WorktreeRow: View {
 
     private var tooltip: String {
         var parts = [worktree.path.path]
-        parts.append(worktree.branch.map { "on \($0)" } ?? (worktree.isBare ? "bare" : "detached HEAD"))
+        if let branch = worktree.branch {
+            parts.append("on \(branch)")
+        } else if worktree.isBare {
+            parts.append("bare")
+        } else {
+            let at = worktree.headOID.map { " at \($0.prefix(8))" } ?? ""
+            parts.append("detached HEAD\(at)\(subject.map { ": \($0)" } ?? ""), so new commits there are on no branch")
+        }
+        if let changes, changes > 0 {
+            parts.append(changes == 1 ? "1 uncommitted change" : "\(changes) uncommitted changes")
+        }
         if isCurrent {
             parts.append("this tab")
         }

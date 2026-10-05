@@ -119,13 +119,17 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         fileDiffs[path] ?? FileDiff(hunks: [], isBinary: false)
     }
 
-    public func checkout(_: GitReference, in _: URL) async throws {}
+    public func checkout(_ ref: GitReference, in _: URL) async throws {
+        actionCalls.append("checkout \(ref.name)")
+    }
+
     public func createBranch(named _: String, startPoint _: String?, checkout _: Bool, in _: URL) async throws {}
     public func renameBranch(from _: String, to _: String, in _: URL) async throws {}
     public func setUpstream(branch _: String, upstream _: String, in _: URL) async throws {}
     public func unsetUpstream(branch _: String, in _: URL) async throws {}
     public func deleteBranch(named name: String, force: Bool, in _: URL) async throws {
         deleteBranchCalls.append(force ? "\(name) (forced)" : name)
+        actionCalls.append(force ? "delete \(name) (forced)" : "delete \(name)")
         if brokenBranches.contains(name) {
             throw GitError.commandFailed(
                 command: "git branch -d -- \(name)",
@@ -151,8 +155,14 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         GitRemoteOperationResult(output: "ok")
     }
 
+    /// Thrown by `pull(in:)`, like Git stopping on a conflict.
+    public var pullError: GitError?
+
     public func pull(in _: URL) async throws -> GitRemoteOperationResult {
-        GitRemoteOperationResult(output: "ok")
+        if let pullError {
+            throw pullError
+        }
+        return GitRemoteOperationResult(output: "ok")
     }
 
     public func pull(branch _: String?, in _: URL) async throws -> GitRemoteOperationResult {
@@ -337,5 +347,80 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
 
     public func stashDiff(ref _: String, path: String, in _: URL) async throws -> FileDiff {
         fileDiffs[path] ?? FileDiff(hunks: [], isBinary: false)
+    }
+
+    // MARK: Branch and file actions
+
+    /// Branch and file actions in call order, such as "merge feature squash".
+    public private(set) var actionCalls: [String] = []
+    /// What `merge` and `rebase` report back.
+    public var integrationOutcome: IntegrationOutcome = .completed
+    /// Remote branches whose deletion the server refuses.
+    public var protectedRemoteBranches: Set<String> = []
+
+    public func merge(branch: String, mode: MergeMode, in _: URL) async throws -> IntegrationOutcome {
+        actionCalls.append("merge \(branch) \(mode.rawValue)")
+        return integrationOutcome
+    }
+
+    public func rebase(onto branch: String, autostash: Bool, in _: URL) async throws -> IntegrationOutcome {
+        actionCalls.append("rebase \(branch)\(autostash ? " autostash" : "")")
+        return integrationOutcome
+    }
+
+    public func fastForward(branch: String, in _: URL) async throws {
+        actionCalls.append("fast-forward \(branch)")
+    }
+
+    public func addWorktree(at path: URL, branch: String, in _: URL) async throws {
+        actionCalls.append("worktree \(branch) \(path.lastPathComponent)")
+    }
+
+    public func checkout(_ ref: GitReference, carryingLocalChanges: Bool, in _: URL) async throws -> CheckoutOutcome {
+        actionCalls.append("checkout \(ref.name)\(carryingLocalChanges ? " carrying" : "")")
+        return .switched
+    }
+
+    public func deleteRemoteBranch(named branch: String, remote: String, in _: URL) async throws -> GitRemoteOperationResult {
+        actionCalls.append("delete remote \(remote)/\(branch)")
+        if protectedRemoteBranches.contains(branch) {
+            throw GitError.commandFailed(
+                command: "git push --delete -- \(remote) refs/heads/\(branch)",
+                exitCode: 1,
+                stderr: " ! [remote rejected] \(branch) (protected branch)"
+            )
+        }
+        return GitRemoteOperationResult(output: " - [deleted]         \(branch)")
+    }
+
+    /// What `unreferencedCommitCount` reports: commits a detached HEAD has on no branch.
+    public var unreferencedCommits = 0
+    /// Worktrees whose removal Git refuses because they have changes.
+    public var dirtyWorktrees: Set<String> = []
+
+    public func unreferencedCommitCount(in _: URL) async throws -> Int {
+        unreferencedCommits
+    }
+
+    public func removeWorktree(at path: URL, force: Bool, in _: URL) async throws {
+        actionCalls.append("remove worktree \(path.lastPathComponent)\(force ? " forced" : "")")
+        if dirtyWorktrees.contains(path.lastPathComponent), !force {
+            throw GitError.commandFailed(
+                command: "git worktree remove \(path.path)",
+                exitCode: 128,
+                stderr: "fatal: '\(path.path)' contains modified or untracked files, use --force to delete it"
+            )
+        }
+        worktrees.removeAll { $0.path.lastPathComponent == path.lastPathComponent }
+    }
+
+    public func pruneWorktrees(in _: URL) async throws -> String {
+        actionCalls.append("prune worktrees")
+        worktrees.removeAll(where: \.isPrunable)
+        return ""
+    }
+
+    public func stash(paths: [String], message: String?, includeUntracked: Bool, in _: URL) async throws {
+        actionCalls.append("stash \(paths.joined(separator: ",")) \(message ?? "")\(includeUntracked ? " untracked" : "")")
     }
 }

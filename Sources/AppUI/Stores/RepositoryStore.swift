@@ -67,7 +67,34 @@ public final class RepositoryStore: Identifiable {
     /// old blocking sheet so you can keep working meanwhile.
     public internal(set) var aiWorkDescription = ""
     public private(set) var isApplyingAISplit = false
-    public var rebaseInProgress: Bool = false
+    /// A merge or rebase waiting in this working tree for you to finish or abort it.
+    public internal(set) var operationState: GitOperationState?
+    /// What Git said when the merge or rebase stopped, for the banner.
+    public internal(set) var operationNotice: String?
+    /// The message a stopped merge put in the commit field. Set once, so
+    /// clearing the field yourself does not bring it back; when the merge ends
+    /// without that commit, an untouched message goes with it.
+    var operationMessage: String?
+    /// Files waiting in the "Stash Files" sheet.
+    public var fileStashRequest: FileStashRequest?
+    /// Where a detached HEAD points and what leaving it would strand.
+    public internal(set) var detachedHead: DetachedHead?
+    /// A checkout waiting for you to confirm leaving unbranched commits behind.
+    public var pendingCheckout: PendingCheckout?
+    /// Uncommitted changes in each other worktree, keyed by `Worktree.id`.
+    public internal(set) var worktreeChanges: [String: Int] = [:]
+    /// Subjects of detached worktrees' commits, keyed by commit ID.
+    public internal(set) var worktreeSubjects: [String: String] = [:]
+    var worktreeDetailsTask: Task<Void, Never>?
+    var worktreeDetailsLoaded: Date?
+    /// Worktrees of this repository inside its folder, such as an agent's
+    /// `.claude/worktrees/x`. Git lists them as untracked folders; Changes hides
+    /// them, and Stage All must not add them as embedded repositories.
+    public internal(set) var hiddenWorktreeCount = 0
+    public var rebaseInProgress: Bool {
+        operationState == .rebase
+    }
+
     /// Pending commits for this repository: agent proposals, AI splits, and
     /// drafts you made. Empty when there is no plan.
     public var commitPlan = CommitPlan()
@@ -148,7 +175,13 @@ public final class RepositoryStore: Identifiable {
 
     public var canCommit: Bool {
         let hasSummary = !commitSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return hasSummary && ((amend && canAmend) || !stagedCommitEntries.isEmpty)
+        return hasSummary && ((amend && canAmend) || !stagedCommitEntries.isEmpty || canConcludeMerge)
+    }
+
+    /// A stopped merge whose conflicts are resolved commits even when the
+    /// result matches HEAD and nothing shows as staged.
+    public var canConcludeMerge: Bool {
+        operationState == .merge && !entries.contains(where: \.isConflicted)
     }
 
     public var canStageAll: Bool {
@@ -233,9 +266,12 @@ public final class RepositoryStore: Identifiable {
             if branch != status.branch {
                 branch = status.branch
             }
-            if entries != status.entries {
-                entries = status.entries
+            let visible = status.entries.filter { !isLinkedWorktreeEntry($0) }
+            hiddenWorktreeCount = status.entries.count - visible.count
+            if entries != visible {
+                entries = visible
             }
+            refreshOperationState()
             let currentFolderIds = FileTreeBuilder.allFolderIds(for: entries)
             let newFolders = currentFolderIds.subtracting(lastSeenFolderIds)
             if !newFolders.isEmpty {
@@ -261,6 +297,7 @@ public final class RepositoryStore: Identifiable {
                 await refreshHistory()
                 await refreshStashes()
                 await refreshDefaultBranch()
+                await refreshDetachedHead()
             } else {
                 refs = .empty
                 stashes = []
@@ -299,7 +336,8 @@ public final class RepositoryStore: Identifiable {
     /// Stages every unstaged change into Commit 1, except files a planned commit holds.
     public func stageAll() async {
         let planned = commitPlan.claimedPaths
-        guard !planned.isEmpty else {
+        // `git add --all` would also add hidden worktrees as embedded repositories.
+        guard !planned.isEmpty || hiddenWorktreeCount > 0 else {
             await perform { try await $0.stageAll(in: $1) }
             return
         }
@@ -388,9 +426,11 @@ public final class RepositoryStore: Identifiable {
                 refs = latestRefs
             }
             let latestWorktrees = try await git.worktrees(in: root)
-            if worktrees != latestWorktrees {
+            let changed = worktrees != latestWorktrees
+            if changed {
                 worktrees = latestWorktrees
             }
+            refreshWorktreeDetails(force: changed)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -472,6 +512,7 @@ public final class RepositoryStore: Identifiable {
     }
 
     public func checkout(_ ref: GitReference) async {
+        guard confirmLeavingDetachedHead(for: ref, carryingLocalChanges: false) else { return }
         await perform {
             try await $0.checkout(ref, in: $1)
         }
@@ -623,12 +664,30 @@ public final class RepositoryStore: Identifiable {
             _ = try await $0.fetch(remote: nil, in: $1)
             return try await $0.pull(in: $1)
         }
+        await showStoppedPullAsOperation()
     }
 
     public func pull(branch: String?) async {
         await performRemoteOperation {
             _ = try await $0.fetch(remote: nil, in: $1)
             return try await $0.pull(branch: branch, in: $1)
+        }
+        await showStoppedPullAsOperation()
+    }
+
+    /// A pull that stopped on conflicts left a merge or rebase waiting. That
+    /// is work to finish, not an error: the banner explains it, and Changes
+    /// shows the conflicted files.
+    private func showStoppedPullAsOperation() async {
+        guard let failure = errorMessage else { return }
+        // A failed remote operation does not refresh, and a refresh clears
+        // the error, so keep it across one.
+        await refresh()
+        if operationState != nil {
+            operationNotice = failure
+            workspaceSelection = .localChanges
+        } else {
+            errorMessage = failure
         }
     }
 
@@ -650,14 +709,14 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
-    /// Push `branch` (setting upstream if needed) and open the provider's
-    /// new-PR/MR compare page in the browser, with title pre-filled to the branch name.
-    public func pushAndOpenPullRequestPage(branch: String) async {
+    /// Open the provider's new pull request (GitHub) or merge request (GitLab)
+    /// page for `branch`, with its name as the title. With `pushFirst`, the
+    /// branch is pushed to that remote first, setting its upstream when it has none.
+    public func openPullRequestPage(branch: String, pushFirst: Bool) async {
         guard let root else { return }
         errorMessage = nil
 
-        let resolvedRemoteName = resolveRemoteName(forBranch: branch)
-        guard let remoteName = resolvedRemoteName else {
+        guard let remoteName = resolveRemoteName(forBranch: branch) else {
             errorMessage = "No remote configured for this repository."
             return
         }
@@ -666,10 +725,12 @@ public final class RepositoryStore: Identifiable {
             return
         }
 
-        await push(branch: branch, remote: remoteName, force: false, pushTags: false)
-        // performRemoteOperation surfaces failures via errorMessage; bail if push failed.
-        if errorMessage != nil {
-            return
+        if pushFirst {
+            await push(branch: branch, remote: remoteName, force: false, pushTags: false)
+            // performRemoteOperation surfaces failures via errorMessage; bail if push failed.
+            if errorMessage != nil {
+                return
+            }
         }
 
         let hint = RemoteURLParser.hint(from: gitRemote)
@@ -701,7 +762,7 @@ public final class RepositoryStore: Identifiable {
 
     /// Pick the remote name to use when pushing `branch`: prefer the branch's upstream remote,
     /// else "origin" if configured, else the first remote. Returns `nil` when no remotes exist.
-    private func resolveRemoteName(forBranch branch: String) -> String? {
+    func resolveRemoteName(forBranch branch: String) -> String? {
         if let ref = refs.localBranches.first(where: { $0.name == branch }),
            let upstream = ref.upstream,
            let head = upstream.split(separator: "/", maxSplits: 1).first {
@@ -1235,7 +1296,7 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
-    private func perform(_ action: (GitProviding, URL) async throws -> Void) async {
+    func perform(_ action: (GitProviding, URL) async throws -> Void) async {
         guard let root else { return }
         let priorPath = selectedPath
         let priorEntries = entries
@@ -1267,7 +1328,7 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
-    private func performRemoteOperation(_ action: (GitProviding, URL) async throws -> GitRemoteOperationResult) async {
+    func performRemoteOperation(_ action: (GitProviding, URL) async throws -> GitRemoteOperationResult) async {
         guard let root else { return }
         // Dropping the request silently reads as a dead button, so say why.
         guard !isRemoteOperationRunning else {
@@ -1434,12 +1495,11 @@ public final class RepositoryStore: Identifiable {
         Task { @MainActor in
             do {
                 try await git.rebaseSingle(commit: preview.oid, action: .reword(newMessage: edited), in: root)
-                rebaseInProgress = await git.isRebaseInProgress(in: root)
                 await refresh()
                 await refreshHistory()
             } catch {
                 errorMessage = error.localizedDescription
-                rebaseInProgress = await git.isRebaseInProgress(in: root)
+                refreshOperationState()
             }
         }
     }
@@ -1593,12 +1653,10 @@ public final class RepositoryStore: Identifiable {
                     }
                     _ = try await git.rebaseContinue(in: root)
                 }
-                rebaseInProgress = await git.isRebaseInProgress(in: root)
                 await refresh()
                 await refreshHistory()
             } catch {
                 let failure = error.localizedDescription
-                rebaseInProgress = await git.isRebaseInProgress(in: root)
                 await refresh()
                 errorMessage = failure
             }
@@ -1609,7 +1667,6 @@ public final class RepositoryStore: Identifiable {
         guard let root else { return }
         Task { @MainActor in
             try? await git.rebaseAbort(in: root)
-            rebaseInProgress = await git.isRebaseInProgress(in: root)
             await refresh()
             await refreshHistory()
         }
