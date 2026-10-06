@@ -39,6 +39,18 @@ struct CommitStackTests {
         #expect(store.stackOrder == [nil, draft.id])
     }
 
+    /// Split into Commits takes only what you staged: unstaged changes and
+    /// files a planned commit already holds stay where they are.
+    @Test func splittingTakesOnlyTheStagedChanges() async {
+        let draft = CommitDraft(message: "planned", files: ["b"], source: .manual)
+        let (store, _) = await store([staged("a"), staged("b"), unstaged("c"), staged("d")], drafts: [draft])
+        #expect(store.splittablePaths == ["a", "d"])
+        #expect(RepositoryStore.splitTitle(store.splittablePaths) == "2 staged files")
+
+        let (unstagedOnly, _) = await self.store([unstaged("a"), unstaged("b")])
+        #expect(unstagedOnly.splittablePaths.isEmpty)
+    }
+
     @Test func anEmptyCommitOneStepsAsideForPlannedCommits() async {
         let draft = CommitDraft(message: "one", files: ["a"], source: .manual)
         let (store, _) = await store([unstaged("a"), unstaged("b")], drafts: [draft])

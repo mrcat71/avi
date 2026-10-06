@@ -63,9 +63,9 @@ enum CommandRegistry {
 
         // Several commits
         if store.canUseAIForPlan, store.splittablePaths.count > 1 {
-            result.append(AppCommand(id: "plan.split", title: "Split into Commits…", subtitle: "Let the AI group the changes into several commits", group: "Working Copy", symbol: "rectangle.split.3x1") {
+            result.append(AppCommand(id: "plan.split", title: "Split into Commits…", subtitle: "Let the AI group the staged changes into several commits", group: "Working Copy", symbol: "rectangle.split.3x1") {
                 setSelection(.localChanges)
-                store.requestSplit(of: store.splittablePaths, title: "\(store.splittablePaths.count) changed files")
+                store.requestSplit(of: store.splittablePaths, title: RepositoryStore.splitTitle(store.splittablePaths))
             })
         }
         if store.stackCount > 1, store.canCommitStack {

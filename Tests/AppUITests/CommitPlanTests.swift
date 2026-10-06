@@ -406,7 +406,8 @@ struct CommitPlanApplyTests {
         await store.open(URL(fileURLWithPath: "/tmp/avi-ai-split", isDirectory: true))
         store.stopBackgroundObservation()
         store.commitPlan = CommitPlan(drafts: [CommitDraft(message: "agent", files: ["c"], source: .agent(name: "Codex", session: "s", title: nil))])
-        #expect(store.splittablePaths == ["a", "b"])
+        // Split into Commits offers only what you staged; "b" waits unstaged.
+        #expect(store.splittablePaths == ["a"])
 
         let created = store.splitIntoCommits(["a", "b", "c"], instructions: RepositoryStore.splitSuggestion)
         let id = try #require(created)

@@ -151,12 +151,14 @@ struct ChangeListView: View {
         .frame(height: 28)
     }
 
-    /// Splits every change no planned commit holds, staged or not, into commits.
+    /// Splits the staged changes into commits; stage what the AI may group.
     private var splitButton: some View {
         let paths = store.splittablePaths
-        let help = store.canUseAIForPlan
-            ? "Let the AI group every change that is not in a planned commit into commits"
-            : "Turn on AI in Settings > AI Commit Messages"
+        let help = !store.canUseAIForPlan
+            ? "Turn on AI in Settings > AI Commit Messages"
+            : paths.count < 2
+            ? "Stage the changes to split, at least two files"
+            : "Let the AI group your staged changes into commits"
         return ViewThatFits(in: .horizontal) {
             splitButton(paths: paths, help: help, compact: false)
             splitButton(paths: paths, help: help, compact: true)
@@ -165,7 +167,7 @@ struct ChangeListView: View {
 
     private func splitButton(paths: [String], help: String, compact: Bool) -> some View {
         Button {
-            store.requestSplit(of: paths, title: paths.count == 1 ? "1 changed file" : "\(paths.count) changed files")
+            store.requestSplit(of: paths, title: RepositoryStore.splitTitle(paths))
         } label: {
             if compact {
                 Image(systemName: "rectangle.split.3x1")

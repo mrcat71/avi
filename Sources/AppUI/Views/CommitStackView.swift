@@ -742,8 +742,8 @@ struct PlanActionsMenu: View {
         }
         .disabled(store.isApplyingPlan)
         Divider()
-        Button("Split into Commits with AI…") {
-            store.requestSplit(of: splittable, title: splittable.count == 1 ? "1 changed file" : "\(splittable.count) changed files")
+        Button("Split Staged Changes with AI…") {
+            store.requestSplit(of: splittable, title: RepositoryStore.splitTitle(splittable))
         }
         .disabled(!aiReady || splittable.count < 2)
         Button("Rethink Planned Commits with AI…") {
