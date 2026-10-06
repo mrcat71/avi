@@ -6,6 +6,12 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-06
+
+### Added
+- Avi updates itself. **Avi > Check for Updates…** looks for a new version, and Avi also checks on its own once a day. Settings > General > Updates turns the daily check off, or has Avi download new versions in the background and install them when you quit. Every update is checked against Avi's signing key before it is installed, and an updated Avi opens without the Gatekeeper warning. Versions up to 0.7.0 cannot update themselves, so download this one by hand one last time.
+- Releases include a disk image, `avi-<version>-macos-arm64.dmg`: open it and drag Avi onto the Applications folder next to it. The zip stays, since updates install from it, and `SHA256SUMS` covers both.
+
 ## [0.7.0] - 2026-10-06
 
 ### Added
