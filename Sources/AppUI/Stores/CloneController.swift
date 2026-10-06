@@ -2,37 +2,6 @@ import AppKit
 import Foundation
 import SwiftUI
 
-/// Source the user can choose for a clone operation.
-public enum CloneSource: CaseIterable, Sendable {
-    case github
-    case gitlab
-    case url
-
-    public var title: String {
-        switch self {
-        case .github: return "GitHub"
-        case .gitlab: return "GitLab"
-        case .url: return "From URL"
-        }
-    }
-
-    public var icon: String {
-        switch self {
-        case .github: return "chevron.left.forwardslash.chevron.right"
-        case .gitlab: return "globe"
-        case .url: return "link"
-        }
-    }
-
-    public var tint: Color {
-        switch self {
-        case .github: return .primary
-        case .gitlab: return .orange
-        case .url: return .blue
-        }
-    }
-}
-
 /// State machine and view-model for `CloneSheet`. Owns the lifecycle of a clone
 /// request from source selection through progress streaming to completion.
 @MainActor
@@ -40,8 +9,8 @@ public enum CloneSource: CaseIterable, Sendable {
 public final class CloneController {
     public enum State: Equatable {
         case pickingSource
-        case loadingRepos(CloneProvider)
-        case browsingRepos(CloneProvider)
+        case loadingRepos(CloneAccount)
+        case browsingRepos(CloneAccount)
         case pickingDestination
         case cloning
         case finished(URL)
@@ -49,26 +18,78 @@ public final class CloneController {
     }
 
     public var state: State = .pickingSource
-    public var githubAuth: ProviderAuthState = .cliMissing
-    public var gitlabAuth: ProviderAuthState = .cliMissing
+    public private(set) var accountList = CloneAccountList()
+    public private(set) var isLoadingAccounts = true
     public var repos: [RemoteRepo] = []
     public var selectedRepoID: String?
-    public var pastedURL: String = ""
-    public var destinationPath: String = ""
+    /// The URL typed or pasted in the From URL step.
+    public var pastedURL: String = "" {
+        didSet {
+            if pastedURL != oldValue {
+                urlChanged()
+            }
+        }
+    }
+
+    public var transport: CloneURL.Transport
+    /// The account that authenticates an HTTPS clone; nil leaves it to Git.
+    public var credentialAccountID: String?
+    public var destinationPath: String = "" {
+        didSet {
+            if !settingDestination {
+                destinationEdited = true
+            }
+        }
+    }
+
     public var progress: CloneProgress?
     public var openAfterClone: Bool
+    /// Shown with the finished clone, such as credentials that could not be kept.
+    public private(set) var finishedWarning: String?
 
+    private var browsingAccount: CloneAccount?
+    private var destinationEdited = false
+    private var settingDestination = false
     private var loadTask: Task<Void, Never>?
     private var cloneTask: Task<Void, Never>?
 
     public init() {
         let config = ConfigStore.shared.config.clone
         openAfterClone = config.openAfterClone
+        transport = config.preferredProtocol == "ssh" ? .ssh : .https
     }
 
     public var selectedRepo: RemoteRepo? {
         guard let id = selectedRepoID else { return nil }
         return repos.first { $0.id == id }
+    }
+
+    /// The remote being cloned, when Avi can switch it between HTTPS and SSH.
+    public var cloneURL: CloneURL? {
+        if let repo = selectedRepo {
+            return CloneURL.from(repo)
+        }
+        return CloneURL(pastedURL)
+    }
+
+    /// The accounts that can sign an HTTPS clone of `cloneURL`.
+    public var credentialChoices: [CloneAccount] {
+        guard transport == .https, let host = cloneURL?.host else { return [] }
+        return CloneAccounts.usable(accountList.accounts, on: host)
+    }
+
+    public var credentialAccount: CloneAccount? {
+        credentialChoices.first { $0.id == credentialAccountID }
+    }
+
+    /// Exactly what `git clone` gets: the remote in the chosen transport with
+    /// the chosen account's name, or a URL Avi cannot rewrite, as typed.
+    public var effectiveURL: String? {
+        if let url = cloneURL {
+            return url.string(for: transport, user: credentialAccount?.login)
+        }
+        let typed = pastedURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return typed.isEmpty || typed.contains(where: \.isWhitespace) ? nil : typed
     }
 
     public var isCloning: Bool {
@@ -104,7 +125,7 @@ public final class CloneController {
         case .browsingRepos:
             return selectedRepoID != nil
         case .pickingDestination:
-            return !destinationPath.trimmingCharacters(in: .whitespaces).isEmpty
+            return effectiveURL != nil && !destinationPath.trimmingCharacters(in: .whitespaces).isEmpty
         case .cloning:
             return true
         default:
@@ -126,22 +147,54 @@ public final class CloneController {
     }
 
     public func refreshAuth() async {
-        async let gh = GhCLI.authStatus()
-        async let glab = GlabCLI.authStatus()
-        githubAuth = await gh
-        gitlabAuth = await glab
+        isLoadingAccounts = true
+        accountList = await CloneAccountList.load()
+        isLoadingAccounts = false
     }
 
-    public func pick(source: CloneSource) {
-        switch source {
-        case .github:
-            startLoading(provider: .github)
-        case .gitlab:
-            startLoading(provider: .gitlab)
-        case .url:
-            selectedRepoID = nil
-            destinationPath = defaultDestination(for: nil)
-            state = .pickingDestination
+    public func pick(account: CloneAccount) {
+        guard account.canBrowse else { return }
+        browsingAccount = account
+        state = .loadingRepos(account)
+        loadTask?.cancel()
+        loadTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let list: [RemoteRepo]
+                switch account.source {
+                case .gh: list = try await GhCLI.listRepos(account: account)
+                case .glab: list = try await GlabCLI.listRepos(account: account)
+                case .token: list = []
+                }
+                if Task.isCancelled {
+                    return
+                }
+                repos = list
+                state = .browsingRepos(account)
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Opens the From URL step, taking a remote URL from the clipboard when
+    /// one is there.
+    public func pickURL() {
+        selectedRepoID = nil
+        browsingAccount = nil
+        destinationEdited = false
+        if pastedURL.isEmpty, let clip = NSPasteboard.general.string(forType: .string), CloneURL(clip) != nil {
+            pastedURL = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            urlChanged()
+        }
+        state = .pickingDestination
+    }
+
+    public func setTransport(_ value: CloneURL.Transport) {
+        transport = value
+        if value == .https, credentialAccount == nil {
+            credentialAccountID = defaultCredentialID()
         }
     }
 
@@ -151,9 +204,10 @@ public final class CloneController {
             state = .pickingSource
             repos = []
             selectedRepoID = nil
+            browsingAccount = nil
         case .pickingDestination:
-            if let repo = selectedRepo {
-                state = .browsingRepos(repo.provider)
+            if selectedRepo != nil, let account = browsingAccount {
+                state = .browsingRepos(account)
             } else {
                 state = .pickingSource
             }
@@ -167,8 +221,9 @@ public final class CloneController {
     public func primaryAction() async {
         switch state {
         case .browsingRepos:
-            guard let repo = selectedRepo else { return }
-            destinationPath = defaultDestination(for: repo)
+            guard selectedRepo != nil else { return }
+            destinationEdited = false
+            urlChanged()
             state = .pickingDestination
         case .pickingDestination:
             await startClone()
@@ -185,71 +240,93 @@ public final class CloneController {
         cloneTask?.cancel()
         repos = []
         selectedRepoID = nil
+        browsingAccount = nil
         pastedURL = ""
-        destinationPath = ""
+        setDestination("")
+        destinationEdited = false
         progress = nil
+        finishedWarning = nil
         state = .pickingSource
     }
 
     public func setDestinationDirectory(_ url: URL) {
-        let name = selectedRepo?.name ?? URL(string: pastedURL)?.deletingPathExtension().lastPathComponent ?? "repository"
-        destinationPath = url.appendingPathComponent(name).path
+        destinationPath = url.appendingPathComponent(repositoryName).path
     }
 
-    private func startLoading(provider: CloneProvider) {
-        state = .loadingRepos(provider)
-        loadTask?.cancel()
-        loadTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let list: [RemoteRepo]
-                switch provider {
-                case .github: list = try await GhCLI.listRepos()
-                case .gitlab: list = try await GlabCLI.listRepos()
-                }
-                if Task.isCancelled {
-                    return
-                }
-                repos = list
-                state = .browsingRepos(provider)
-            } catch {
-                state = .failed(error.localizedDescription)
-            }
+    /// A next step for the error the last clone failed with, if there is one.
+    public func hint(for message: String) -> String? {
+        cloneFailureHint(for: message, host: cloneURL?.host)
+    }
+
+    private var repositoryName: String {
+        selectedRepo?.name ?? cloneURL?.repositoryName ?? "repository"
+    }
+
+    /// A new remote picks its transport, its account, and, unless you typed
+    /// one, its destination folder.
+    private func urlChanged() {
+        if selectedRepo == nil, let url = CloneURL(pastedURL) {
+            transport = url.transport
         }
+        credentialAccountID = defaultCredentialID()
+        if !destinationEdited {
+            setDestination(defaultDestination())
+        }
+    }
+
+    /// The account you browsed with, else the first account on the host.
+    private func defaultCredentialID() -> String? {
+        let choices = credentialChoices
+        if let browsing = browsingAccount, choices.contains(browsing) {
+            return browsing.id
+        }
+        return choices.first?.id
+    }
+
+    private func setDestination(_ path: String) {
+        settingDestination = true
+        destinationPath = path
+        settingDestination = false
     }
 
     private func startClone() async {
-        let destination = URL(fileURLWithPath: expand(path: destinationPath), isDirectory: true)
-        let cloneConfig = ConfigStore.shared.config.clone
-        let ghPath = GhCLI.executablePath()
-        let glabPath = GlabCLI.executablePath()
-
-        let spec: CloneRunner.Spec
-        if let repo = selectedRepo {
-            spec = CloneRunner.Spec(
-                repo: repo,
-                destination: destination,
-                preferredProtocol: cloneConfig.preferredProtocol,
-                preferredCLI: cloneConfig.preferredCLI,
-                ghPath: ghPath,
-                glabPath: glabPath
-            )
-        } else if let synthetic = syntheticRepo(from: pastedURL) {
-            spec = CloneRunner.Spec(
-                repo: synthetic,
-                destination: destination,
-                preferredProtocol: cloneConfig.preferredProtocol,
-                preferredCLI: "git",
-                ghPath: ghPath,
-                glabPath: glabPath
-            )
-        } else {
-            state = .failed("Invalid clone URL.")
+        guard let url = effectiveURL else {
+            state = .failed("Enter the URL of the repository to clone.")
             return
         }
+        let credential: CloneCredential
+        switch credentialAccount?.source {
+        case .gh?:
+            guard let path = GhCLI.executablePath() else {
+                state = .failed("GitHub CLI not found. Install it with `brew install gh`, or pick another account.")
+                return
+            }
+            credential = .cliHelper(executable: path)
+        case .glab?:
+            guard let path = GlabCLI.executablePath() else {
+                state = .failed("GitLab CLI not found. Install it with `brew install glab`, or pick another account.")
+                return
+            }
+            credential = .cliHelper(executable: path)
+        case .token(let item)?:
+            guard let token = KeychainStore.getString(account: item), let account = credentialAccount else {
+                state = .failed("The token for this account is missing from the Keychain. Add it again in Settings.")
+                return
+            }
+            credential = .token(username: account.login.isEmpty ? "oauth2" : account.login, secret: token)
+        case nil:
+            credential = .gitDefault
+        }
+        let spec = CloneRunner.Spec(
+            url: url,
+            destination: URL(fileURLWithPath: expand(path: destinationPath), isDirectory: true),
+            credential: credential,
+            host: cloneURL?.host
+        )
 
         state = .cloning
         progress = nil
+        finishedWarning = nil
         cloneTask?.cancel()
         cloneTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -263,10 +340,8 @@ public final class CloneController {
                     return
                 }
                 if outcome.success {
+                    finishedWarning = outcome.warning
                     state = .finished(outcome.destination)
-                    if openAfterClone {
-                        // Caller (CloneSheet) is responsible for calling onClone(url).
-                    }
                 } else {
                     state = .failed(outcome.stderrTail.isEmpty ? "Clone failed (exit \(outcome.exitCode))." : outcome.stderrTail)
                 }
@@ -278,30 +353,12 @@ public final class CloneController {
         }
     }
 
-    private func defaultDestination(for repo: RemoteRepo?) -> String {
+    private func defaultDestination() -> String {
         let base = expand(path: ConfigStore.shared.config.clone.defaultDirectory)
-        let name = repo?.name ?? "repository"
-        return URL(fileURLWithPath: base, isDirectory: true).appendingPathComponent(name).path
+        return URL(fileURLWithPath: base, isDirectory: true).appendingPathComponent(repositoryName).path
     }
 
     private func expand(path: String) -> String {
         (path as NSString).expandingTildeInPath
-    }
-
-    private func syntheticRepo(from rawURL: String) -> RemoteRepo? {
-        let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let name = URL(string: trimmed)?.deletingPathExtension().lastPathComponent ?? "repository"
-        return RemoteRepo(
-            provider: .github, // value unused; CLI=git skips provider branching
-            nameWithOwner: name,
-            name: name,
-            description: "",
-            sshURL: trimmed.hasPrefix("git@") ? trimmed : "",
-            httpsURL: trimmed.hasPrefix("http") ? trimmed : "",
-            defaultBranch: "",
-            isPrivate: false,
-            updatedAt: nil
-        )
     }
 }

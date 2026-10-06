@@ -32,7 +32,7 @@ struct CloneSettingsView: View {
                 Divider().padding(.vertical, 4)
                 SettingsFormRow(
                     "Protocol",
-                    description: "Used as a fallback when cloning by URL"
+                    description: "What a repository from GitHub or GitLab is cloned over; each clone can switch"
                 ) {
                     Picker("", selection: bind(\.clone.preferredProtocol)) {
                         Text("HTTPS").tag("https")
@@ -40,20 +40,6 @@ struct CloneSettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(maxWidth: 200)
-                    .labelsHidden()
-                }
-                Divider().padding(.vertical, 4)
-                SettingsFormRow(
-                    "Tooling",
-                    description: "Use gh/glab when available so SSH keys and stored auth are reused"
-                ) {
-                    Picker("", selection: bind(\.clone.preferredCLI)) {
-                        Text("Auto").tag("auto")
-                        Text("Prefer gh/glab").tag("gh-glab")
-                        Text("Always use git").tag("git")
-                    }
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: 220)
                     .labelsHidden()
                 }
                 Divider().padding(.vertical, 4)

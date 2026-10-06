@@ -33,13 +33,13 @@ struct ConfigStoreTests {
         // A clone config with only one field set should decode all other
         // keys to their defaults (the tolerant decoder behaviour exercised
         // by every section).
-        let partial = #"{"defaultDirectory": "/tmp/avi-test-clones"}"#
+        // `preferredCLI` is gone; files that still have it decode the same.
+        let partial = #"{"defaultDirectory": "/tmp/avi-test-clones", "preferredCLI": "gh-glab"}"#
         let data = Data(partial.utf8)
         let decoded = try JSONDecoder().decode(CloneConfig.self, from: data)
         #expect(decoded.defaultDirectory == "/tmp/avi-test-clones")
         #expect(decoded.openAfterClone == true)
         #expect(decoded.preferredProtocol == "https")
-        #expect(decoded.preferredCLI == "auto")
         #expect(decoded.rememberDestinationPerProvider == true)
     }
 

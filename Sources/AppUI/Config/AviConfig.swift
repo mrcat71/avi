@@ -73,20 +73,17 @@ public struct CloneConfig: Codable, Equatable, Sendable {
     public var defaultDirectory: String // "~/src" expanded at use site
     public var openAfterClone: Bool
     public var preferredProtocol: String // "https" | "ssh"
-    public var preferredCLI: String // "auto" | "gh-glab" | "git"
     public var rememberDestinationPerProvider: Bool
 
     public init(
         defaultDirectory: String = "~/Developer",
         openAfterClone: Bool = true,
         preferredProtocol: String = "https",
-        preferredCLI: String = "auto",
         rememberDestinationPerProvider: Bool = true
     ) {
         self.defaultDirectory = defaultDirectory
         self.openAfterClone = openAfterClone
         self.preferredProtocol = preferredProtocol
-        self.preferredCLI = preferredCLI
         self.rememberDestinationPerProvider = rememberDestinationPerProvider
     }
 
@@ -96,7 +93,8 @@ public struct CloneConfig: Codable, Equatable, Sendable {
         defaultDirectory = (try? c.decode(String.self, forKey: .defaultDirectory)) ?? defaults.defaultDirectory
         openAfterClone = (try? c.decode(Bool.self, forKey: .openAfterClone)) ?? defaults.openAfterClone
         preferredProtocol = (try? c.decode(String.self, forKey: .preferredProtocol)) ?? defaults.preferredProtocol
-        preferredCLI = (try? c.decode(String.self, forKey: .preferredCLI)) ?? defaults.preferredCLI
+        // `preferredCLI` (auto | gh-glab | git) is gone: every clone runs Git,
+        // signed in as the account you pick. Files that still have it decode.
         rememberDestinationPerProvider = (try? c.decode(Bool.self, forKey: .rememberDestinationPerProvider)) ?? defaults.rememberDestinationPerProvider
     }
 }
