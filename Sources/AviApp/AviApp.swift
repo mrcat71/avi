@@ -248,6 +248,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Scheduled update checks; development builds record why they are off.
         AppUpdater.shared.start()
+
+        // A new install suggests the agent skills; an update does not.
+        AgentSkillsTip.shared.noteLaunch(isFreshInstall: ConfigStore.shared.isFreshInstall)
     }
 
     func applicationWillTerminate(_: Notification) {
