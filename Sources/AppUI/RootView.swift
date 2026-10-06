@@ -20,6 +20,18 @@ public struct RootView: View {
     public init() {}
 
     public var body: some View {
+        VStack(spacing: 0) {
+            if AgentSkillsTip.shared.isShowing {
+                AgentSkillsTipBanner(tip: AgentSkillsTip.shared)
+                Divider()
+            }
+            workspace
+        }
+    }
+
+    /// The open repository or the picker, with the window's sheets, alerts,
+    /// and menu commands.
+    private var workspace: some View {
         Group {
             if let selectedStore {
                 RepositoryView(
@@ -27,7 +39,8 @@ public struct RootView: View {
                     repositories: repositories,
                     selectedRepositoryID: Binding(get: { session.selectedRepositoryID }, set: { session.select($0) }),
                     openRepositoryPicker: openRepositoryPicker,
-                    closeRepository: closeRepository
+                    closeRepository: closeRepository,
+                    moveRepository: { session.moveRepository($0, toPlaceOf: $1) }
                 )
                 .id(selectedStore.id)
                 .sheet(isPresented: $showingPicker) {

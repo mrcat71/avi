@@ -92,6 +92,15 @@ final class WorkspaceSession {
         return repositories.first { $0.root?.resolvingSymlinksInPath().standardizedFileURL == wanted }
     }
 
+    /// Moves the tab `id` into the place of the tab `target`, the others
+    /// keeping their order, so a tab dragged onto another takes its place.
+    func moveRepository(_ id: RepositoryStore.ID, toPlaceOf target: RepositoryStore.ID) {
+        guard id != target,
+              let from = repositories.firstIndex(where: { $0.id == id }),
+              let to = repositories.firstIndex(where: { $0.id == target }) else { return }
+        repositories.insert(repositories.remove(at: from), at: to)
+    }
+
     func close(_ id: RepositoryStore.ID) {
         guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
         repositories[index].stopBackgroundObservation()

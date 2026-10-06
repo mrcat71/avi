@@ -8,6 +8,8 @@ struct RepositoryView: View {
     @Binding var selectedRepositoryID: RepositoryStore.ID?
     let openRepositoryPicker: () -> Void
     let closeRepository: (RepositoryStore.ID) -> Void
+    /// Puts the first tab in the place of the second.
+    let moveRepository: (RepositoryStore.ID, RepositoryStore.ID) -> Void
 
     private var selection: RepositorySelection? {
         get { store.workspaceSelection }
@@ -43,7 +45,8 @@ struct RepositoryView: View {
                     repositories: repositories,
                     selectedRepositoryID: $selectedRepositoryID,
                     openRepositoryPicker: openRepositoryPicker,
-                    closeRepository: closeRepository
+                    closeRepository: closeRepository,
+                    moveRepository: moveRepository
                 )
                 RepositoryActionToolbarView(
                     store: store,
@@ -525,19 +528,32 @@ private struct RepositoryTabsBar: View {
     @Binding var selectedRepositoryID: RepositoryStore.ID?
     let openRepositoryPicker: () -> Void
     let closeRepository: (RepositoryStore.ID) -> Void
+    let moveRepository: (RepositoryStore.ID, RepositoryStore.ID) -> Void
+
+    /// The tab being dragged sideways. The tabs it passes move aside as it
+    /// goes, so the order is already final when you let go.
+    private struct TabDrag {
+        let id: RepositoryStore.ID
+        /// How far the tab's place has moved since the drag began.
+        var shift: CGFloat = 0
+        /// How far the tab is drawn from its place, to stay under the pointer.
+        var offset: CGFloat = 0
+    }
+
+    private static let tabSpacing: CGFloat = 2
+
+    @State private var tabWidths: [RepositoryStore.ID: CGFloat] = [:]
+    @State private var drag: TabDrag?
+    /// Turns false on its own when a drag ends or is cancelled, which also
+    /// settles a tab whose gesture never reported its end.
+    @GestureState private var isDraggingTab = false
 
     var body: some View {
         HStack(spacing: 4) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 2) {
+                HStack(spacing: Self.tabSpacing) {
                     ForEach(repositories) { repository in
-                        RepositoryTabButton(
-                            repository: repository,
-                            isSelected: repository.id == selectedRepositoryID,
-                            canClose: true,
-                            select: { selectedRepositoryID = repository.id },
-                            close: { closeRepository(repository.id) }
-                        )
+                        tab(repository)
                     }
                 }
                 .padding(.vertical, 4)
@@ -560,6 +576,92 @@ private struct RepositoryTabsBar: View {
             Rectangle()
                 .fill(Glass.edgeStroke)
                 .frame(height: 0.6)
+        }
+        .onChange(of: isDraggingTab) { _, dragging in
+            if !dragging {
+                endDrag()
+            }
+        }
+    }
+
+    private func tab(_ repository: RepositoryStore) -> some View {
+        let isDragged = drag?.id == repository.id
+        return RepositoryTabButton(
+            repository: repository,
+            isSelected: repository.id == selectedRepositoryID,
+            canClose: true,
+            select: { selectedRepositoryID = repository.id },
+            close: { closeRepository(repository.id) }
+        )
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tabWidths[repository.id] = $0 }
+        .offset(x: isDragged ? drag?.offset ?? 0 : 0)
+        .zIndex(isDragged ? 1 : 0)
+        // The dragged tab takes its new place at once while its offset keeps it
+        // under the pointer; only the tabs it passes slide aside.
+        .transaction { transaction in
+            if isDragged {
+                transaction.animation = nil
+            }
+        }
+        // High priority, so a drag that starts on the tab's buttons moves the
+        // tab instead of selecting or closing it when you let go.
+        .highPriorityGesture(dragGesture(for: repository.id))
+        .contextMenu { tabMenu(for: repository) }
+    }
+
+    /// Measured in window coordinates: the tab itself moves with the pointer.
+    private func dragGesture(for id: RepositoryStore.ID) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .updating($isDraggingTab) { _, dragging, _ in dragging = true }
+            .onChanged { value in dragTab(id, by: value.translation.width) }
+            .onEnded { _ in endDrag() }
+    }
+
+    private func dragTab(_ id: RepositoryStore.ID, by translation: CGFloat) {
+        guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
+        var current = drag.flatMap { $0.id == id ? $0 : nil } ?? TabDrag(id: id)
+        let target = tabDragTarget(
+            index: index,
+            offset: translation - current.shift,
+            widths: repositories.map { tabWidths[$0.id] ?? 0 },
+            spacing: Self.tabSpacing
+        )
+        current.shift = translation - target.offset
+        current.offset = target.offset
+        drag = current
+        if target.index != index {
+            withAnimation(.easeOut(duration: 0.15)) {
+                moveRepository(id, repositories[target.index].id)
+            }
+        }
+    }
+
+    private func endDrag() {
+        guard drag != nil else { return }
+        withAnimation(.easeOut(duration: 0.15)) {
+            drag = nil
+        }
+    }
+
+    /// The same moves without a mouse, for the keyboard and VoiceOver.
+    @ViewBuilder
+    private func tabMenu(for repository: RepositoryStore) -> some View {
+        let index = repositories.firstIndex { $0.id == repository.id }
+        Button("Move Tab Left") {
+            if let index, index > 0 {
+                moveRepository(repository.id, repositories[index - 1].id)
+            }
+        }
+        .disabled((index ?? 0) == 0)
+        Button("Move Tab Right") {
+            if let index, index + 1 < repositories.count {
+                moveRepository(repository.id, repositories[index + 1].id)
+            }
+        }
+        .disabled(index.map { $0 + 1 >= repositories.count } ?? true)
+        Divider()
+        Button("Close Tab") {
+            closeRepository(repository.id)
         }
     }
 }
