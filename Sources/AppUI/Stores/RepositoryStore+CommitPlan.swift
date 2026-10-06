@@ -310,9 +310,16 @@ public extension RepositoryStore {
 
     static let splitSuggestion = "Split these changes into commits, one per logical change."
 
-    /// Changes Split into Commits works on: every changed file no planned commit holds.
+    /// Changes Split into Commits works on: the staged files Commit 1 holds.
+    /// You decide what the AI may group by staging it; unstaged changes stay
+    /// where they are. Agents send their plans with their own files.
     var splittablePaths: [String] {
-        commitPlan.unassigned(changed: planChangedPaths)
+        stagedCommitEntries.map(\.path)
+    }
+
+    /// The Split into Commits title for `paths`.
+    static func splitTitle(_ paths: [String]) -> String {
+        paths.count == 1 ? "1 staged file" : "\(paths.count) staged files"
     }
 
     /// Opens the sheet where you tell the AI how to split `paths` into commits.

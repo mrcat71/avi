@@ -163,16 +163,18 @@ struct CommitPanelView: View {
                     store.cancelCommitMessageGeneration()
                 }
             } else {
+                // Both work on what you staged; stage the changes first.
                 Button {
                     store.generateCommitMessage(config: config.config.ai)
                 } label: {
                     Label("Generate Commit Message", systemImage: "character.bubble")
                 }
-                .disabled(store.entries.isEmpty)
+                .disabled(store.stagedCommitEntries.isEmpty)
+                .help("Write a message for the staged changes")
 
                 Button {
-                    let paths = store.stagedCommitEntries.map(\.path)
-                    store.requestSplit(of: paths, title: "Commit 1: \(paths.count) staged files")
+                    let paths = store.splittablePaths
+                    store.requestSplit(of: paths, title: "Commit 1: " + RepositoryStore.splitTitle(paths))
                 } label: {
                     Label("Split into Commits…", systemImage: "rectangle.split.3x1")
                 }
