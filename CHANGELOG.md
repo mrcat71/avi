@@ -6,6 +6,22 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-06
+
+### Added
+- Drag a repository tab sideways to change the order of the tabs; the tabs it passes move aside as you go. Right-click a tab for **Move Tab Left**, **Move Tab Right**, and **Close Tab**, which do the same from the keyboard or VoiceOver.
+- Every diff has a toolbar, as in Fork: **Ignore Whitespace**, **Show Invisible Characters** (spaces, tabs, carriage returns, and line ends), **Wrap Lines**, **Fewer** and **More Lines of Context**, **Show Entire File**, and **Side by Side**, which puts the old file next to the new one, scrolling together with removed lines facing added ones. The choices apply to Changes, History, stashes, and file history, and Avi remembers them.
+- Clone lists every account signed in to `gh` or `glab`, including several GitHub accounts and self-hosted GitLab instances, and lists repositories with the one you pick. From URL clones over HTTPS with the account you choose, through that CLI's credential helper or a token saved in Settings, or over SSH with your keys and ssh-agent; switching rewrites the URL. A clone made through `gh` or `glab` keeps using it for that host, so fetch and push sign in as the same account. When a clone fails, the sheet says what to do next, such as trusting a new SSH host.
+- After a fresh install, a tip above the window offers to install the agent skills or explain them. It stays until you dismiss it or install the skills, and an update never shows it.
+
+### Changed
+- **Generate Commit Message** and **Split into Commits…** work only on the changes you staged: stage what the AI should look at first. Unstaged changes stay where they are, and the menu items are off until something is staged. Agents still name their own files, staged or not.
+- Settings > Clone has no Tooling choice anymore: every clone runs Git, signed in as the account you pick. `clone.preferredCLI` in the config file is ignored.
+
+### Fixed
+- Clone > From URL had no field for the URL, so it always failed with "Invalid clone URL", and an `ssh://` URL could not be cloned at all.
+- Clone and Settings said `gh` or `glab` was not signed in whenever one of its accounts or instances had a problem, such as an expired token for a second GitHub account, even though the others worked.
+
 ## [0.7.1] - 2026-10-06
 
 ### Added

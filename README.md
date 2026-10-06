@@ -18,27 +18,30 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.7.1. The config schema, the UI, and the
+Alpha. The current release is v0.7.2. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
 ## Features
 
-- Tab-based repository view with status bar, branch info, and remote actions.
+- Tab-based repository view with status bar, branch info, and remote actions;
+  drag tabs to reorder them.
 - Staged / unstaged file lists in Fork-style ordering, with selection-preserving
   stage and unstage operations and arrow keys that step from file to file,
   past folders.
 - One Changes screen for one commit or several: unstaged files on top, then the
   commits you are about to make. Commit 1 is your staged files; planned commits
   from agents, the AI, and you stack under it. Drag files between commits, let
-  **Split into Commits…** have the AI group the changes, tell it how to split,
-  merge, or rethink them, and commit one at a time or all in order.
+  **Split into Commits…** have the AI group the changes you staged, tell it how
+  to split, merge, or rethink them, and commit one at a time or all in order.
 - Agent hand-off: the `avi` command lets Claude Code, Codex, and other local
   agents stage files and fill the commit message, or propose a whole commit
   plan, from several sessions at once. Nothing is committed until you approve
   it. Agents > Install Agent Skills… installs the command and the agent skill.
 - Native selectable diff text with Find support, horizontal scrolling, and
-  separate old / new line-number gutters.
+  separate old / new line-number gutters. A toolbar ignores whitespace, shows
+  invisible characters, wraps lines, sets the lines of context or shows the
+  entire file, and switches to a side-by-side view.
 - Commit graph view with per-commit file diffs, scoped to the current branch or
   to all branches.
 - Changed-files tree that defaults to fully expanded, with expand-all and
@@ -71,7 +74,9 @@ around provider authentication, OAuth, and multi-account flows.
   OpenAI API (default model `gpt-6-luna`), with an IDE-style debug drawer for
   the underlying run.
 - Config file with live reload; secrets stored in the macOS Keychain.
-- Repository picker with search, lazy metadata hydration, and clone-from-provider.
+- Repository picker with search, lazy metadata hydration, and cloning from any
+  `gh` or `glab` account, or from a URL over HTTPS with the account you pick or
+  over SSH with your keys.
 - GitHub / GitLab account management with Personal Access Tokens and `gh` /
   `glab` CLI integration.
 - Updates itself through Sparkle, verifying each update with Avi's signing

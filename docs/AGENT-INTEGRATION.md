@@ -90,9 +90,11 @@ Working with the stack:
 - Selecting a file in a planned commit shows everything that commit will
   take: the working-tree version against `HEAD`. Files with both staged and
   unstaged changes are marked.
-- **Split into Commits…** in the Changes toolbar asks the AI to group every
-  change no planned commit holds, staged or not, into planned commits. Commit
-  1's **Split…** button does the same for the staged files. Both open a sheet
+- **Split into Commits…** in the Changes toolbar asks the AI to group the
+  changes you staged into planned commits; stage what it may group first, and
+  unstaged changes stay where they are. Commit 1's **Split…** button does the
+  same. Agents are not limited this way: their proposals name their own files,
+  staged or not. Both open a sheet
   where you can say how to split ("tests in their own commit"). If the AI
   fails, the files go back where they were; nothing is staged or unstaged.
 - **Commit** makes the only commit. With more than one, **Commit All**
@@ -103,7 +105,7 @@ Working with the stack:
 - Right-click a planned commit, or use its "…" button or the composer's, for
   **Commit This Now**, **Write Message with AI**, **Revise with AI…**,
   **Split with AI…**, **Move Up/Down**, **Merge with Previous/Next**, and
-  **Delete Commit**. The Commits "…" menu has **Split into Commits with AI…**
+  **Delete Commit**. The Commits "…" menu has **Split Staged Changes with AI…**
   and **Rethink Planned Commits with AI…**.
 - The AI actions replace the commits they work on with the AI's answer. They
   see only those commits' messages and the changes in their files; files the
@@ -163,7 +165,7 @@ one JSON request on one line and reads one JSON line back:
 
 ```text
 {"v":1,"method":"propose","params":{"repo":"/abs/worktree","agent":"Codex","session":"t1","commits":[{"message":"...","files":["a.swift"]}]}}
-{"v":1,"ok":true,"result":{"app":{"version":"0.7.1"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
+{"v":1,"ok":true,"result":{"app":{"version":"0.7.2"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
 ```
 
 Methods are `status`, `open`, and `propose`. `status` lists open repositories,
