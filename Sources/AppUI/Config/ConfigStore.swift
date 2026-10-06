@@ -35,6 +35,10 @@ public final class ConfigStore {
         }
     }
 
+    /// Whether this launch created the config file: a new install, where an
+    /// updated Avi finds the file it wrote before.
+    public let isFreshInstall: Bool
+
     private var watcher: ConfigWatcher?
     private var saveTask: Task<Void, Never>?
     private var ignoreNextWatcherEvent = false
@@ -42,6 +46,7 @@ public final class ConfigStore {
     private init() {
         var loaded = AviConfig()
         var initialStatus: ConfigStatus = .loaded
+        isFreshInstall = !ConfigPath.exists
 
         if ConfigPath.exists {
             do {

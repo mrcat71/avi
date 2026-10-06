@@ -232,6 +232,7 @@ struct AgentsSettingsView: View {
                 try installer.remove(target, force: force)
             } else {
                 try installer.install(target, force: force)
+                AgentSkillsTip.shared.refresh()
             }
             lastError = nil
         } catch AgentInstaller.InstallError.needsConfirmation(_, let state) {
