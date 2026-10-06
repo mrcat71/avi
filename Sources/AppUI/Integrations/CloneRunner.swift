@@ -20,38 +20,77 @@ public struct CloneOutcome: Sendable {
     public var exitCode: Int32
     public var stderrTail: String
     public var success: Bool
+    /// Something that went wrong after the clone itself succeeded.
+    public var warning: String?
 }
 
-/// Runs a `git clone` (or `gh repo clone` / `glab repo clone` when available)
-/// and streams progress via a callback so the UI can update a progress bar.
+/// How Git proves who you are while cloning over HTTPS.
+public enum CloneCredential: Sendable, Equatable, CustomStringConvertible {
+    /// What Git is set up with: the Keychain, your credential helpers, SSH.
+    case gitDefault
+    /// The credential helper of `gh` or `glab` at this path, for this clone.
+    case cliHelper(executable: String)
+    /// A token Avi hands to Git through the environment, never the arguments.
+    case token(username: String, secret: String)
+
+    public var description: String {
+        switch self {
+        case .gitDefault: return "git default"
+        case .cliHelper(let executable): return "helper \(executable)"
+        case .token(let username, _): return "token for \(username)"
+        }
+    }
+}
+
+/// Runs `git clone` and streams progress via a callback so the UI can update
+/// a progress bar.
 public enum CloneRunner {
     public struct Spec: Sendable {
-        public var repo: RemoteRepo
+        /// Exactly what is passed to `git clone`.
+        public var url: String
         public var destination: URL
-        public var preferredProtocol: String // "https" | "ssh"
-        public var preferredCLI: String // "auto" | "gh-glab" | "git"
-        public var ghPath: String?
-        public var glabPath: String?
+        public var credential: CloneCredential
+        /// For a CLI helper: the host whose helper the clone keeps using, so
+        /// fetches and pushes authenticate as the chosen account too.
+        public var host: String?
 
-        public init(
-            repo: RemoteRepo,
-            destination: URL,
-            preferredProtocol: String,
-            preferredCLI: String,
-            ghPath: String?,
-            glabPath: String?
-        ) {
-            self.repo = repo
+        public init(url: String, destination: URL, credential: CloneCredential = .gitDefault, host: String? = nil) {
+            self.url = url
             self.destination = destination
-            self.preferredProtocol = preferredProtocol
-            self.preferredCLI = preferredCLI
-            self.ghPath = ghPath
-            self.glabPath = glabPath
+            self.credential = credential
+            self.host = host
         }
+    }
 
-        public var fallbackURL: String {
-            preferredProtocol == "ssh" && !repo.sshURL.isEmpty ? repo.sshURL : repo.httpsURL
+    /// A helper that answers Git's `get` from two environment variables, so
+    /// the token never appears in the arguments or a config file.
+    static let tokenHelper = #"!f() { test "$1" = get || exit 0; printf 'username=%s\npassword=%s\n' "$AVI_CLONE_USERNAME" "$AVI_CLONE_TOKEN"; }; f"#
+
+    /// The `git` arguments and extra environment for `spec`. A helper chosen
+    /// here replaces the ones in your Git config for this clone only, so they
+    /// neither answer for the wrong account nor store the token. `--` keeps a
+    /// URL that starts with a dash from being read as an option.
+    static func gitCommand(for spec: Spec) -> (arguments: [String], environment: [String: String]) {
+        var arguments: [String] = []
+        var environment: [String: String] = [:]
+        switch spec.credential {
+        case .gitDefault:
+            break
+        case .cliHelper(let executable):
+            arguments += ["-c", "credential.helper=", "-c", "credential.helper=" + cliHelperCommand(executable)]
+        case .token(let username, let secret):
+            arguments += ["-c", "credential.helper=", "-c", "credential.helper=" + tokenHelper]
+            environment["AVI_CLONE_USERNAME"] = username
+            environment["AVI_CLONE_TOKEN"] = secret
         }
+        arguments += ["clone", "--progress", "--", spec.url, spec.destination.path]
+        return (arguments, environment)
+    }
+
+    /// `gh auth git-credential` or `glab auth git-credential`, quoted for the
+    /// shell Git runs `!` helpers in.
+    static func cliHelperCommand(_ executable: String) -> String {
+        "!'" + executable.replacingOccurrences(of: "'", with: #"'\''"#) + "' auth git-credential"
     }
 
     public static func clone(spec: Spec, progress: @escaping @Sendable (CloneProgress) -> Void) async throws -> CloneOutcome {
@@ -62,49 +101,56 @@ public enum CloneRunner {
                 throw CloneError.destinationNotEmpty(path: spec.destination.path)
             }
         }
+        guard !spec.url.isEmpty else { throw CloneError.noURL }
         try FileManager.default.createDirectory(at: spec.destination.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-        let useCLI = spec.preferredCLI != "git"
-        if useCLI, spec.repo.provider == .github, let path = spec.ghPath {
-            return try await runProcess(
-                executable: path,
-                arguments: ["repo", "clone", spec.repo.nameWithOwner, spec.destination.path, "--", "--progress"],
-                destination: spec.destination,
-                progress: progress
-            )
-        }
-        if useCLI, spec.repo.provider == .gitlab, let path = spec.glabPath {
-            return try await runProcess(
-                executable: path,
-                arguments: ["repo", "clone", spec.repo.nameWithOwner, spec.destination.path],
-                destination: spec.destination,
-                progress: progress
-            )
-        }
-        // Fall back to plain git.
-        let url = spec.fallbackURL
-        guard !url.isEmpty else { throw CloneError.noURL }
-        return try await runProcess(
+        let command = gitCommand(for: spec)
+        var outcome = try await runProcess(
             executable: "/usr/bin/env",
-            arguments: ["git", "clone", "--progress", url, spec.destination.path],
+            arguments: ["git"] + command.arguments,
+            extraEnvironment: command.environment,
             destination: spec.destination,
             progress: progress
         )
+        if outcome.success, case .cliHelper(let executable) = spec.credential, let host = spec.host {
+            outcome.warning = await keepHelper(executable, for: host, in: spec.destination)
+        }
+        return outcome
+    }
+
+    /// Sets the clone to authenticate `host` through the same CLI helper, the
+    /// way `gh auth setup-git` does globally, so later fetches and pushes use
+    /// the account named in the remote URL. Returns a warning on failure.
+    private static func keepHelper(_ executable: String, for host: String, in repository: URL) async -> String? {
+        let key = "credential.https://\(host).helper"
+        for value in ["", cliHelperCommand(executable)] {
+            let result = try? await ProcessRunner.run(
+                executable: URL(fileURLWithPath: "/usr/bin/env"),
+                arguments: ["git", "config", "--local", "--add", key, value],
+                workingDirectory: repository,
+                environment: ProviderCLISupport.environment()
+            )
+            if result?.exitCode != 0 {
+                let detail = result?.stderrString.trimmingCharacters(in: .whitespacesAndNewlines) ?? "git did not start"
+                return "Cloned, but fetch and push may ask for other credentials: setting \(key) failed (\(detail))."
+            }
+        }
+        return nil
     }
 
     private static func runProcess(
         executable: String,
         arguments: [String],
+        extraEnvironment: [String: String],
         destination: URL,
         progress: @escaping @Sendable (CloneProgress) -> Void
     ) async throws -> CloneOutcome {
-        let env = ProviderCLISupport.environment()
+        let env = ProviderCLISupport.environment().merging(extraEnvironment) { _, extra in extra }
         // Throttle progress updates to ~10/sec.
         let throttle = ProgressThrottle(onEmit: progress)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["env"] // placeholder; we replace below if needed
         process.arguments = arguments
         process.environment = env
 
@@ -161,7 +207,8 @@ public enum CloneRunner {
             destination: destination,
             exitCode: exitCode,
             stderrTail: stderrCollector.tail(maxLines: 20),
-            success: exitCode == 0
+            success: exitCode == 0,
+            warning: nil
         )
     }
 
@@ -199,6 +246,22 @@ public enum CloneError: Error, LocalizedError, Sendable {
         case .noURL: return "No clone URL available for this repository."
         }
     }
+}
+
+/// A next step for the errors Git gives most often when a clone cannot
+/// authenticate, or nil when there is nothing specific to suggest.
+func cloneFailureHint(for message: String, host: String?) -> String? {
+    let target = host.map { "git@\($0)" } ?? "git@<host>"
+    if message.contains("Host key verification failed") {
+        return "This Mac has not connected to the host over SSH before. Run `ssh -T \(target)` in Terminal once to check and trust its key, then try again."
+    }
+    if message.contains("Permission denied (publickey") {
+        return "The server did not accept any of your SSH keys. Add your key to the agent with `ssh-add --apple-use-keychain ~/.ssh/id_ed25519` and its public half to your account, or clone over HTTPS."
+    }
+    if message.contains("could not read Username") || message.contains("Authentication failed") || message.contains("terminal prompts disabled") {
+        return "Git had no credentials for this host. Pick an account under HTTPS, sign in with `gh auth login` or `glab auth login`, or clone over SSH."
+    }
+    return nil
 }
 
 /// Collects stderr in a ring buffer so failures can show the last few lines.

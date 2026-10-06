@@ -2,7 +2,7 @@ import Foundation
 import GitKit
 
 /// Provider kind: GitHub or GitLab. Determines which CLI is invoked.
-public enum CloneProvider: String, Sendable, Equatable {
+public enum CloneProvider: String, Sendable, Equatable, CaseIterable {
     case github
     case gitlab
 }
@@ -63,32 +63,54 @@ public enum GhCLI {
         ProviderCLISupport.resolve(preferred: ConfigStore.shared.config.externalTools.ghPath, name: "gh")
     }
 
+    /// Every account `gh` knows, or nil when `gh` is not installed. `gh auth
+    /// status` fails as a whole when any one account is broken, so its JSON
+    /// is read per account instead.
     @MainActor
-    public static func authStatus() async -> ProviderAuthState {
-        guard let path = executablePath() else { return .cliMissing }
-        let result = try? await ProviderCLISupport.run(executable: path, arguments: ["auth", "status"])
-        guard let result else { return .error(message: "gh auth status failed to start") }
-        let combined = result.stdoutString + "\n" + result.stderrString
-        if result.exitCode != 0 {
-            return .unauthenticated
+    public static func accounts() async -> [CloneAccount]? {
+        guard let path = executablePath() else { return nil }
+        guard let result = try? await ProviderCLISupport.run(executable: path, arguments: ["auth", "status", "--json", "hosts"]) else {
+            return []
         }
-        // Parse "Logged in to github.com as <username>" from stdout/stderr.
-        let username = ProviderCLISupport.parseLogin(from: combined, hostHint: "github.com")
-        return .authenticated(username: username ?? "(unknown)", host: "github.com")
+        return CloneAccounts.ghAccounts(fromJSON: result.stdout)
     }
 
+    /// The account Settings shows: the active one when it works, else any
+    /// account that works.
     @MainActor
-    public static func listRepos(login: String? = nil, limit: Int = 200) async throws -> [RemoteRepo] {
-        guard let path = executablePath() else { return [] }
-        var args = ["repo", "list"]
-        if let login, !login.isEmpty {
-            args.append(login)
+    public static func authStatus() async -> ProviderAuthState {
+        guard let accounts = await accounts() else { return .cliMissing }
+        guard let account = accounts.first(where: \.isUsable) else {
+            return .unauthenticated
         }
-        args.append(contentsOf: [
+        return .authenticated(username: account.login, host: account.host)
+    }
+
+    /// Repositories of `account`, read with its own token so it does not have
+    /// to be the active one.
+    @MainActor
+    public static func listRepos(account: CloneAccount, limit: Int = 200) async throws -> [RemoteRepo] {
+        guard let path = executablePath() else { throw ProviderCLIError.cliMissing(name: "gh") }
+        let token = try await ProviderCLISupport.run(
+            executable: path,
+            arguments: ["auth", "token", "--hostname", account.host, "--user", account.login]
+        )
+        guard token.exitCode == 0 else {
+            throw ProviderCLIError.commandFailed(message: token.stderrString)
+        }
+        let args = [
+            "repo", "list",
             "--json", "name,nameWithOwner,description,sshUrl,url,defaultBranchRef,isPrivate,updatedAt",
             "--limit", String(limit)
-        ])
-        let result = try await ProviderCLISupport.run(executable: path, arguments: args)
+        ]
+        let result = try await ProviderCLISupport.run(
+            executable: path,
+            arguments: args,
+            extraEnvironment: [
+                "GH_HOST": account.host,
+                "GH_TOKEN": token.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+            ]
+        )
         guard result.exitCode == 0 else {
             throw ProviderCLIError.commandFailed(message: result.stderrString)
         }
@@ -128,24 +150,37 @@ public enum GlabCLI {
         ProviderCLISupport.resolve(preferred: ConfigStore.shared.config.externalTools.glabPath, name: "glab")
     }
 
+    /// One account per GitLab instance `glab` is set up for, or nil when
+    /// `glab` is not installed. One unreachable instance makes `glab auth
+    /// status` fail as a whole, so each host is read on its own.
     @MainActor
-    public static func authStatus() async -> ProviderAuthState {
-        guard let path = executablePath() else { return .cliMissing }
-        let result = try? await ProviderCLISupport.run(executable: path, arguments: ["auth", "status"])
-        guard let result else { return .error(message: "glab auth status failed to start") }
-        let combined = result.stdoutString + "\n" + result.stderrString
-        if combined.lowercased().contains("not logged in") || result.exitCode != 0 {
-            return .unauthenticated
+    public static func accounts() async -> [CloneAccount]? {
+        guard let path = executablePath() else { return nil }
+        guard let result = try? await ProviderCLISupport.run(executable: path, arguments: ["auth", "status", "--all"]) else {
+            return []
         }
-        let username = ProviderCLISupport.parseLogin(from: combined, hostHint: "gitlab.com")
-        return .authenticated(username: username ?? "(unknown)", host: "gitlab.com")
+        return CloneAccounts.glabAccounts(fromStatus: result.stdoutString + "\n" + result.stderrString)
     }
 
     @MainActor
-    public static func listRepos(perPage: Int = 100) async throws -> [RemoteRepo] {
-        guard let path = executablePath() else { return [] }
+    public static func authStatus() async -> ProviderAuthState {
+        guard let accounts = await accounts() else { return .cliMissing }
+        guard let account = accounts.first(where: \.isUsable) else {
+            return .unauthenticated
+        }
+        return .authenticated(username: account.login, host: account.host)
+    }
+
+    /// Projects on `account`'s instance.
+    @MainActor
+    public static func listRepos(account: CloneAccount, perPage: Int = 100) async throws -> [RemoteRepo] {
+        guard let path = executablePath() else { throw ProviderCLIError.cliMissing(name: "glab") }
         let args = ["repo", "list", "--output", "json", "--per-page", String(perPage)]
-        let result = try await ProviderCLISupport.run(executable: path, arguments: args)
+        let result = try await ProviderCLISupport.run(
+            executable: path,
+            arguments: args,
+            extraEnvironment: ["GITLAB_HOST": account.host]
+        )
         guard result.exitCode == 0 else {
             throw ProviderCLIError.commandFailed(message: result.stderrString)
         }
@@ -214,28 +249,13 @@ public enum ProviderCLISupport {
         return nil
     }
 
-    public static func run(executable: String, arguments: [String]) async throws -> ProcessResult {
+    public static func run(executable: String, arguments: [String], extraEnvironment: [String: String] = [:]) async throws -> ProcessResult {
         try await ProcessRunner.run(
             executable: URL(fileURLWithPath: executable),
             arguments: arguments,
             workingDirectory: nil,
-            environment: environment()
+            environment: environment().merging(extraEnvironment) { _, extra in extra }
         )
-    }
-
-    /// Tries to parse a "Logged in to <host> as <user>" line out of mixed CLI output.
-    public static func parseLogin(from text: String, hostHint _: String) -> String? {
-        for line in text.split(whereSeparator: { $0.isNewline }) {
-            let lower = line.lowercased()
-            guard lower.contains("logged in to") else { continue }
-            guard let asRange = lower.range(of: " as ") else { continue }
-            let after = String(line[asRange.upperBound...])
-            let token = after.split(whereSeparator: { $0.isWhitespace || $0 == "(" || $0 == ")" }).first
-            if let token {
-                return String(token)
-            }
-        }
-        return nil
     }
 
     public static func environment() -> [String: String] {

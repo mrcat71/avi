@@ -29,8 +29,7 @@ terminalApp = ""           # absolute path or empty
 [clone]
 defaultDirectory = "~/Developer"
 openAfterClone = true
-preferredProtocol = "https"     # https | ssh
-preferredCLI = "auto"           # auto | gh-glab | git
+preferredProtocol = "https"     # https | ssh; each clone can switch
 rememberDestinationPerProvider = true
 
 [ai]
