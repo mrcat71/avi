@@ -3,12 +3,19 @@ import AppKit
 /// A fixed gutter, independent of the selectable and horizontally scrolling text.
 final class DiffLineRuler: NSRulerView {
     var document: DiffDocument? {
-        didSet {
-            let maximum = document?.rows.flatMap { [$0.oldLine, $0.newLine].compactMap { $0 } }.max() ?? 1
-            columnWidth = max(36, CGFloat(String(maximum).count) * 8 + 12)
-            ruleThickness = columnWidth * 2 + 8
-            needsDisplay = true
-        }
+        didSet { relayout() }
+    }
+
+    /// One side of a side-by-side diff numbers its lines in a single column.
+    var singleColumn = false {
+        didSet { relayout() }
+    }
+
+    private func relayout() {
+        let maximum = document?.rows.flatMap { [$0.oldLine, $0.newLine].compactMap { $0 } }.max() ?? 1
+        columnWidth = max(36, CGFloat(String(maximum).count) * 8 + 12)
+        ruleThickness = columnWidth * (singleColumn ? 1 : 2) + 8
+        needsDisplay = true
     }
 
     private var columnWidth: CGFloat = 36
@@ -60,9 +67,12 @@ final class DiffLineRuler: NSRulerView {
             .foregroundColor: NSColor.secondaryLabelColor
         ]
         layout.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, range, _ in
-            guard let row = document.row(containing: layout.characterIndexForGlyph(at: range.location)) else { return }
+            let start = layout.characterIndexForGlyph(at: range.location)
+            // A wrapped line is numbered once, on its first fragment.
+            guard let row = document.row(containing: start), row.range.location == start else { return }
             let point = self.convert(NSPoint(x: origin.x, y: origin.y + fragment.minY), from: textView)
-            for (index, value) in [row.oldLine, row.newLine].enumerated() {
+            let columns = self.singleColumn ? [row.oldLine ?? row.newLine] : [row.oldLine, row.newLine]
+            for (index, value) in columns.enumerated() {
                 guard let value else { continue }
                 let label = String(value) as NSString
                 let size = label.size(withAttributes: attributes)

@@ -230,10 +230,15 @@ public extension CLIGitProvider {
     }
 
     func diff(commitOID: String, path: String, oldPath: String?, in repository: URL) async throws -> FileDiff {
+        try await diff(commitOID: commitOID, path: path, oldPath: oldPath, options: .standard, in: repository)
+    }
+
+    func diff(commitOID: String, path: String, oldPath: String?, options: DiffOptions, in repository: URL) async throws -> FileDiff {
         let paths = [oldPath].compactMap(\.self).filter { $0 != path } + [path]
         // A merge shows its change against the first parent, as a normal diff.
         let result = try await run(
-            ["--literal-pathspecs", "show", "--format=", "--no-color", "--no-ext-diff", "-M", "--diff-merges=first-parent", commitOID, "--"] + paths,
+            ["--literal-pathspecs", "show", "--format=", "--no-color", "--no-ext-diff", "-M", "--diff-merges=first-parent"]
+                + options.arguments + [commitOID, "--"] + paths,
             in: repository
         )
         return DiffParser.parse(result.stdoutString)

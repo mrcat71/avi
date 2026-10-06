@@ -56,6 +56,36 @@ public struct DiffLine: Sendable, Equatable, Identifiable {
     }
 }
 
+/// How `git diff` compares: how many lines of context surround each change,
+/// whether the whole file comes back, and whether changes to whitespace alone
+/// count as changes.
+public struct DiffOptions: Sendable, Equatable, Hashable {
+    public var contextLines: Int
+    public var wholeFile: Bool
+    public var ignoreWhitespace: Bool
+
+    public init(contextLines: Int = 3, wholeFile: Bool = false, ignoreWhitespace: Bool = false) {
+        self.contextLines = contextLines
+        self.wholeFile = wholeFile
+        self.ignoreWhitespace = ignoreWhitespace
+    }
+
+    /// Git's own defaults.
+    public static let standard = DiffOptions()
+
+    /// More context than any real file has lines, so the hunk is the file.
+    static let wholeFileContext = 1_000_000
+
+    /// Options for `git diff` and `git show`, placed before `--`.
+    public var arguments: [String] {
+        var arguments = ["--unified=\(wholeFile ? Self.wholeFileContext : max(0, contextLines))"]
+        if ignoreWhitespace {
+            arguments.append("--ignore-all-space")
+        }
+        return arguments
+    }
+}
+
 /// Which version of a file to diff against.
 public enum DiffSource: Sendable, Equatable {
     case unstaged // working tree vs index

@@ -519,8 +519,10 @@ struct CommitDetailView: View {
                         .frame(minWidth: 220, idealWidth: 280, maxWidth: 360)
 
                     if let file = store.selectedCommitFile {
-                        FileDiffView(title: file.displayPath, diff: store.commitDiff, errorMessage: store.commitDiffError)
-                            .frame(minWidth: 420)
+                        FileDiffView(title: file.displayPath, diff: store.commitDiff, errorMessage: store.commitDiffError) {
+                            await store.selectCommitFile(store.selectedCommitFile)
+                        }
+                        .frame(minWidth: 420)
                     } else if let error = store.commitDiffError {
                         ContentUnavailableView("Unable to Load Commit", systemImage: "exclamationmark.triangle", description: Text(error))
                             .frame(minWidth: 420)
