@@ -48,6 +48,9 @@ public protocol GitProviding: Sendable {
     /// Unified diff for `path` against the given `source`.
     func diff(path: String, source: DiffSource, in repository: URL) async throws -> FileDiff
 
+    /// The same, with `options` for context and whitespace.
+    func diff(path: String, source: DiffSource, options: DiffOptions, in repository: URL) async throws -> FileDiff
+
     /// Recent commits in newest-to-oldest topological order, default filter (current branch, with merges).
     func history(in repository: URL, limit: Int) async throws -> [CommitSummary]
 
@@ -69,6 +72,9 @@ public protocol GitProviding: Sendable {
 
     /// Unified diff for one file as changed by `commitOID`.
     func diff(commitOID: String, path: String, in repository: URL) async throws -> FileDiff
+
+    /// The same, with `options` for context and whitespace.
+    func diff(commitOID: String, path: String, options: DiffOptions, in repository: URL) async throws -> FileDiff
 
     /// Check out a local branch, create a tracking branch from a remote branch, or detach at a tag.
     func checkout(_ ref: GitReference, in repository: URL) async throws
@@ -240,6 +246,9 @@ public protocol GitProviding: Sendable {
     /// Unified diff for one file inside a stash (`<ref>^1 <ref> -- <path>`).
     func stashDiff(ref: String, path: String, in repository: URL) async throws -> FileDiff
 
+    /// The same, with `options` for context and whitespace.
+    func stashDiff(ref: String, path: String, options: DiffOptions, in repository: URL) async throws -> FileDiff
+
     // MARK: - Branch actions
 
     /// Check out `ref`, taking uncommitted changes along when `carryingLocalChanges`
@@ -311,6 +320,9 @@ public protocol GitProviding: Sendable {
     /// One file's change in `commitOID`. Passing `oldPath` shows a rename as one.
     func diff(commitOID: String, path: String, oldPath: String?, in repository: URL) async throws -> FileDiff
 
+    /// The same, with `options` for context and whitespace.
+    func diff(commitOID: String, path: String, oldPath: String?, options: DiffOptions, in repository: URL) async throws -> FileDiff
+
     /// Who last changed each line of `path` at `revision`, or in the working
     /// tree when `revision` is nil.
     func blame(path: String, revision: String?, in repository: URL) async throws -> [BlameLine]
@@ -338,6 +350,24 @@ public extension GitProviding {
     /// Safe delete stays the default; forcing is always an explicit decision.
     func deleteBranch(named name: String, in repository: URL) async throws {
         try await deleteBranch(named: name, force: false, in: repository)
+    }
+
+    // A provider without diff options shows Git's default diff.
+
+    func diff(path: String, source: DiffSource, options _: DiffOptions, in repository: URL) async throws -> FileDiff {
+        try await diff(path: path, source: source, in: repository)
+    }
+
+    func diff(commitOID: String, path: String, options _: DiffOptions, in repository: URL) async throws -> FileDiff {
+        try await diff(commitOID: commitOID, path: path, in: repository)
+    }
+
+    func stashDiff(ref: String, path: String, options _: DiffOptions, in repository: URL) async throws -> FileDiff {
+        try await stashDiff(ref: ref, path: path, in: repository)
+    }
+
+    func diff(commitOID: String, path: String, oldPath: String?, options _: DiffOptions, in repository: URL) async throws -> FileDiff {
+        try await diff(commitOID: commitOID, path: path, oldPath: oldPath, in: repository)
     }
 
     func commitFiles(_: FileCommitPlan, in _: URL, progress _: (@Sendable (Int) -> Void)?) async throws {

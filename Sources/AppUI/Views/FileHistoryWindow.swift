@@ -108,7 +108,13 @@ final class FileHistoryModel {
                     diff = nil
                     return
                 }
-                let result = try await git.diff(commitOID: entry.commit.oid, path: entry.path, oldPath: entry.oldPath, in: repository)
+                let result = try await git.diff(
+                    commitOID: entry.commit.oid,
+                    path: entry.path,
+                    oldPath: entry.oldPath,
+                    options: DiffPreferences.shared.gitOptions,
+                    in: repository
+                )
                 guard detailRequest == request else { return }
                 diff = result
             case .blame:
@@ -223,7 +229,9 @@ public struct FileHistoryWindow: View {
                     CommitSummaryHeader(commit: entry.commit)
                     Divider()
                     if let diff = model.diff {
-                        FileDiffView(title: entry.oldPath.map { "\($0) → \(entry.path)" } ?? entry.path, diff: diff)
+                        FileDiffView(title: entry.oldPath.map { "\($0) → \(entry.path)" } ?? entry.path, diff: diff) {
+                            await model.loadDetail()
+                        }
                     } else {
                         ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                     }

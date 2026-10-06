@@ -904,7 +904,7 @@ public final class RepositoryStore: Identifiable {
 
         selectedCommitPath = file.path
         do {
-            let result = try await git.diff(commitOID: selectedCommitOID, path: file.path, in: root)
+            let result = try await git.diff(commitOID: selectedCommitOID, path: file.path, options: DiffPreferences.shared.gitOptions, in: root)
             guard commitDiffRequestID == requestID, self.selectedCommitOID == selectedCommitOID, self.root == root else { return }
             commitDiff = result
         } catch {
@@ -944,7 +944,7 @@ public final class RepositoryStore: Identifiable {
         }
         selectedStashPath = file.path
         do {
-            stashFileDiff = try await git.stashDiff(ref: selectedStashRef, path: file.path, in: root)
+            stashFileDiff = try await git.stashDiff(ref: selectedStashRef, path: file.path, options: DiffPreferences.shared.gitOptions, in: root)
         } catch {
             errorMessage = error.localizedDescription
             stashFileDiff = nil
@@ -1286,7 +1286,7 @@ public final class RepositoryStore: Identifiable {
         selectedDiffSource = source
         diffError = nil
         do {
-            let result = try await git.diff(path: file.path, source: source, in: root)
+            let result = try await git.diff(path: file.path, source: source, options: DiffPreferences.shared.gitOptions, in: root)
             guard diffRequestID == requestID, selectedPath == file.path, self.root == root else { return }
             diff = result
         } catch {

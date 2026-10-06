@@ -17,8 +17,10 @@ struct StashContentsWorkspaceView: View {
                     .frame(minWidth: 220, idealWidth: 280)
 
                 if let file = store.selectedStashFile {
-                    FileDiffView(title: file.displayPath, diff: store.stashFileDiff)
-                        .frame(minWidth: 420)
+                    FileDiffView(title: file.displayPath, diff: store.stashFileDiff) {
+                        await store.selectStashFile(store.selectedStashFile)
+                    }
+                    .frame(minWidth: 420)
                 } else {
                     ContentUnavailableView(
                         "No File Selected",

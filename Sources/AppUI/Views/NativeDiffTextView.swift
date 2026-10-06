@@ -2,10 +2,18 @@ import AppKit
 import GitKit
 import SwiftUI
 
+/// How a diff document is drawn: wrapped or scrolling sideways, and with or
+/// without marks for invisible characters.
+struct DiffDisplay: Equatable {
+    var wrapsLines = false
+    var showsInvisibles = false
+}
+
 /// A read-only document rather than independent row labels: selection, copying,
 /// horizontal scrolling, and the standard macOS find bar work across hunks.
 struct NativeDiffTextView: NSViewRepresentable {
     let diff: FileDiff
+    var display = DiffDisplay()
 
     func makeNSView(context _: Context) -> DiffScrollView {
         Self.makeScrollView()
@@ -21,7 +29,7 @@ struct NativeDiffTextView: NSViewRepresentable {
         // The gutter uses NSLayoutManager coordinates. Create a matching TextKit 1
         // view explicitly rather than switching a TextKit 2 view during drawing.
         let storage = NSTextStorage()
-        let layout = NSLayoutManager()
+        let layout = InvisiblesLayoutManager()
         let container = NSTextContainer(containerSize: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
         storage.addLayoutManager(layout)
         layout.addTextContainer(container)
@@ -49,17 +57,49 @@ struct NativeDiffTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ scroll: DiffScrollView, context: Context) {
-        guard context.coordinator.diff != diff else { return }
-        context.coordinator.diff = diff
-        Self.updateDocument(diff, in: scroll)
+        let coordinator = context.coordinator
+        guard coordinator.diff != diff || coordinator.display != display else { return }
+        let diffChanged = coordinator.diff != diff
+        coordinator.diff = diff
+        coordinator.display = display
+        Self.apply(display, to: scroll)
+        Self.show(DiffDocument(diff), in: scroll, display: display, resetPosition: diffChanged)
     }
 
+    /// Shows `diff` from its top, unwrapped and without invisible characters.
     static func updateDocument(_ diff: FileDiff, in scroll: DiffScrollView) {
+        show(DiffDocument(diff), in: scroll, display: DiffDisplay(), resetPosition: true)
+    }
+
+    /// Puts `document` in the scroll view, keeping the scroll position unless
+    /// a different file came in.
+    static func show(_ document: DiffDocument, in scroll: DiffScrollView, display: DiffDisplay, resetPosition: Bool) {
         guard let text = scroll.documentView as? NSTextView else { return }
-        text.textStorage?.setAttributedString(document(diff))
-        (scroll.verticalRulerView as? DiffLineRuler)?.document = DiffDocument(diff)
-        text.setSelectedRange(NSRange(location: 0, length: 0))
-        scroll.resetDocumentPosition()
+        text.textStorage?.setAttributedString(attributedText(document, wrapsLines: display.wrapsLines))
+        (scroll.verticalRulerView as? DiffLineRuler)?.document = document
+        if resetPosition {
+            text.setSelectedRange(NSRange(location: 0, length: 0))
+            scroll.resetDocumentPosition()
+        }
+    }
+
+    /// Wrapped lines follow the pane's width; unwrapped ones scroll sideways.
+    static func apply(_ display: DiffDisplay, to scroll: DiffScrollView) {
+        guard let text = scroll.documentView as? NSTextView, let container = text.textContainer else { return }
+        if let layout = text.layoutManager as? InvisiblesLayoutManager, layout.showsInvisibles != display.showsInvisibles {
+            layout.showsInvisibles = display.showsInvisibles
+            text.needsDisplay = true
+        }
+        guard container.widthTracksTextView != display.wrapsLines else { return }
+        scroll.hasHorizontalScroller = !display.wrapsLines
+        text.isHorizontallyResizable = !display.wrapsLines
+        container.widthTracksTextView = display.wrapsLines
+        if display.wrapsLines {
+            text.setFrameSize(NSSize(width: scroll.contentSize.width, height: text.frame.height))
+        } else {
+            container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        }
+        (scroll.verticalRulerView as? DiffLineRuler)?.needsDisplay = true
     }
 
     func makeCoordinator() -> Coordinator {
@@ -68,20 +108,24 @@ struct NativeDiffTextView: NSViewRepresentable {
 
     final class Coordinator {
         var diff: FileDiff?
+        var display = DiffDisplay()
     }
 
     static func document(_ diff: FileDiff) -> NSAttributedString {
-        let document = DiffDocument(diff)
+        attributedText(DiffDocument(diff), wrapsLines: false)
+    }
+
+    static func attributedText(_ document: DiffDocument, wrapsLines: Bool) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.minimumLineHeight = 19
-        paragraph.lineBreakMode = .byClipping
+        paragraph.lineBreakMode = wrapsLines ? .byCharWrapping : .byClipping
         let base: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
             .foregroundColor: NSColor.textColor,
             .paragraphStyle: paragraph
         ]
         let result = NSMutableAttributedString(string: document.text, attributes: base)
-        for row in document.rows {
+        for row in document.rows where !row.isFiller {
             var attributes: [NSAttributedString.Key: Any] = [:]
             switch row.kind {
             case .addition:
@@ -96,6 +140,91 @@ struct NativeDiffTextView: NSViewRepresentable {
             result.addAttributes(attributes, range: row.range)
         }
         return result
+    }
+}
+
+/// The old file on the left and the new one on the right, scrolling together.
+/// Lines do not wrap here, so the two sides stay level row for row.
+struct SideBySideDiffView: NSViewRepresentable {
+    let diff: FileDiff
+    var showsInvisibles = false
+
+    func makeNSView(context _: Context) -> SideBySideDiffContainer {
+        SideBySideDiffContainer()
+    }
+
+    func updateNSView(_ container: SideBySideDiffContainer, context: Context) {
+        let coordinator = context.coordinator
+        guard coordinator.diff != diff || coordinator.showsInvisibles != showsInvisibles else { return }
+        let diffChanged = coordinator.diff != diff
+        coordinator.diff = diff
+        coordinator.showsInvisibles = showsInvisibles
+        container.show(diff, showsInvisibles: showsInvisibles, resetPosition: diffChanged)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator {
+        var diff: FileDiff?
+        var showsInvisibles = false
+    }
+}
+
+final class SideBySideDiffContainer: NSSplitView {
+    private let old = NativeDiffTextView.makeScrollView()
+    private let new = NativeDiffTextView.makeScrollView()
+    private var syncing = false
+
+    init() {
+        super.init(frame: .zero)
+        isVertical = true
+        dividerStyle = .thin
+        for (scroll, label) in [(old, "Old version"), (new, "New version")] {
+            (scroll.verticalRulerView as? DiffLineRuler)?.singleColumn = true
+            (scroll.documentView as? NSTextView)?.setAccessibilityLabel(label)
+            scroll.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(self, selector: #selector(scrolled(_:)), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
+            addArrangedSubview(scroll)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("SideBySideDiffContainer does not support NSCoder")
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    func show(_ diff: FileDiff, showsInvisibles: Bool, resetPosition: Bool) {
+        let documents = DiffDocument.sideBySide(diff)
+        let display = DiffDisplay(wrapsLines: false, showsInvisibles: showsInvisibles)
+        for (scroll, document) in [(old, documents.old), (new, documents.new)] {
+            NativeDiffTextView.apply(display, to: scroll)
+            NativeDiffTextView.show(document, in: scroll, display: display, resetPosition: resetPosition)
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        // Start with two equal halves; after that the divider is yours.
+        if subviews.count == 2, subviews[0].frame.width == 0 || subviews[1].frame.width == 0, bounds.width > 0 {
+            setPosition((bounds.width - dividerThickness) / 2, ofDividerAt: 0)
+        }
+    }
+
+    /// Keeps both sides on the same rows: they have the same number of rows
+    /// at the same height, so the same vertical offset shows the same rows.
+    @objc private func scrolled(_ notification: Notification) {
+        guard !syncing, let source = notification.object as? NSClipView else { return }
+        let target = source === old.contentView ? new : old
+        let y = source.bounds.origin.y
+        guard target.contentView.bounds.origin.y != y else { return }
+        syncing = true
+        target.contentView.scroll(to: NSPoint(x: target.contentView.bounds.origin.x, y: y))
+        target.reflectScrolledClipView(target.contentView)
+        syncing = false
     }
 }
 

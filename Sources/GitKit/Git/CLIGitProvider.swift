@@ -59,22 +59,27 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func diff(path: String, source: DiffSource, in repository: URL) async throws -> FileDiff {
+        try await diff(path: path, source: source, options: .standard, in: repository)
+    }
+
+    public func diff(path: String, source: DiffSource, options: DiffOptions, in repository: URL) async throws -> FileDiff {
         let arguments: [String]
         let allowedExitCodes: Set<Int32>
+        let flags = ["--no-color", "--no-ext-diff"] + options.arguments
         // Paths come from status output, so they are literal names, never globs.
         switch source {
         case .unstaged:
-            arguments = ["--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--", path]
+            arguments = ["--literal-pathspecs", "diff"] + flags + ["--", path]
             allowedExitCodes = [0]
         case .staged:
-            arguments = ["--literal-pathspecs", "diff", "--cached", "--no-color", "--no-ext-diff", "--", path]
+            arguments = ["--literal-pathspecs", "diff", "--cached"] + flags + ["--", path]
             allowedExitCodes = [0]
         case .head:
-            arguments = ["--literal-pathspecs", "diff", "HEAD", "--no-color", "--no-ext-diff", "--", path]
+            arguments = ["--literal-pathspecs", "diff", "HEAD"] + flags + ["--", path]
             allowedExitCodes = [0]
         case .untracked:
             // --no-index renders the whole new file as additions and exits 1 when files differ.
-            arguments = ["diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", path]
+            arguments = ["diff", "--no-index"] + flags + ["--", "/dev/null", path]
             allowedExitCodes = [0, 1]
         }
         let result = try await run(arguments, in: repository, allowedExitCodes: allowedExitCodes)
@@ -174,15 +179,14 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func diff(commitOID: String, path: String, in repository: URL) async throws -> FileDiff {
-        let result = try await run([
-            "show",
-            "--format=",
-            "--no-color",
-            "--no-ext-diff",
-            commitOID,
-            "--",
-            path
-        ], in: repository)
+        try await diff(commitOID: commitOID, path: path, options: .standard, in: repository)
+    }
+
+    public func diff(commitOID: String, path: String, options: DiffOptions, in repository: URL) async throws -> FileDiff {
+        let result = try await run(
+            ["show", "--format=", "--no-color", "--no-ext-diff"] + options.arguments + [commitOID, "--", path],
+            in: repository
+        )
         return DiffParser.parse(result.stdoutString)
     }
 
@@ -907,17 +911,14 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func stashDiff(ref: String, path: String, in repository: URL) async throws -> FileDiff {
-        let result = try await run([
-            "diff",
-            "--no-color",
-            "--no-ext-diff",
-            "-M",
-            "-C",
-            "\(ref)^1",
-            ref,
-            "--",
-            path
-        ], in: repository)
+        try await stashDiff(ref: ref, path: path, options: .standard, in: repository)
+    }
+
+    public func stashDiff(ref: String, path: String, options: DiffOptions, in repository: URL) async throws -> FileDiff {
+        let result = try await run(
+            ["diff", "--no-color", "--no-ext-diff", "-M", "-C"] + options.arguments + ["\(ref)^1", ref, "--", path],
+            in: repository
+        )
         return DiffParser.parse(result.stdoutString)
     }
 
