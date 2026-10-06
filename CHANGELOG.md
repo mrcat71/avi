@@ -6,7 +6,7 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-10-05
+## [0.7.0] - 2026-10-06
 
 ### Added
 - The branch menu in the sidebar now has everything Fork's has, in the same order. **Checkout…** asks what to do with uncommitted changes: bring them along (stash, switch, put them back; if they conflict with the branch they also stay in the stash) or check out and let Git keep what it can. **Checkout as Worktree…** checks the branch out in a new folder next to the repository and opens it in a tab. **Fast-Forward to '<upstream>'** moves a branch that is only behind to the upstream you already fetched, without the network and without checking it out. **Push to '<remote>'…** opens the push sheet for that branch. **Create Pull Request on '<remote>'** (or Merge Request on GitLab) asks before pushing commits the remote does not have yet.
