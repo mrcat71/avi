@@ -1,3 +1,4 @@
+import GitKit
 import SwiftUI
 
 #if canImport(LaunchAtLogin)
@@ -6,6 +7,7 @@ import LaunchAtLogin
 
 struct GeneralSettingsView: View {
     @Bindable var store = ConfigStore.shared
+    @Bindable var updater = AppUpdater.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,6 +15,16 @@ struct GeneralSettingsView: View {
                 SettingsFormRow("Launch at login", description: "Open Avi automatically when you log in.") {
                     launchAtLoginToggle
                 }
+            }
+
+            SettingsGroup("Updates") {
+                SettingsFormRow("Version") {
+                    Text(GitKit.version)
+                        .font(.system(size: 11, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+                Divider().padding(.vertical, 4)
+                updateRows
             }
 
             SettingsGroup("Config File") {
@@ -35,6 +47,46 @@ struct GeneralSettingsView: View {
                         Button("Reset to defaults", role: .destructive) { store.reset() }
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var updateRows: some View {
+        switch updater.state {
+        case .running:
+            SettingsFormRow("Check automatically", description: "Look for a new version once a day.") {
+                Toggle("", isOn: $updater.automaticallyChecksForUpdates)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+            }
+            Divider().padding(.vertical, 4)
+            SettingsFormRow(
+                "Install automatically",
+                description: "Download new versions in the background and install them when you quit Avi."
+            ) {
+                Toggle("", isOn: $updater.automaticallyDownloadsUpdates)
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .disabled(!updater.automaticallyChecksForUpdates)
+            }
+            Divider().padding(.vertical, 4)
+            SettingsFormRow("Actions") {
+                Button("Check Now") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
+            }
+        case .notStarted:
+            SettingsFormRow("Status") {
+                Text("Starting…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        case .unavailable(let reason):
+            SettingsFormRow("Status") {
+                Text(reason)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
         }
     }

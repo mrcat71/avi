@@ -34,6 +34,13 @@ enum AviAppMain {
             let store = RepositoryStore()
             _ = store.id
         }
+        // A packaged app that cannot verify updates leaves everyone on this
+        // version downloading the next one by hand. Bare binaries (CI's bundle
+        // smoke, `swift run`) never update themselves, so only bundles count.
+        if Bundle.main.bundleURL.pathExtension == "app", let problem = UpdateConfiguration.problem(for: .main) {
+            FileHandle.standardError.write(Data("self-test: updates: \(problem)\n".utf8))
+            exit(1)
+        }
         // Swift 6.2 and 6.3 release builds have miscompiled async sleeps
         // (swiftlang/swift#86204), and 0.4.0 crashed on every AI action. Run the
         // AI preflight, which cancels a sleeping timeout task, and a full sleep.
@@ -93,6 +100,7 @@ struct AviApp: App {
                 Button("About Avi") {
                     showAboutPanel()
                 }
+                CheckForUpdatesCommand()
             }
             CommandGroup(after: .help) {
                 AgentGuideCommand()
@@ -237,6 +245,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Listen for agents (the `avi` command) when Settings allows it.
         AgentBridge.shared.start()
+
+        // Scheduled update checks; development builds record why they are off.
+        AppUpdater.shared.start()
     }
 
     func applicationWillTerminate(_: Notification) {

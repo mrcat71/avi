@@ -44,10 +44,18 @@ Avi runs entirely on your Mac and has no backend. The parts worth looking at:
   another user, a web page, or a sandboxed agent go beyond that is in scope.
 - The installer in Settings > Agents, which writes `~/.local/bin/avi` and the
   agent skills and must not overwrite files it did not write.
+- In-app updates. Avi uses Sparkle to read `appcast.xml` from the latest
+  GitHub release and install the zip it names, and only when the feed and the
+  zip carry valid signatures from the EdDSA key whose public half is in Avi's
+  `Info.plist` (`SURequireSignedFeed` and `SUVerifyUpdateBeforeExtraction` are
+  on). Anything that makes Avi install or run an update without such a
+  signature is in scope.
 
 Known and out of scope:
 
 - Release bundles are ad-hoc signed and not notarized, so macOS Gatekeeper
   warns on first launch. Verify downloads with the published `SHA256SUMS`.
+  Updates Avi installs itself are not quarantined, so Gatekeeper does not
+  check them again; their EdDSA signature is the check.
 - Anything that needs an attacker to already run code as your user, since Avi
   is a local application with your own permissions.
