@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# Wrap the SwiftPM release executable in a minimal Avi.app bundle and zip it.
+# Wrap the SwiftPM release executable in a minimal Avi.app bundle, then zip it
+# (the archive Sparkle installs updates from) and put it on a disk image next
+# to a link to /Applications (what people download to install Avi).
 # Expects `swift build -c release` to have produced `.build/release/AviApp`.
 #
 # If the build produced dylibs (e.g., `libAppUI.dylib`, `libGitKit.dylib`) the
@@ -26,6 +28,9 @@ SRC_DIR=".build/release"
 SRC_BIN="${SRC_DIR}/AviApp"
 TEMPLATE="scripts/Info.plist.template"
 ZIP="avi-${VERSION}-macos-arm64.zip"
+DMG="avi-${VERSION}-macos-arm64.dmg"
+DMG_ROOT="dist/dmg"
+DMG_LAYOUT="scripts/dmg/DS_Store"
 
 cd "$(dirname "$0")/.."
 
@@ -36,6 +41,16 @@ fi
 
 if [[ ! -f "${TEMPLATE}" ]]; then
     echo "error: ${TEMPLATE} not found." >&2
+    exit 1
+fi
+
+# A bundle without the real public EdDSA key could never verify an update, so
+# everyone who installed it would have to download the next version by hand.
+# Checked before dist/ is replaced.
+PLACEHOLDERS="$(sed -e 's/__VERSION__//g' "${TEMPLATE}" | grep -oE '__[A-Z_]+__' | sort -u | tr '\n' ' ' || true)"
+if [[ -n "${PLACEHOLDERS}" ]]; then
+    echo "error: ${TEMPLATE} still has placeholders: ${PLACEHOLDERS}" >&2
+    echo "Put the public key printed by Sparkle's generate_keys in SUPublicEDKey (see docs/RELEASE.md)." >&2
     exit 1
 fi
 
@@ -105,6 +120,7 @@ done
 strip -x "${EXE}" 2>/dev/null || true
 
 sed -e "s/__VERSION__/${VERSION}/g" "${TEMPLATE}" > "${APP_DIR}/Contents/Info.plist"
+plutil -lint "${APP_DIR}/Contents/Info.plist" >/dev/null
 
 # App icon: copied into Contents/Resources/ to match CFBundleIconFile=AppIcon.
 ICON_SRC="Branding/AppIcon.icns"
@@ -148,13 +164,37 @@ if [[ -d "${FRAMEWORKS}" && -z "$(ls -A "${FRAMEWORKS}")" ]]; then
     rmdir "${FRAMEWORKS}"
 fi
 
-rm -f "${ZIP}"
+rm -f "${ZIP}" "${DMG}"
 # Use plain `zip` instead of `ditto` so the archive contains no `__MACOSX/`
 # sidecars or `._*` Apple Double files. macOS extended attributes are
 # already stripped above. `-y` is required: without it zip follows symlinks,
-# so Lottie.framework's Versions/Current links unpack as duplicate files and
-# the downloaded bundle no longer verifies ("bundle format is ambiguous").
+# so the Versions/Current links of Lottie.framework and Sparkle.framework
+# unpack as duplicate files and the downloaded bundle no longer verifies
+# ("bundle format is ambiguous").
 (cd dist && zip -qry -X "../${ZIP}" "${APP_NAME}.app")
 
-echo "Built ${ZIP}"
-ls -la "${ZIP}"
+# The disk image opens on Avi.app and a link to /Applications to drag it onto.
+# The committed Finder layout puts them side by side (see docs/RELEASE.md).
+mkdir -p "${DMG_ROOT}"
+ditto "${APP_DIR}" "${DMG_ROOT}/${APP_NAME}.app"
+ln -s /Applications "${DMG_ROOT}/Applications"
+cp "${DMG_LAYOUT}" "${DMG_ROOT}/.DS_Store"
+# hdiutil now and then fails with "Resource busy" or stalls waiting for its
+# helper, so each attempt gets three minutes (it normally takes seconds).
+for attempt in 1 2 3; do
+    if perl -e 'alarm shift; exec @ARGV' 180 hdiutil create -quiet -volname "${APP_NAME}" \
+        -srcfolder "${DMG_ROOT}" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "${DMG}"; then
+        break
+    fi
+    if (( attempt == 3 )); then
+        echo "error: hdiutil create failed three times." >&2
+        exit 1
+    fi
+    echo "warning: hdiutil create failed (attempt ${attempt}); retrying." >&2
+    sleep 5
+done
+hdiutil verify -quiet "${DMG}"
+rm -rf "${DMG_ROOT}"
+
+echo "Built ${ZIP} and ${DMG}"
+ls -la "${ZIP}" "${DMG}"

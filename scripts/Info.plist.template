@@ -29,5 +29,15 @@
     <true/>
     <key>LSUIElement</key>
     <false/>
+    <key>SUFeedURL</key>
+    <string>https://github.com/mrcat71/avi/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>4mC1CLtCqUumnGo/V9aCH+48OWvDN9pleYzu+IaKvKc=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>SURequireSignedFeed</key>
+    <true/>
 </dict>
 </plist>

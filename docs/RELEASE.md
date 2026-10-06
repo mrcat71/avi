@@ -1,13 +1,50 @@
 # Release checklist
 
-Avi ships through GitHub Releases as `avi-<version>-macos-arm64.zip` plus
-`SHA256SUMS`. The bundle is ad-hoc signed, not notarized. Intel and Linux
-artifacts are not currently produced.
+Avi ships through GitHub Releases as `avi-<version>-macos-arm64.dmg` (what
+people download), `avi-<version>-macos-arm64.zip` (what in-app updates
+install), `appcast.xml` (the signed Sparkle feed installed copies read from
+`releases/latest/download/appcast.xml`), and `SHA256SUMS`. The bundle is
+ad-hoc signed, not notarized. Intel and Linux artifacts are not currently
+produced.
 
 The normal publishing path is `.github/workflows/release.yml`: pushing a
 `v<version>` tag tests, builds, packages, and publishes that revision. Do not
 also run `gh release create` manually. A tag push can publish even while the
 separate branch CI workflow is failing, so complete the checks below first.
+
+## One-time setup: the update signing key
+
+Installed copies of Avi accept an update only when it is signed with the
+EdDSA key whose public half is `SUPublicEDKey` in
+`scripts/Info.plist.template`. Ad-hoc code signatures change with every build,
+so this key is the only link between versions: if it is lost, or replaced by a
+new one, everyone has to install the next version by hand from the disk image.
+
+1. Generate the key once. The private key stays in your login Keychain under
+   the account `avi`; the command prints the public key.
+
+   ```sh
+   swift package resolve
+   .build/artifacts/sparkle/Sparkle/bin/generate_keys --account avi
+   ```
+
+2. Put the printed public key in `SUPublicEDKey` in
+   `scripts/Info.plist.template` and commit it; the current key went in with
+   0.7.1. `scripts/package-app.sh` refuses to build while the template still
+   has a `__PLACEHOLDER__`.
+3. Export the private key into a private temporary folder, store it as the
+   release workflow's secret, and delete the export, even when a step fails.
+   macOS may ask to allow access to the key. **`gh secret set` changes the
+   repository's settings.**
+
+   ```sh
+   K="$(mktemp -d)/avi-sparkle.key" && .build/artifacts/sparkle/Sparkle/bin/generate_keys --account avi -x "$K" && gh secret set SPARKLE_ED_PRIVATE_KEY --repo mrcat71/avi < "$K"; rm -f "$K"
+   ```
+
+4. Keep a backup of the private key outside this Mac, such as in a password
+   manager (`generate_keys --account avi -x <file>` exports it again; on
+   another Mac, `generate_keys --account avi -f <file>` imports it). Never
+   commit it.
 
 ## Prepare and verify the complete revision
 
@@ -72,19 +109,29 @@ separate branch CI workflow is failing, so complete the checks below first.
    access Avi's user configuration; use a disposable macOS account for an
    isolated release check.
 
-5. Smoke-test packaging locally. The packaging script replaces `dist/` and
-   the ZIP for this version, so preserve any earlier artifacts first.
+5. Smoke-test packaging locally. The packaging script replaces `dist/`, the
+   ZIP, and the DMG for this version, so preserve any earlier artifacts first.
+   `make-appcast.sh` signs with the key in your Keychain (macOS asks to allow
+   access) and fails unless it matches `SUPublicEDKey`.
 
    ```sh
    scripts/package-app.sh 0.2.0
-   shasum -a 256 avi-0.2.0-macos-arm64.zip > SHA256SUMS
+   shasum -a 256 avi-0.2.0-macos-arm64.dmg avi-0.2.0-macos-arm64.zip > SHA256SUMS
    shasum -a 256 -c SHA256SUMS
    codesign --verify --deep --strict --verbose=2 dist/Avi.app
    ./dist/Avi.app/Contents/MacOS/Avi --version
+   ./dist/Avi.app/Contents/MacOS/Avi --self-test
    ./dist/Avi.app/Contents/MacOS/Avi --cli version
+   scripts/make-appcast.sh 0.2.0
+   open avi-0.2.0-macos-arm64.dmg
    open dist/Avi.app
    ./dist/Avi.app/Contents/MacOS/Avi --cli status
    ```
+
+   The disk image must open on Avi and Applications side by side; the layout
+   comes from `scripts/dmg/DS_Store` (to change it, arrange a writable copy of
+   the image in Finder and copy that volume's `.DS_Store` back). `appcast.xml`
+   must offer the new version with the CHANGELOG section as its notes.
 
    Check Changes and History, staged/unstaged diffs, horizontal scrolling,
    resizing with and without a selection, repository switching, and tag
@@ -126,6 +173,16 @@ git log -1 --oneline
 git ls-remote --tags origin refs/tags/v0.2.0
 ```
 
+When `SPARKLE_ED_PRIVATE_KEY` was just set or changed, prove it matches the
+committed public key with a dry run of the release workflow first. It builds
+and signs everything but publishes nothing; its `Generate signed appcast` step
+fails on a mismatch. **This starts a workflow run on GitHub.**
+
+```sh
+gh workflow run release.yml --repo mrcat71/avi --ref main -f dry_run=true
+gh run list --repo mrcat71/avi --workflow release.yml --limit 1
+```
+
 Proceed only with a clean working tree, the reviewed commit on `main`, passing
 CI for that commit, and no existing `v0.2.0` tag or release.
 
@@ -139,16 +196,21 @@ git tag -a v0.2.0 -m "v0.2.0"
 git push origin v0.2.0
 ```
 
-Watch the release run and confirm both assets are present:
+Watch the release run and confirm all four assets are present (DMG, ZIP,
+`appcast.xml`, `SHA256SUMS`), then that the feed installed copies read now
+offers the new version:
 
 ```sh
 gh run list --repo mrcat71/avi --workflow release.yml --limit 5
 gh release view v0.2.0 --repo mrcat71/avi --json tagName,isDraft,isPrerelease,assets,url
+curl -sL https://github.com/mrcat71/avi/releases/latest/download/appcast.xml | grep '<sparkle:version>'
 ```
 
-Download the ZIP and `SHA256SUMS` from the release into a fresh directory,
-verify `shasum -a 256 -c SHA256SUMS`, and launch the downloaded bundle on
-another Mac. Local build success alone does not verify the published assets.
+Download the DMG, the ZIP, and `SHA256SUMS` from the release into a fresh
+directory, verify `shasum -a 256 -c SHA256SUMS`, and install from the DMG on
+another Mac. On a Mac running the previous version (0.7.1 or later), **Avi >
+Check for Updates…** must offer and install the new one. Local build success
+alone does not verify the published assets.
 
 ## Failed or incorrect releases
 

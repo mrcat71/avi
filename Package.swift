@@ -15,7 +15,8 @@ let package = Package(
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.19.6"),
         .package(url: "https://github.com/airbnb/lottie-spm", from: "4.6.1"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.1.0"),
-        .package(url: "https://github.com/sindresorhus/LaunchAtLogin-Modern", from: "1.1.0")
+        .package(url: "https://github.com/sindresorhus/LaunchAtLogin-Modern", from: "1.1.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0")
     ],
     targets: [
         .target(name: "GitKit"),
@@ -25,7 +26,8 @@ let package = Package(
                 "GitKit",
                 .product(name: "Lottie", package: "lottie-spm"),
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
-                .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern")
+                .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern"),
+                .product(name: "Sparkle", package: "Sparkle")
             ],
             resources: [.process("Resources")]
         ),

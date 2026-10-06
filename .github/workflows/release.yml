@@ -1,7 +1,8 @@
 name: release
 
 # Triggered by pushing a vX.Y.Z tag. workflow_dispatch is available for
-# building artifacts without publishing (set dry_run = true).
+# building artifacts without publishing (set dry_run = true); a dry run also
+# proves the SPARKLE_ED_PRIVATE_KEY secret matches the key in the app.
 
 on:
   push:
@@ -15,7 +16,7 @@ on:
         default: true
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -26,6 +27,8 @@ jobs:
     name: build + publish
     runs-on: macos-26
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -78,16 +81,28 @@ jobs:
       - name: Release build (arm64)
         run: swift build -c release --arch arm64
 
-      - name: Package .app bundle
+      - name: Package .app bundle, zip, and disk image
         run: scripts/package-app.sh "${{ steps.ver.outputs.version }}"
 
       - name: Self-test packaged app
         # Runs the AI preflight in the binary that ships. A miscompiled async
-        # sleep (swiftlang/swift#86204) aborts it here, before publishing.
+        # sleep (swiftlang/swift#86204) aborts it here, before publishing, as
+        # does a bundle without the keys to verify its next update.
         run: dist/Avi.app/Contents/MacOS/Avi --self-test
 
+      - name: Generate signed appcast
+        # Fails when the secret is missing or does not match SUPublicEDKey in
+        # scripts/Info.plist.template, since installed copies would refuse
+        # the update.
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: scripts/make-appcast.sh "${{ steps.ver.outputs.version }}"
+
       - name: Generate checksums
-        run: shasum -a 256 "avi-${{ steps.ver.outputs.version }}-macos-arm64.zip" > SHA256SUMS
+        run: |
+          shasum -a 256 \
+            "avi-${{ steps.ver.outputs.version }}-macos-arm64.dmg" \
+            "avi-${{ steps.ver.outputs.version }}-macos-arm64.zip" > SHA256SUMS
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true
@@ -97,7 +112,9 @@ jobs:
           gh release create "v${{ steps.ver.outputs.version }}" \
             --title "v${{ steps.ver.outputs.version }}" \
             --generate-notes \
+            "avi-${{ steps.ver.outputs.version }}-macos-arm64.dmg" \
             "avi-${{ steps.ver.outputs.version }}-macos-arm64.zip" \
+            appcast.xml \
             SHA256SUMS
 
       - name: Upload dispatch artifacts
@@ -106,6 +123,8 @@ jobs:
         with:
           name: avi-${{ steps.ver.outputs.version }}-macos-arm64
           path: |
+            avi-${{ steps.ver.outputs.version }}-macos-arm64.dmg
             avi-${{ steps.ver.outputs.version }}-macos-arm64.zip
+            appcast.xml
             SHA256SUMS
           retention-days: 14

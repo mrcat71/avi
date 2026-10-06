@@ -47,6 +47,18 @@ defaults, unknown keys are dropped silently. Old config files keep working
 across upgrades unless a key is renamed. A blank `ai.model` also decodes to the
 default model, since no backend accepts an empty one.
 
+## Update settings
+
+The switches in **Settings → General → Updates** are not in `config.toml`.
+Sparkle, which installs Avi's updates, keeps them in Avi's user defaults
+(`com.svinarenko.avi`): `SUEnableAutomaticChecks` for the daily check and
+`SUAutomaticallyUpdate` for installing in the background. To set them from a
+script or dotfiles:
+
+```sh
+defaults write com.svinarenko.avi SUEnableAutomaticChecks -bool false
+```
+
 ## Secret storage
 
 Avi never writes secrets to the config file. The macOS Keychain (service
