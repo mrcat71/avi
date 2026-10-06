@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.7.0. The config schema, the UI, and the
+Alpha. The current release is v0.7.1. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -74,6 +74,8 @@ around provider authentication, OAuth, and multi-account flows.
 - Repository picker with search, lazy metadata hydration, and clone-from-provider.
 - GitHub / GitLab account management with Personal Access Tokens and `gh` /
   `glab` CLI integration.
+- Updates itself through Sparkle, verifying each update with Avi's signing
+  key, and installs from a drag-to-Applications disk image.
 
 ## Requirements
 
@@ -107,8 +109,8 @@ script that bypasses `swift build`:
 ```
 
 Pushing a version tag triggers the GitHub Actions release workflow, which tests,
-builds, packages, and publishes the app. Local builds use the same SwiftPM and
-`scripts/package-app.sh` flow. See
+builds, packages, signs the update feed, and publishes the app. Local builds use
+the same SwiftPM and `scripts/package-app.sh` flow. See
 [`docs/RELEASE.md`](docs/RELEASE.md) for the full runbook.
 
 ### Dependency updates
@@ -153,20 +155,39 @@ Keychain (service `com.avi`) and are never written to the config file.
 
 ## Releases
 
-Tagged releases ship a zipped `Avi.app` bundle and a `SHA256SUMS` file on the
-[GitHub Releases](https://github.com/mrcat71/avi/releases) page. Artifact names
-follow the pattern `avi-<version>-macos-arm64.zip`.
+Each tagged release on the
+[GitHub Releases](https://github.com/mrcat71/avi/releases) page ships:
+
+- `avi-<version>-macos-arm64.dmg`: open it and drag **Avi** onto the
+  **Applications** folder next to it.
+- `avi-<version>-macos-arm64.zip`: the same app; in-app updates install from it.
+- `appcast.xml`: the signed update feed that installed copies read.
+- `SHA256SUMS`: checksums for the disk image and the zip.
 
 Verify a download with:
 
 ```sh
-shasum -a 256 -c SHA256SUMS
+shasum -a 256 -c SHA256SUMS --ignore-missing
 ```
 
-The bundle is ad-hoc signed, not notarized with a Developer ID. The first
-time you launch the downloaded `Avi.app`, macOS Gatekeeper will refuse to
-open it; right-click the app in Finder and pick **Open**, then click
-**Open** in the warning sheet. Subsequent launches work normally.
+The app is ad-hoc signed, not notarized with a Developer ID, so macOS
+Gatekeeper refuses the first launch of a downloaded copy. On macOS 15 and
+later, open System Settings > Privacy & Security and click **Open Anyway**
+under Security, then confirm. On macOS 14, right-click the app in Finder, pick
+**Open**, and click **Open** in the warning sheet. Later launches work
+normally.
+
+### Updates
+
+From 0.7.1 on, Avi updates itself through
+[Sparkle](https://sparkle-project.org). It checks once a day, and
+**Avi > Check for Updates…** checks right away. Settings > General > Updates
+turns the daily check off, or has Avi download updates in the background and
+install them when you quit. Avi installs an update only when the feed and the
+download carry valid signatures from Avi's EdDSA key, whose public half is
+built into the app, and an updated Avi opens without the Gatekeeper warning.
+Versions up to 0.7.0 have no updater: install 0.7.1 or later from the disk
+image once.
 
 See [`docs/RELEASE.md`](docs/RELEASE.md) for the maintainer's release checklist.
 
