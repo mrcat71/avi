@@ -19,6 +19,10 @@ public struct RootView: View {
 
     public init() {}
 
+    init(session: WorkspaceSession) {
+        _session = State(initialValue: session)
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             if AgentSkillsTip.shared.isShowing {
@@ -26,6 +30,9 @@ public struct RootView: View {
                 Divider()
             }
             workspace
+        }
+        .task {
+            await session.restore()
         }
     }
 

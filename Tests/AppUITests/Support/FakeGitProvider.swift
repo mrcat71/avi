@@ -12,6 +12,7 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public var fileDiffs: [String: FileDiff]
     public var commitFiles: [String: [CommitFileChange]]
     public var lastCommit: String?
+    public var repositoryRootHandler: (@Sendable (URL) async throws -> URL)?
 
     /// Recorded calls for batched staging assertions in tests.
     public private(set) var stagePathsCalls: [[String]] = []
@@ -72,7 +73,10 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     }
 
     public func repositoryRoot(for url: URL) async throws -> URL {
-        url
+        if let repositoryRootHandler {
+            return try await repositoryRootHandler(url)
+        }
+        return url
     }
 
     public func location(of repository: URL) async throws -> RepositoryLocation {
