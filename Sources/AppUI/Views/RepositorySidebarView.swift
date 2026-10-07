@@ -8,7 +8,7 @@ struct RepositorySidebarView: View {
 
     @State private var filter = ""
     @State private var branchesExpanded = true
-    @State private var remoteBranchesExpanded = true
+    @State private var remoteBranchesExpanded = false
     @State private var tagsExpanded = true
     @State private var stashesExpanded = true
     @State private var worktreesExpanded = true
@@ -43,11 +43,11 @@ struct RepositorySidebarView: View {
 
                     sectionFilter
 
+                    worktreesSection
                     branchesSection
                     remoteBranchesSection
                     tagsSection
                     stashesSection
-                    worktreesSection
                 }
                 .padding(.bottom, 12)
             }
