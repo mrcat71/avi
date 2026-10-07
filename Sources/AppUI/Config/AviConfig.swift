@@ -165,7 +165,7 @@ public struct GitConfig: Codable, Equatable, Sendable {
         defaultAuthorName: String = "",
         defaultAuthorEmail: String = "",
         signCommits: Bool = false,
-        fetchInterval: Int = 0,
+        fetchInterval: Int = 5,
         autoRefresh: Bool = true,
         pruneOnFetch: Bool = true,
         externalEditor: String = "",
@@ -179,6 +179,11 @@ public struct GitConfig: Codable, Equatable, Sendable {
         self.pruneOnFetch = pruneOnFetch
         self.externalEditor = externalEditor
         self.terminalApp = terminalApp
+    }
+
+    /// `fetchInterval` in seconds, or nil when auto-fetch is off.
+    public var autoFetchInterval: TimeInterval? {
+        fetchInterval > 0 ? TimeInterval(fetchInterval) * 60 : nil
     }
 }
 
