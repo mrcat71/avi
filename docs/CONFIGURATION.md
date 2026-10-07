@@ -59,6 +59,20 @@ script or dotfiles:
 defaults write com.svinarenko.avi SUEnableAutomaticChecks -bool false
 ```
 
+## Workspace restoration
+
+Open repository paths, tab order, and the selected repository are saved in
+macOS user defaults under `avi.workspaceSession`, separately from the recent
+repository list and `config.toml`. Changes are saved as tabs are opened,
+selected, reordered, or closed, not only when Avi quits.
+If several repository windows are open, the most recently changed window
+provides the saved workspace.
+
+On launch, Avi reopens the saved tabs once. A repository that cannot be opened
+is skipped and reported without preventing the others from reopening. If the
+saved selection is unavailable, Avi selects the first restored repository.
+Closing every tab leaves the repository picker on the next launch.
+
 ## Secret storage
 
 Avi never writes secrets to the config file. The macOS Keychain (service
