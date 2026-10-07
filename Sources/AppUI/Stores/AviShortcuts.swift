@@ -87,6 +87,7 @@ public enum AviShortcuts {
     @MainActor
     public static func registerAll() {
         #if canImport(KeyboardShortcuts)
+        removeLegacyFetchShortcut()
         for action in Action.allCases {
             let name = action.shortcutName
             KeyboardShortcuts.onKeyUp(for: name) {
@@ -95,6 +96,17 @@ public enum AviShortcuts {
         }
         #endif
     }
+
+    #if canImport(KeyboardShortcuts)
+    @MainActor
+    static func removeLegacyFetchShortcut(for name: KeyboardShortcuts.Name = .fetch) {
+        // The library persists defaults, so removing the initial binding alone
+        // would leave existing installs intercepting GoLand's Find in Files.
+        if KeyboardShortcuts.getShortcut(for: name) == .init(.f, modifiers: [.command, .shift]) {
+            KeyboardShortcuts.setShortcut(nil, for: name)
+        }
+    }
+    #endif
 }
 
 #if canImport(KeyboardShortcuts)
@@ -105,7 +117,7 @@ extension KeyboardShortcuts.Name {
     static let unstageAll = Self("avi.unstageAll", default: .init(.u, modifiers: [.command, .shift]))
     static let discardSelection = Self("avi.discardSelection", default: .init(.d, modifiers: [.command, .shift]))
     static let commit = Self("avi.commit", default: .init(.return, modifiers: [.command]))
-    static let fetch = Self("avi.fetch", default: .init(.f, modifiers: [.command, .shift]))
+    static let fetch = Self("avi.fetch")
     static let pull = Self("avi.pull", default: .init(.l, modifiers: [.command, .shift]))
     static let push = Self("avi.push", default: .init(.p, modifiers: [.command, .option]))
     static let commandPalette = Self("avi.commandPalette", default: .init(.k, modifiers: [.command]))

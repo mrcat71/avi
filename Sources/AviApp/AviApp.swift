@@ -175,7 +175,6 @@ struct AviApp: App {
                 Button("Fetch") {
                     NotificationCenter.default.post(name: .aviFetchRepository, object: nil)
                 }
-                .keyboardShortcut("f", modifiers: [.command, .shift])
 
                 Button("Pull") {
                     NotificationCenter.default.post(name: .aviPullRepository, object: nil)
