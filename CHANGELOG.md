@@ -6,6 +6,17 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-10-07
+
+### Added
+- Avi reopens the previous workspace on launch, preserving open repository tabs, their order, and the selected repository. Closed tabs stay closed; unavailable repositories are skipped with an error while the others reopen.
+
+### Changed
+- Remote Branches starts collapsed in the sidebar. Worktrees appears above Branches when the repository has linked worktrees.
+
+### Fixed
+- Fetch no longer binds Shift+Cmd+F in the menu or globally, leaving GoLand's Find in Files available. Existing installs clear the old binding on launch; other custom Fetch shortcuts stay unchanged.
+
 ## [0.7.3] - 2026-10-07
 
 ### Added
