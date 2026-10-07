@@ -151,8 +151,20 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         )
     }
 
-    public func fetch(remote _: String?, in _: URL) async throws -> GitRemoteOperationResult {
-        GitRemoteOperationResult(output: "ok")
+    /// Remotes passed to `fetch`, in call order; nil stands for every remote.
+    public private(set) var fetchCalls: [String?] = []
+    /// Thrown by `fetch`, like an unreachable remote.
+    public var fetchError: GitError?
+    /// Holds `fetch` until the test opens it, so a test can act mid-fetch.
+    public var fetchGate: FetchGate?
+
+    public func fetch(remote: String?, in _: URL) async throws -> GitRemoteOperationResult {
+        fetchCalls.append(remote)
+        await fetchGate?.pass()
+        if let fetchError {
+            throw fetchError
+        }
+        return GitRemoteOperationResult(output: "ok")
     }
 
     /// Thrown by `pull(in:)`, like Git stopping on a conflict.
@@ -422,5 +434,26 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
 
     public func stash(paths: [String], message: String?, includeUntracked: Bool, in _: URL) async throws {
         actionCalls.append("stash \(paths.joined(separator: ",")) \(message ?? "")\(includeUntracked ? " untracked" : "")")
+    }
+}
+
+/// Keeps `FakeGitProvider.fetch` waiting until `open()`, like a slow remote.
+public actor FetchGate {
+    private var isOpen = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    public init() {}
+
+    func pass() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    public func open() {
+        isOpen = true
+        for continuation in waiting {
+            continuation.resume()
+        }
+        waiting.removeAll()
     }
 }

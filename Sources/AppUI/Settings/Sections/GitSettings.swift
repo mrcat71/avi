@@ -26,7 +26,10 @@ struct GitSettingsView: View {
             }
 
             SettingsGroup("Fetch") {
-                SettingsFormRow("Auto-fetch interval", description: "Minutes. 0 disables auto-fetch.") {
+                SettingsFormRow(
+                    "Auto-fetch interval",
+                    description: "Minutes. Once the last fetch is older than this, Avi fetches when you come back to it or switch tabs, and again while it stays in front. 0 turns it off."
+                ) {
                     Stepper(value: bind(\.git.fetchInterval), in: 0 ... 120, step: 5) {
                         Text("\(store.config.git.fetchInterval) min")
                             .font(.system(size: 12, design: .monospaced))

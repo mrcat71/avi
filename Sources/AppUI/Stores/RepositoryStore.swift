@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import GitKit
+import os
 
 /// Observable state for one open repository: status entries, the selected file's
 /// diff, and the working-copy actions. All git work runs through `GitProviding`.
@@ -42,6 +43,11 @@ public final class RepositoryStore: Identifiable {
     public private(set) var defaultBranchName: String?
     public private(set) var remoteOutput: String?
     public private(set) var lastFetched: Date?
+    /// True while a fetch Avi started on its own runs; the status bar says so.
+    public private(set) var isAutoFetching = false
+    /// The last automatic fetch, when it failed. The status bar shows it rather
+    /// than an alert, and any later fetch that succeeds clears it.
+    public private(set) var autoFetchFailure: AutoFetchFailure?
     public private(set) var isLoading = false
     public private(set) var isHistoryLoading = false
     public private(set) var isRefsLoading = false
@@ -134,6 +140,10 @@ public final class RepositoryStore: Identifiable {
     private var autoRefreshTask: Task<Void, Never>?
     private var refreshPending = false
     private let refreshCoordinator = RefreshCoordinator()
+    /// When the last automatic fetch started, so an unreachable remote is
+    /// retried once per interval rather than on every check.
+    private var lastAutoFetchAttempt: Date?
+    private static let fetchLog = Logger(subsystem: "com.svinarenko.avi", category: "fetch")
 
     public init(git: GitProviding = CLIGitProvider()) {
         self.git = git
@@ -206,6 +216,8 @@ public final class RepositoryStore: Identifiable {
             remotes = []
             defaultBranchName = nil
             remoteOutput = nil
+            lastAutoFetchAttempt = nil
+            autoFetchFailure = nil
             clearHistorySelection()
             expandedFolders = []
             lastSeenFolderIds = []
@@ -313,9 +325,21 @@ public final class RepositoryStore: Identifiable {
             lastFetched = nil
             return
         }
-        let fetchHead = root.appendingPathComponent(".git").appendingPathComponent("FETCH_HEAD")
-        let attributes = try? FileManager.default.attributesOfItem(atPath: fetchHead.path)
-        lastFetched = attributes?[.modificationDate] as? Date
+        // A linked worktree writes FETCH_HEAD to its own git dir and the main
+        // worktree to the common dir. Remote-tracking refs are shared, so a
+        // fetch from either makes this one that fresh.
+        let gitDirs = location.map { [$0.gitDir, $0.commonDir] } ?? [root.appendingPathComponent(".git")]
+        // A missing FETCH_HEAD only means that git dir never fetched.
+        lastFetched = gitDirs
+            .compactMap { dir -> Date? in
+                let fetchHead = dir.appendingPathComponent("FETCH_HEAD")
+                let attributes = try? FileManager.default.attributesOfItem(atPath: fetchHead.path)
+                return attributes?[.modificationDate] as? Date
+            }
+            .max()
+        if let failure = autoFetchFailure, let lastFetched, lastFetched > failure.date {
+            autoFetchFailure = nil
+        }
     }
 
     public func select(_ file: FileStatus?, source: DiffSource? = nil) async {
@@ -655,6 +679,45 @@ public final class RepositoryStore: Identifiable {
         await performRemoteOperation {
             try await $0.fetch(remote: remote, in: $1)
         }
+    }
+
+    /// Fetch every remote in the background when the last fetch is older than
+    /// `interval` seconds; nil turns it off. A failure goes to the status bar,
+    /// not an alert, because nobody asked for this fetch and an alert would
+    /// interrupt whatever you came back to do.
+    public func autoFetchIfDue(interval: TimeInterval?, now: Date = Date()) async {
+        guard let interval, interval > 0, let root, !remotes.isEmpty,
+              !isRemoteOperationRunning, !isAutoFetching
+        else { return }
+        if let last = [lastFetched, lastAutoFetchAttempt].compactMap(\.self).max(),
+           now.timeIntervalSince(last) < interval {
+            return
+        }
+        lastAutoFetchAttempt = now
+        isAutoFetching = true
+        // A task of its own: leaving the tab cancels the caller, and that must
+        // not cancel a fetch waiting in the command queue and call it a failure.
+        // A remote operation you start meanwhile queues behind it there.
+        await Task {
+            do {
+                _ = try await git.fetch(remote: nil, in: root)
+                if self.root == root {
+                    autoFetchFailure = nil
+                }
+            } catch {
+                // Private: Git's message can carry a remote URL.
+                Self.fetchLog.error("Automatic fetch failed: \(error.localizedDescription)")
+                if self.root == root {
+                    autoFetchFailure = AutoFetchFailure(message: error.localizedDescription, date: Date())
+                }
+            }
+            isAutoFetching = false
+            // The refresh below picks up whatever the watcher saw meanwhile.
+            refreshPending = false
+            if self.root == root {
+                await refresh()
+            }
+        }.value
     }
 
     public func pull() async {
@@ -1365,7 +1428,7 @@ public final class RepositoryStore: Identifiable {
 
     private func scheduleAutoRefresh() {
         guard root != nil else { return }
-        if isLoading || isRemoteOperationRunning {
+        if isLoading || isRemoteOperationRunning || isAutoFetching {
             refreshPending = true
             return
         }
@@ -1797,6 +1860,12 @@ public struct PlanRevisionRequest: Identifiable, Equatable, Sendable {
 public struct PlanProgress: Equatable, Sendable {
     public var completed: Int
     public let total: Int
+}
+
+/// Why the last automatic fetch failed, and when.
+public struct AutoFetchFailure: Equatable, Sendable {
+    public let message: String
+    public let date: Date
 }
 
 /// The agent proposal whose files were staged and whose message went to the

@@ -74,6 +74,10 @@ struct RepositoryView: View {
         .task(id: store.id) {
             await store.refresh()
             applyInitialSelectionIfNeeded()
+            await autoFetchWhileShown()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await store.autoFetchIfDue(interval: ConfigStore.shared.config.git.autoFetchInterval) }
         }
         .onChange(of: store.entries.isEmpty) { _, _ in
             applyInitialSelectionIfNeeded()
@@ -291,6 +295,19 @@ struct RepositoryView: View {
             StashContentsWorkspaceView(store: store, ref: ref)
         case .allCommits, .branch, .remoteBranch, .tag:
             HistoryWorkspaceView(store: store)
+        }
+    }
+
+    /// Fetch when this repository comes into view, then check once a minute
+    /// until it leaves; coming back to Avi checks too. Each check fetches only
+    /// while Avi is in front and the last fetch is older than
+    /// Settings > Git > Auto-fetch interval.
+    private func autoFetchWhileShown() async {
+        while !Task.isCancelled {
+            if NSApp.isActive {
+                await store.autoFetchIfDue(interval: ConfigStore.shared.config.git.autoFetchInterval)
+            }
+            try? await Task.safeSleep(for: .seconds(60))
         }
     }
 
@@ -820,7 +837,7 @@ private struct RepositoryActionToolbarView: View {
             PushSheet(store: store, dismiss: { showingPushSheet = false })
         }
         .overlay(alignment: .topTrailing) {
-            if store.isLoading || store.isRemoteOperationRunning {
+            if store.isLoading || store.isRemoteOperationRunning || store.isAutoFetching {
                 Circle()
                     .fill(Color.accentColor)
                     .frame(width: 5, height: 5)
@@ -1100,8 +1117,14 @@ private struct LocalChangesStatusBar: View {
             Spacer()
 
             HStack(spacing: 5) {
-                Image(systemName: "arrow.down")
-                    .font(.system(size: 10))
+                if store.autoFetchFailure != nil, !store.isAutoFetching {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                } else {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 10))
+                }
                 Text(fetchedLabel)
                     .font(.system(size: 11))
             }
@@ -1154,6 +1177,12 @@ private struct LocalChangesStatusBar: View {
     }
 
     private var fetchedLabel: String {
+        if store.isAutoFetching {
+            return "fetching…"
+        }
+        if store.autoFetchFailure != nil {
+            return "fetch failed"
+        }
         guard let last = store.lastFetched else { return "never fetched" }
         let elapsed = Date().timeIntervalSince(last)
         if elapsed < 30 {
@@ -1174,8 +1203,12 @@ private struct LocalChangesStatusBar: View {
     }
 
     private var fetchedTooltip: String {
-        guard let last = store.lastFetched else { return "No fetch has been recorded for this repository." }
-        return last.formatted(.dateTime.year().month().day().hour().minute().second())
+        let last = store.lastFetched?.formatted(.dateTime.year().month().day().hour().minute().second())
+        guard let failure = store.autoFetchFailure else {
+            return last ?? "No fetch has been recorded for this repository."
+        }
+        let when = failure.date.formatted(date: .omitted, time: .shortened)
+        return "The automatic fetch at \(when) failed:\n\(failure.message)\n\nLast fetch: \(last ?? "none recorded")"
     }
 }
 
