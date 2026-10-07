@@ -6,6 +6,14 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-07
+
+### Added
+- Avi fetches on its own. Once the last fetch is older than **Settings > Git > Auto-fetch interval**, it fetches the open repository when you come back to Avi or switch to its tab, and again on that interval while Avi stays in front. The setting was there before but never fetched. New installs fetch every 5 minutes; an existing config keeps its `fetchInterval`, which used to default to 0 (off), so raise it in Settings. An automatic fetch that fails says "fetch failed" in the status bar, with Git's message in the tooltip, instead of showing an alert.
+
+### Fixed
+- In a linked worktree, the status bar said "never fetched" however recently the repository had fetched.
+
 ## [0.7.2] - 2026-10-06
 
 ### Added
