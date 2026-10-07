@@ -2,5 +2,5 @@
 import Testing
 
 @Test func versionIsSet() {
-    #expect(GitKit.version == "0.7.2")
+    #expect(GitKit.version == "0.7.3")
 }
