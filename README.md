@@ -18,18 +18,22 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.7.3. The config schema, the UI, and the
+Alpha. The current release is v0.7.4. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
 ## Features
 
 - Tab-based repository view with status bar, branch info, and remote actions;
-  drag tabs to reorder them.
+  drag tabs to reorder them. Relaunching restores the open repositories, their
+  tab order, and the selected tab. Closing a tab keeps it closed on relaunch.
 - Auto-fetch: once the last fetch is older than Settings > Git > Auto-fetch
   interval (5 minutes by default), the open repository fetches when you come
   back to Avi or switch to its tab, and again while Avi stays in front. A
   failed automatic fetch shows in the status bar, not as an alert.
+- Fetch has no default keyboard shortcut, so Shift+Cmd+F stays available to
+  other apps. Use the toolbar or Repository > Fetch; a different shortcut can
+  be assigned in Settings > Keyboard.
 - Staged / unstaged file lists in Fork-style ordering, with selection-preserving
   stage and unstage operations and arrow keys that step from file to file,
   past folders.
@@ -54,6 +58,8 @@ around provider authentication, OAuth, and multi-account flows.
   push tags and delete them locally or on the remote too, apply / pop / drop
   stashes, open a worktree in its own tab, and clean up local branches whose
   upstream is gone.
+  Worktrees is the first section when linked worktrees exist; Remote Branches
+  starts collapsed and can be expanded from its header.
 - Fork's branch menu on every local branch: check out (bringing uncommitted
   changes along if you like) or check out as a new worktree, fast-forward to the
   fetched upstream, push, create a pull or merge request, merge into the current
