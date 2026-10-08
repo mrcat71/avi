@@ -50,6 +50,16 @@ public final class RepositoryStore: Identifiable {
     public private(set) var autoFetchFailure: AutoFetchFailure?
     public private(set) var isLoading = false
     public private(set) var isHistoryLoading = false
+    /// Commits History asks Git for. Load Older Commits raises it for the rest
+    /// of the session, and later refreshes keep it.
+    public private(set) var historyWindow = RepositoryStore.historyPageSize
+    /// The limit the last history load ended up using, after it grew the
+    /// window to reach the parents of side branches.
+    private var historyLoadedLimit = 0
+    public private(set) var isLoadingOlderHistory = false
+    /// Set by Search Commits in the command palette; History opens and focuses
+    /// its search field, then clears it.
+    public var wantsHistorySearchFocus = false
     public private(set) var isRefsLoading = false
     public private(set) var isRemoteOperationRunning = false
     public internal(set) var errorMessage: String?
@@ -796,7 +806,12 @@ public final class RepositoryStore: Identifiable {
             }
         }
 
-        let hint = RemoteURLParser.hint(from: gitRemote)
+        var hint = RemoteURLParser.hint(from: gitRemote, knownHosts: KnownProviderHosts.shared.hosts)
+        if hint == .unknown {
+            // A self-hosted GitLab `glab` was signed in to after the list loaded.
+            await KnownProviderHosts.shared.refresh()
+            hint = RemoteURLParser.hint(from: gitRemote, knownHosts: KnownProviderHosts.shared.hosts)
+        }
         let detected = await (try? git.defaultBranch(remote: remoteName, in: root)) ?? nil
         let base: String
         if let detected, !detected.isEmpty {
@@ -812,7 +827,7 @@ public final class RepositoryStore: Identifiable {
         case .gitlab(let host, let projectPath):
             url = GitLabAPI.newMergeRequestWebURL(host: host, projectPath: projectPath, sourceBranch: branch, targetBranch: base, title: branch)
         case .unknown:
-            errorMessage = "Remote '\(remoteName)' is not GitHub or GitLab; cannot open PR page."
+            errorMessage = "Avi cannot tell whether '\(remoteName)' is GitHub or GitLab. For a self-hosted GitLab, sign in with `glab auth login --hostname <host>` or add a token in Settings > GitLab."
             return
         }
 
@@ -839,7 +854,24 @@ public final class RepositoryStore: Identifiable {
         await refreshHistory()
     }
 
-    public func refreshHistory(limit: Int = 200) async {
+    /// Git returned as many commits as History asked for, so older ones may exist.
+    public var hasOlderHistory: Bool {
+        historyLoadedLimit > 0 && historyRows.count >= historyLoadedLimit
+    }
+
+    /// Loads the next batch of older commits into History.
+    public func loadOlderHistory() async {
+        guard !isLoadingOlderHistory else { return }
+        isLoadingOlderHistory = true
+        defer { isLoadingOlderHistory = false }
+        historyWindow += Self.historyOlderStep
+        await refreshHistory()
+    }
+
+    public static let historyPageSize = 200
+    public static let historyOlderStep = 1000
+
+    public func refreshHistory() async {
         guard let root else { return }
         let requestID = UUID()
         historyRequestID = requestID
@@ -857,7 +889,7 @@ public final class RepositoryStore: Identifiable {
             // that its merge-base is outside the window), pull progressively
             // larger windows so the graph never dangles a lane into empty
             // space. Capped so a pathological branch can't blow the budget.
-            var effectiveLimit = limit
+            var effectiveLimit = historyWindow
             var commits = try await git.history(in: root, limit: effectiveLimit, filter: filter)
             guard historyRequestID == requestID, self.root == root else { return }
             var extensions = 0
@@ -875,6 +907,7 @@ public final class RepositoryStore: Identifiable {
             }
 
             let rows = CommitGraph.assignRows(for: commits, refs: refs)
+            historyLoadedLimit = effectiveLimit
             if historyRows != rows {
                 historyRows = rows
             }

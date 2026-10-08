@@ -47,7 +47,7 @@ struct AppearanceSettingsView: View {
                         .frame(maxWidth: 260)
                 }
                 Divider().padding(.vertical, 4)
-                SettingsFormRow("Graph lane width") {
+                SettingsFormRow("Graph lane width", description: "Author pictures need at least 20 pt and widen narrower lanes.") {
                     Picker("", selection: laneWidthBinding) {
                         Text("12 pt").tag(12)
                         Text("16 pt").tag(16)
@@ -56,6 +56,15 @@ struct AppearanceSettingsView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(maxWidth: 240)
+                }
+                Divider().padding(.vertical, 4)
+                SettingsFormRow(
+                    "Author pictures",
+                    description: "Shows each author's picture on their commits in History. Avi looks it up on GitHub, the repository's GitLab, and Gravatar, which only receives a hash of the email address. Off shows plain commit dots and asks no server."
+                ) {
+                    Toggle("", isOn: authorPicturesBinding)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
                 }
             }
 
@@ -108,6 +117,13 @@ struct AppearanceSettingsView: View {
         Binding(
             get: { store.config.appearance.graphLaneWidth },
             set: { v in store.update { $0.appearance.graphLaneWidth = v } }
+        )
+    }
+
+    private var authorPicturesBinding: Binding<Bool> {
+        Binding(
+            get: { store.config.appearance.authorPictures },
+            set: { v in store.update { $0.appearance.authorPictures = v } }
         )
     }
 

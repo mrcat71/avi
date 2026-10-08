@@ -53,6 +53,8 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public var failWorkingTreeDiff = false
     /// Index and commit calls in the order they happened.
     public private(set) var events: [String] = []
+    /// Patches `applyPatch` received, with where they went.
+    public private(set) var appliedPatches: [(patch: String, toIndex: Bool, reverse: Bool)] = []
 
     public init(
         status: WorkingCopyStatus,
@@ -99,12 +101,12 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         fileDiffs[path] ?? FileDiff(hunks: [], isBinary: false)
     }
 
-    public func history(in _: URL, limit _: Int) async throws -> [CommitSummary] {
-        commits
+    public func history(in _: URL, limit: Int) async throws -> [CommitSummary] {
+        Array(commits.prefix(limit))
     }
 
-    public func history(in _: URL, limit _: Int, filter _: HistoryFilter) async throws -> [CommitSummary] {
-        commits
+    public func history(in _: URL, limit: Int, filter _: HistoryFilter) async throws -> [CommitSummary] {
+        Array(commits.prefix(limit))
     }
 
     public func refs(in _: URL) async throws -> RepositoryRefs {
@@ -121,6 +123,10 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
 
     public func diff(commitOID _: String, path: String, in _: URL) async throws -> FileDiff {
         fileDiffs[path] ?? FileDiff(hunks: [], isBinary: false)
+    }
+
+    public func applyPatch(_ patch: String, toIndex: Bool, reverse: Bool, in _: URL) async throws {
+        appliedPatches.append((patch, toIndex, reverse))
     }
 
     public func checkout(_ ref: GitReference, in _: URL) async throws {

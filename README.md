@@ -34,14 +34,18 @@ around provider authentication, OAuth, and multi-account flows.
 - Fetch has no default keyboard shortcut, so Shift+Cmd+F stays available to
   other apps. Use the toolbar or Repository > Fetch; a different shortcut can
   be assigned in Settings > Keyboard.
-- Staged / unstaged file lists in Fork-style ordering, with selection-preserving
-  stage and unstage operations and arrow keys that step from file to file,
-  past folders.
+- Staged / unstaged file lists with selection-preserving stage and unstage
+  operations and arrow keys that step from file to file, past folders.
+- Stage, unstage, or discard single lines: select lines in a file's diff and
+  use the buttons beside them, or click in a hunk for the whole hunk. Works on
+  files changed in place, in the unified diff.
 - One Changes screen for one commit or several: unstaged files on top, then the
   commits you are about to make. Commit 1 is your staged files; planned commits
   from agents, the AI, and you stack under it. Drag files between commits, let
   **Split into Commits…** have the AI group the changes you staged, tell it how
   to split, merge, or rethink them, and commit one at a time or all in order.
+  The Commit button says how many staged files it commits, and when it is off,
+  the reason shows next to it.
 - Agent hand-off: the `avi` command lets Claude Code, Codex, and other local
   agents stage files and fill the commit message, or propose a whole commit
   plan, from several sessions at once. Nothing is committed until you approve
@@ -51,28 +55,41 @@ around provider authentication, OAuth, and multi-account flows.
   invisible characters, wraps lines, sets the lines of context or shows the
   entire file, and switches to a side-by-side view.
 - Commit graph view with per-commit file diffs, scoped to the current branch or
-  to all branches.
+  to all branches. Search finds commits by message, author, or the start of a
+  SHA: matches are highlighted, the rest dims, and Return and Shift+Return step
+  between them. **Search Commits** in the command palette opens the search.
+  History loads the latest 200 commits; **Load Older Commits** adds 1,000 more
+  at a time. Commits show their author's picture, from GitHub, the
+  repository's GitLab, or Gravatar, with initials until one arrives, and recent
+  ones say Today or Yesterday instead of a date.
+- A commit menu in History: new branch or tag at the commit, an
+  interactive rebase from it or a stop to edit it, reset the current branch to
+  it (soft, mixed, or hard), check it out, cherry-pick or revert it, save it as
+  a patch, compare it with your local changes, and copy its SHA (Cmd+C copies
+  the selected commits' SHAs).
 - Changed-files tree that defaults to fully expanded, with expand-all and
-  collapse-all controls.
+  collapse-all controls. Clicking a folder selects it with every file inside,
+  so Stage, Unstage, Discard, and dragging act on the whole folder; the chevron
+  opens and closes it.
 - Sidebar sections for branches, tags, stashes, and linked worktrees: checkout,
   push tags and delete them locally or on the remote too, apply / pop / drop
   stashes, open a worktree in its own tab, and clean up local branches whose
   upstream is gone.
   Worktrees is the first section when linked worktrees exist; Remote Branches
   starts collapsed and can be expanded from its header.
-- Fork's branch menu on every local branch: check out (bringing uncommitted
+- A full branch menu on every local branch: check out (bringing uncommitted
   changes along if you like) or check out as a new worktree, fast-forward to the
   fetched upstream, push, create a pull or merge request, merge into the current
   branch, rebase or interactively rebase the current branch onto it, new branch
   (Shift+Cmd+B) and tag (Shift+Cmd+G), tracking, rename, delete here and on the
   remote too, copy the name.
-- Fork's changed-file menu: open or open with, external diff (Cmd+D), Show in
+- A changed-file menu: open or open with, external diff (Cmd+D), Show in
   Finder, Blame/Timeline and History windows, stage (Cmd+S), discard, ignore
   through `.gitignore` or `.git/info/exclude`, stash only those files, save as
   patch, copy path.
-- A merge or rebase that stops on a conflict, or at a commit to edit, shows a
-  banner with Continue, Skip, and Abort; a stopped merge's message is already in
-  the commit field.
+- A merge, rebase, cherry-pick, or revert that stops on a conflict, or at a
+  commit to edit, shows a banner with Continue, Skip, and Abort; a stopped
+  merge's message is already in the commit field.
 - Built for agents' habits: a detached HEAD says whether its commits are on
   no branch and offers to create one, and checking out something else asks
   before stranding them. Worktrees show their uncommitted changes and detached
@@ -80,13 +97,18 @@ around provider authentication, OAuth, and multi-account flows.
   folder never appear in Changes or get staged.
 - Push sheet that states whether the push updates, adopts, or creates the remote
   branch, for the current branch or any other.
-- AI-assisted commit message generation through a configurable command or the
-  OpenAI API (default model `gpt-6-luna`), with an IDE-style debug drawer for
-  the underlying run.
+- AI-assisted commit message generation, one click on **Generate** in the
+  commit card, through a configurable command or the OpenAI API (default model
+  `gpt-6-luna`). AI work shows how long it has been running, and an IDE-style
+  debug drawer shows the underlying run.
 - Config file with live reload; secrets stored in the macOS Keychain.
 - Repository picker with search, lazy metadata hydration, and cloning from any
   `gh` or `glab` account, or from a URL over HTTPS with the account you pick or
-  over SSH with your keys.
+  over SSH with your keys. Dropping folders on the window opens them, each in
+  its own tab.
+- Pull and merge requests open on GitHub, gitlab.com, and self-hosted GitLab:
+  an instance whose name does not say "gitlab" is recognized when `glab` is
+  signed in to it or Settings > GitLab has a token for it.
 - GitHub / GitLab account management with Personal Access Tokens and `gh` /
   `glab` CLI integration.
 - Updates itself through Sparkle, verifying each update with Avi's signing

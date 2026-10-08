@@ -14,7 +14,8 @@ density = "comfortable"    # comfortable | compact
 fontSize = 13
 diffFont = "SF Mono"
 fileListMode = "tree"      # tree | flat
-graphLaneWidth = 16
+graphLaneWidth = 16        # 12 | 16 | 20; author pictures need 20
+authorPictures = true      # look up pictures on GitHub, your GitLab, Gravatar
 
 [git]
 defaultAuthorName = ""

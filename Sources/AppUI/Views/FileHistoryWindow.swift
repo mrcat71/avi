@@ -260,7 +260,7 @@ private struct TimelineRow: View {
                 .lineLimit(2)
             HStack(spacing: 6) {
                 Text(entry.commit.authorName)
-                Text(entry.commit.authorDate, format: .dateTime.year().month().day())
+                Text(CommitDateText.string(for: entry.commit.authorDate, style: .day))
                 Text(String(entry.commit.oid.prefix(8)))
                     .font(.system(size: 10, design: .monospaced))
             }
@@ -291,7 +291,7 @@ private struct CommitSummaryHeader: View {
                 .textSelection(.enabled)
             HStack(spacing: 8) {
                 Text(commit.authorName)
-                Text(commit.authorDate, format: .dateTime.year().month().day().hour().minute())
+                Text(CommitDateText.string(for: commit.authorDate, style: .long))
                 Text(commit.shortOID)
                     .font(.system(size: 11, design: .monospaced))
                     .textSelection(.enabled)
@@ -391,7 +391,7 @@ private struct BlameLineRow: View {
                         Text(line.commit.author)
                             .font(.system(size: 10, weight: .medium))
                         if let date = line.commit.authorDate {
-                            Text(date, format: .dateTime.year().month().day())
+                            Text(CommitDateText.string(for: date, style: .day))
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                         }

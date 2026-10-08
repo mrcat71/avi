@@ -133,6 +133,9 @@ public struct AppearanceConfig: Codable, Equatable, Sendable {
     public var diffFont: String
     public var fileListMode: String // tree | flat
     public var graphLaneWidth: Int
+    /// Authors' pictures on History's commits, looked up on GitHub, the
+    /// repository's GitLab, and Gravatar. Off shows the commit dots alone.
+    public var authorPictures: Bool
 
     public init(
         theme: String = "system",
@@ -140,7 +143,8 @@ public struct AppearanceConfig: Codable, Equatable, Sendable {
         fontSize: Int = 13,
         diffFont: String = "SF Mono",
         fileListMode: String = "tree",
-        graphLaneWidth: Int = 16
+        graphLaneWidth: Int = 16,
+        authorPictures: Bool = true
     ) {
         self.theme = theme
         self.density = density
@@ -148,6 +152,20 @@ public struct AppearanceConfig: Codable, Equatable, Sendable {
         self.diffFont = diffFont
         self.fileListMode = fileListMode
         self.graphLaneWidth = graphLaneWidth
+        self.authorPictures = authorPictures
+    }
+
+    /// Keys missing from an older file keep their defaults.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = AppearanceConfig()
+        theme = (try? c.decode(String.self, forKey: .theme)) ?? defaults.theme
+        density = (try? c.decode(String.self, forKey: .density)) ?? defaults.density
+        fontSize = (try? c.decode(Int.self, forKey: .fontSize)) ?? defaults.fontSize
+        diffFont = (try? c.decode(String.self, forKey: .diffFont)) ?? defaults.diffFont
+        fileListMode = (try? c.decode(String.self, forKey: .fileListMode)) ?? defaults.fileListMode
+        graphLaneWidth = (try? c.decode(Int.self, forKey: .graphLaneWidth)) ?? defaults.graphLaneWidth
+        authorPictures = (try? c.decode(Bool.self, forKey: .authorPictures)) ?? defaults.authorPictures
     }
 }
 

@@ -14,6 +14,8 @@ struct DiffDisplay: Equatable {
 struct NativeDiffTextView: NSViewRepresentable {
     let diff: FileDiff
     var display = DiffDisplay()
+    /// Staging picked lines, in the Changes view only.
+    var lineActions: DiffLineActions?
 
     func makeNSView(context _: Context) -> DiffScrollView {
         Self.makeScrollView()
@@ -53,17 +55,21 @@ struct NativeDiffTextView: NSViewRepresentable {
         scroll.verticalRulerView = DiffLineRuler(scrollView: scroll, textView: text)
         scroll.hasVerticalRuler = true
         scroll.rulersVisible = true
+        scroll.observeForLineActions()
         return scroll
     }
 
     func updateNSView(_ scroll: DiffScrollView, context: Context) {
+        scroll.lineActions = lineActions
         let coordinator = context.coordinator
         guard coordinator.diff != diff || coordinator.display != display else { return }
         let diffChanged = coordinator.diff != diff
         coordinator.diff = diff
         coordinator.display = display
         Self.apply(display, to: scroll)
-        Self.show(DiffDocument(diff), in: scroll, display: display, resetPosition: diffChanged)
+        // After staging or discarding lines, the same file reloads: stay put.
+        let keepsPosition = scroll.takeKeepsPosition()
+        Self.show(DiffDocument(diff), in: scroll, display: display, resetPosition: diffChanged && !keepsPosition)
     }
 
     /// Shows `diff` from its top, unwrapped and without invisible characters.
@@ -75,12 +81,17 @@ struct NativeDiffTextView: NSViewRepresentable {
     /// a different file came in.
     static func show(_ document: DiffDocument, in scroll: DiffScrollView, display: DiffDisplay, resetPosition: Bool) {
         guard let text = scroll.documentView as? NSTextView else { return }
+        let caret = min(text.selectedRange().location, (document.text as NSString).length)
         text.textStorage?.setAttributedString(attributedText(document, wrapsLines: display.wrapsLines))
         (scroll.verticalRulerView as? DiffLineRuler)?.document = document
+        scroll.document = document
         if resetPosition {
             text.setSelectedRange(NSRange(location: 0, length: 0))
             scroll.resetDocumentPosition()
+        } else {
+            text.setSelectedRange(NSRange(location: caret, length: 0))
         }
+        scroll.updateLineActionBar()
     }
 
     /// Wrapped lines follow the pane's width; unwrapped ones scroll sideways.
@@ -230,6 +241,83 @@ final class SideBySideDiffContainer: NSSplitView {
 
 final class DiffScrollView: NSScrollView {
     private var needsDocumentPositionReset = false
+    /// The document on show, to tell which lines a selection picks.
+    var document: DiffDocument?
+    var lineActions: DiffLineActions? {
+        didSet { updateLineActionBar() }
+    }
+
+    private var actionBar: NSHostingView<DiffLineActionBar>?
+    private var keepsPosition = false
+
+    /// Whether the next document should keep the scroll position, once.
+    func takeKeepsPosition() -> Bool {
+        defer { keepsPosition = false }
+        return keepsPosition
+    }
+
+    func observeForLineActions() {
+        contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(lineActionContextChanged(_:)), name: NSView.boundsDidChangeNotification, object: contentView
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(lineActionContextChanged(_:)), name: NSTextView.didChangeSelectionNotification, object: documentView
+        )
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func lineActionContextChanged(_: Notification) {
+        updateLineActionBar()
+    }
+
+    /// Shows the buttons beside the first picked row, or hides them when
+    /// nothing is picked. A caret picks its hunk once you have clicked in the
+    /// diff; selected text picks the changed lines it touches.
+    func updateLineActionBar() {
+        guard let actions = lineActions, let document,
+              let text = documentView as? NSTextView,
+              let layout = text.layoutManager, let container = text.textContainer
+        else {
+            actionBar?.isHidden = true
+            return
+        }
+        let selection = text.selectedRange()
+        let picked = document.lineKeys(in: selection)
+        let caretIsActive = selection.length > 0 || window?.firstResponder === text
+        guard caretIsActive, !picked.keys.isEmpty, let first = picked.firstRow else {
+            actionBar?.isHidden = true
+            return
+        }
+        let keys = picked.keys
+        let bar = DiffLineActionBar(mode: actions.mode, isHunk: picked.isHunk) { [weak self] command in
+            self?.keepsPosition = command != .discard
+            actions.perform(command, keys)
+        }
+        let host: NSHostingView<DiffLineActionBar>
+        if let actionBar {
+            host = actionBar
+            host.rootView = bar
+        } else {
+            host = NSHostingView(rootView: bar)
+            addSubview(host, positioned: .above, relativeTo: nil)
+            actionBar = host
+        }
+        let glyphs = layout.glyphRange(forCharacterRange: first.range, actualCharacterRange: nil)
+        var rowRect = layout.boundingRect(forGlyphRange: glyphs, in: container)
+        rowRect.origin.x += text.textContainerOrigin.x
+        rowRect.origin.y += text.textContainerOrigin.y
+        let row = convert(rowRect, from: text)
+        let visible = contentView.frame
+        let size = host.fittingSize
+        // Level with the row's top, kept inside the visible part of the diff.
+        let rowTop = isFlipped ? row.minY : row.maxY
+        var y = isFlipped ? rowTop : rowTop - size.height
+        y = min(max(y, visible.minY + 4), visible.maxY - size.height - 4)
+        host.frame = NSRect(x: visible.maxX - size.width - 12, y: y, width: size.width, height: size.height)
+        host.isHidden = false
+    }
 
     func resetDocumentPosition() {
         needsDocumentPositionReset = true
@@ -238,6 +326,7 @@ final class DiffScrollView: NSScrollView {
 
     override func tile() {
         super.tile()
+        updateLineActionBar()
         // SwiftUI may install the document before assigning the panel a size.
         // Scrolling to a glyph at that point leaves its prefix under the ruler.
         guard needsDocumentPositionReset,

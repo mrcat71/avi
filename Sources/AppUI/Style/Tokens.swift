@@ -43,6 +43,36 @@ extension DS {
         // Lines
         static let dividerStrong = SwiftUI.Color.primary.opacity(0.10)
         static let dividerSoft = SwiftUI.Color.primary.opacity(0.06)
+
+        /// Behind text that matches a search, readable in both appearances.
+        static let searchHighlight = SwiftUI.Color.yellow.opacity(0.35)
+
+        /// Commit-graph lane colors: muted jewel tones that stay distinct next to
+        /// each other, brighter in dark mode. Order is part of the contract:
+        /// branch colors are picked by hashing into this list.
+        static let lanes: [SwiftUI.Color] = [
+            dynamic(light: 0x4F5BD5, dark: 0x8B95FF), // indigo
+            dynamic(light: 0x0F9D74, dark: 0x3DD6A3), // jade
+            dynamic(light: 0xC27C0E, dark: 0xF5B54A), // amber
+            dynamic(light: 0x8B50D8, dark: 0xB892FF), // violet
+            dynamic(light: 0x0B8DB0, dark: 0x52C7EC), // cyan
+            dynamic(light: 0xC93A7E, dark: 0xF276B0), // rose
+            dynamic(light: 0xD2553A, dark: 0xFF8F72), // coral
+            dynamic(light: 0x5E8F1E, dark: 0xA3D161) // olive
+        ]
+
+        private static func dynamic(light: UInt32, dark: UInt32) -> SwiftUI.Color {
+            SwiftUI.Color(nsColor: NSColor(name: nil) { appearance in
+                let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                let rgb = isDark ? dark : light
+                return NSColor(
+                    srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+                    green: CGFloat((rgb >> 8) & 0xFF) / 255,
+                    blue: CGFloat(rgb & 0xFF) / 255,
+                    alpha: 1
+                )
+            })
+        }
     }
 
     /// Density-aware font scale. Sizes are slightly smaller in compact mode.
@@ -105,6 +135,15 @@ extension DS {
         static func heroSubtitle(_ density: Density) -> SwiftUI.Font {
             .system(size: density == .compact ? 14 : 16, weight: .regular, design: .default)
         }
+
+        /// Monospaced micro-label for panel and section titles, column headers,
+        /// and status lines. Pair with `aviLabel(_:)` for case and tracking.
+        static func label(_ density: Density) -> SwiftUI.Font {
+            .system(size: density == .compact ? 9.5 : 10, weight: .medium, design: .monospaced)
+        }
+
+        /// Letter spacing for uppercase `label` text.
+        static let labelTracking: CGFloat = 0.9
     }
 
     enum Radius {
@@ -153,5 +192,14 @@ struct ShadowSpec {
 extension View {
     func aviShadow(_ spec: ShadowSpec) -> some View {
         shadow(color: spec.color, radius: spec.radius, x: spec.x, y: spec.y)
+    }
+
+    /// Uppercase monospaced micro-label: "HISTORY", "BRANCHES", "4 CHANGES".
+    /// Use only on fixed wording; ref names and paths keep their case.
+    func aviLabel(_ density: Density, color: Color = DS.Palette.textSecondary) -> some View {
+        font(DS.Font.label(density))
+            .textCase(.uppercase)
+            .tracking(DS.Font.labelTracking)
+            .foregroundStyle(color)
     }
 }

@@ -18,17 +18,16 @@ struct AviPanelHeader<Trailing: View>: View {
     var body: some View {
         HStack(spacing: DS.Spacing.md) {
             Text(title)
-                .font(DS.Font.captionStrong(density))
-                .foregroundStyle(DS.Palette.textSecondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
+                .aviLabel(density)
 
+            // Segments can be ref names, so they keep their case.
             ForEach(Array(breadcrumb.enumerated()), id: \.offset) { _, segment in
                 Text("·")
+                    .font(DS.Font.label(density))
                     .foregroundStyle(DS.Palette.textTertiary)
                 Text(segment)
-                    .font(DS.Font.caption(density))
-                    .foregroundStyle(DS.Palette.textSecondary)
+                    .font(DS.Font.label(density))
+                    .foregroundStyle(DS.Palette.textTertiary)
                     .lineLimit(1)
             }
 

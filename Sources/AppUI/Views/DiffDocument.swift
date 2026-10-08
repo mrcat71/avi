@@ -10,6 +10,10 @@ struct DiffDocument {
         let kind: DiffLine.Kind?
         /// A blank row that keeps the two sides of a side-by-side diff level.
         var isFiller = false
+        /// Which change this row shows, for staging picked lines.
+        var key: DiffLineKey?
+        /// The hunk the row belongs to, its header included.
+        var hunk: Int?
     }
 
     let text: String
@@ -17,13 +21,25 @@ struct DiffDocument {
 
     init(_ diff: FileDiff) {
         var builder = Builder()
-        for hunk in diff.hunks {
-            builder.header(hunk.header)
+        for (index, hunk) in diff.hunks.enumerated() {
+            builder.header(hunk.header, hunk: index)
             for line in hunk.lines {
-                builder.append(line, old: line.oldLineNumber, new: line.newLineNumber)
+                builder.append(line, old: line.oldLineNumber, new: line.newLineNumber, hunk: index)
             }
         }
         self.init(text: builder.text, rows: builder.rows)
+    }
+
+    /// The changed lines a selection touches. An empty selection is a caret:
+    /// then the whole hunk it sits in, header included.
+    func lineKeys(in selection: NSRange) -> (keys: Set<DiffLineKey>, isHunk: Bool, firstRow: Row?) {
+        if selection.length == 0 {
+            guard let hunk = row(containing: selection.location)?.hunk else { return ([], true, nil) }
+            let rows = rows.filter { $0.hunk == hunk }
+            return (Set(rows.compactMap(\.key)), true, rows.first)
+        }
+        let rows = rows.filter { NSIntersectionRange($0.range, selection).length > 0 && $0.key != nil }
+        return (Set(rows.compactMap(\.key)), false, rows.first)
     }
 
     init(text: String, rows: [Row]) {
@@ -104,11 +120,11 @@ struct DiffDocument {
         var rows: [Row] = []
         private var offset = 0
 
-        mutating func header(_ value: String) {
-            add(value, old: nil, new: nil, kind: nil, filler: false)
+        mutating func header(_ value: String, hunk: Int? = nil) {
+            add(value, old: nil, new: nil, kind: nil, filler: false, hunk: hunk)
         }
 
-        mutating func append(_ line: DiffLine, old: Int?, new: Int?) {
+        mutating func append(_ line: DiffLine, old: Int?, new: Int?, hunk: Int? = nil) {
             let marker: String
             switch line.kind {
             case .addition: marker = "+"
@@ -116,17 +132,22 @@ struct DiffDocument {
             case .context: marker = " "
             case .noNewline: marker = "\\"
             }
-            add(marker + " " + line.text, old: old, new: new, kind: line.kind, filler: false)
+            add(marker + " " + line.text, old: old, new: new, kind: line.kind, filler: false, hunk: hunk, key: DiffLineKey(line))
         }
 
         mutating func filler() {
             add("", old: nil, new: nil, kind: nil, filler: true)
         }
 
-        private mutating func add(_ value: String, old: Int?, new: Int?, kind: DiffLine.Kind?, filler: Bool) {
+        private mutating func add(
+            _ value: String, old: Int?, new: Int?, kind: DiffLine.Kind?, filler: Bool, hunk: Int? = nil, key: DiffLineKey? = nil
+        ) {
             let line = value + "\n"
             let length = line.utf16.count
-            rows.append(Row(range: NSRange(location: offset, length: length), oldLine: old, newLine: new, kind: kind, isFiller: filler))
+            rows.append(Row(
+                range: NSRange(location: offset, length: length), oldLine: old, newLine: new, kind: kind,
+                isFiller: filler, key: key, hunk: hunk
+            ))
             text.append(line)
             offset += length
         }

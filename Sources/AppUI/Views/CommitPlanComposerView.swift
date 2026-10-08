@@ -6,6 +6,7 @@ struct CommitPlanComposerView: View {
     let store: RepositoryStore
 
     @State private var confirmingDiscard = false
+    @Environment(\.aviDensity) private var density
 
     var body: some View {
         ScrollView {
@@ -42,10 +43,7 @@ struct CommitPlanComposerView: View {
     private var header: some View {
         HStack(spacing: 6) {
             Text(position)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
+                .aviLabel(density)
             if let draft = store.composerDraft {
                 Text("from \(draft.source.displayName)")
                     .font(.system(size: 11))

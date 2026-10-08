@@ -7,6 +7,7 @@ struct CommitPanelView: View {
     let store: RepositoryStore
 
     @Bindable private var config = ConfigStore.shared
+    @Environment(\.aviDensity) private var density
 
     var body: some View {
         GeometryReader { proxy in
@@ -30,9 +31,9 @@ struct CommitPanelView: View {
                         FieldProposalBanner(proposal: proposal, store: store)
                     }
 
-                    CommitMessageEditor(summary: summaryBinding, messageBody: bodyBinding)
-
-                    footer
+                    CommitMessageEditor(summary: summaryBinding, messageBody: bodyBinding) {
+                        actionRow
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -93,10 +94,7 @@ struct CommitPanelView: View {
     private var header: some View {
         HStack(spacing: 6) {
             Text(store.stackCount > 1 ? "Commit 1 of \(store.stackCount)" : "Commit")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
+                .aviLabel(density)
             if store.stackCount > 1 {
                 Text("staged")
                     .font(.system(size: 11))
@@ -104,13 +102,8 @@ struct CommitPanelView: View {
             }
             Spacer()
             if config.config.ai.enabled {
-                aiMenu
                 debugToggleButton
             }
-            Text(commitHint)
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
             if store.stackCount > 1 {
                 Button {
                     if let next = store.stackOrder.dropFirst().first {
@@ -130,15 +123,11 @@ struct CommitPanelView: View {
         }
     }
 
-    /// Prominent in-panel indicator so the user can see AI generation is running
-    /// without opening the AI menu or the debug drawer. Styled like AIPreviewCard.
+    /// Prominent in-panel indicator so the user can see AI generation is running,
+    /// and for how long, without opening the debug drawer. Styled like AIPreviewCard.
     private var generatingBanner: some View {
         HStack(spacing: 6) {
-            ProgressView()
-                .controlSize(.small)
-            Text("Generating commit message…")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+            AviWorkingIndicator(title: "Writing commit message")
             Spacer()
             Button("Cancel") {
                 store.cancelCommitMessageGeneration()
@@ -154,63 +143,68 @@ struct CommitPanelView: View {
         )
     }
 
-    /// Single AI menu - explicit actions, no auto-magic. The user picks what
-    /// they want the AI to do; we do exactly that and nothing else.
-    private var aiMenu: some View {
-        Menu {
-            if store.isGeneratingCommitMessage || store.isAIWorking {
-                Button("Cancel") {
-                    store.cancelCommitMessageGeneration()
+    /// Generate writes a message for the staged changes in one click; the menu
+    /// beside it holds Split into Commits. Explicit actions, no auto-magic.
+    private var generateControl: some View {
+        let busy = store.isGeneratingCommitMessage || store.isAIWorking
+        let nothingStaged = store.stagedCommitEntries.isEmpty
+        return HStack(spacing: 0) {
+            Button {
+                store.generateCommitMessage(config: config.config.ai)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Generate")
+                        .font(.system(size: 11, weight: .medium))
                 }
-            } else {
-                // Both work on what you staged; stage the changes first.
+                .padding(.leading, 9)
+                .padding(.trailing, 7)
+                .frame(height: 22)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(nothingStaged || busy ? DS.Palette.textTertiary : DS.Palette.accent)
+            .disabled(nothingStaged || busy)
+            .help(nothingStaged ? "Stage files first: the AI writes a message for the staged changes" : "Write a message for the staged changes")
+            .accessibilityLabel("Generate commit message")
+
+            Rectangle()
+                .fill(Color.primary.opacity(0.14))
+                .frame(width: 1, height: 12)
+
+            Menu {
                 Button {
                     store.generateCommitMessage(config: config.config.ai)
                 } label: {
-                    Label("Generate Commit Message", systemImage: "character.bubble")
+                    Label("Generate Commit Message", systemImage: "sparkles")
                 }
-                .disabled(store.stagedCommitEntries.isEmpty)
-                .help("Write a message for the staged changes")
+                .disabled(nothingStaged || busy)
 
+                // Both work on what you staged; stage the changes first.
                 Button {
                     let paths = store.splittablePaths
                     store.requestSplit(of: paths, title: "Commit 1: " + RepositoryStore.splitTitle(paths))
                 } label: {
                     Label("Split into Commits…", systemImage: "rectangle.split.3x1")
                 }
-                .disabled(store.stagedCommitEntries.count < 2 || store.isRevisingPlan || store.isApplyingPlan)
+                .disabled(store.stagedCommitEntries.count < 2 || store.isRevisingPlan || store.isApplyingPlan || busy)
                 .help("Ask the AI to split the staged files into several commits")
-            }
-        } label: {
-            HStack(spacing: 4) {
-                if store.isGeneratingCommitMessage || store.isAIWorking {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: "character.bubble")
-                        .font(.system(size: 10, weight: .medium))
-                }
-                Text("AI")
-                    .font(.system(size: 11, weight: .medium))
+            } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(DS.Palette.textSecondary)
+                    .frame(width: 20, height: 22)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 8)
-            .frame(height: 22)
-            .foregroundStyle(Color.accentColor)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(.thinMaterial)
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
-            )
-            .contentShape(Capsule(style: .continuous))
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("More AI commit actions")
+            .accessibilityLabel("More AI commit actions")
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("AI commit actions")
+        .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.06)))
+        .overlay(Capsule(style: .continuous).strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.6))
     }
 
     private var debugToggleButton: some View {
@@ -236,7 +230,8 @@ struct CommitPanelView: View {
         .accessibilityLabel("Toggle AI debug drawer")
     }
 
-    private var footer: some View {
+    /// Along the bottom of the message card: how to commit, then the commit itself.
+    private var actionRow: some View {
         HStack(spacing: 8) {
             AmendChip(active: store.amend, enabled: store.canAmend) {
                 if store.canAmend {
@@ -244,7 +239,11 @@ struct CommitPanelView: View {
                 }
             }
 
-            Spacer()
+            if config.config.ai.enabled {
+                generateControl
+            }
+
+            Spacer(minLength: 6)
 
             if store.stackCount > 1 {
                 if let progress = store.planProgress {
@@ -275,30 +274,70 @@ struct CommitPanelView: View {
                             .font(.system(size: 11, weight: .semibold))
                         Text("Commit All (\(store.stackCount))")
                             .font(.system(size: 12, weight: .semibold))
+                        Text("⌘↩")
+                            .font(.system(size: 11, weight: .medium))
+                            .opacity(0.65)
                     }
                 }
+                .accessibilityLabel("Commit All (\(store.stackCount))")
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(!store.canCommitStack)
                 .keyboardShortcut(.return, modifiers: [.command])
                 .help("Create every commit in order, Commit 1 first (Cmd+Return)")
             } else {
+                if let reason = commitBlockedReason {
+                    Text(reason)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
                 Button {
                     Task { await store.commit() }
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: store.amend ? "square.and.pencil" : "checkmark")
                             .font(.system(size: 11, weight: .semibold))
-                        Text(store.amend ? "Amend" : "Commit")
+                        Text(commitTitle)
                             .font(.system(size: 12, weight: .semibold))
+                        Text("⌘↩")
+                            .font(.system(size: 11, weight: .medium))
+                            .opacity(0.65)
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(!store.canCommit || store.isLoading)
                 .keyboardShortcut(.return, modifiers: [.command])
+                .help("\(commitTitle) (Cmd+Return)")
+                .accessibilityLabel(commitTitle)
             }
         }
+    }
+
+    /// Says exactly what the button does: how many staged files it commits,
+    /// or whether amend takes new files or only rewrites the message.
+    private var commitTitle: String {
+        let count = store.stagedCommitEntries.count
+        let files = count == 1 ? "1 File" : "\(count) Files"
+        if store.amend {
+            return count == 0 ? "Amend Message" : "Amend with \(files)"
+        }
+        return count == 0 ? "Commit" : "Commit \(files)"
+    }
+
+    /// Why Commit is off, next to it, so a disabled button never goes unexplained.
+    private var commitBlockedReason: String? {
+        // While the AI writes the summary, there is nothing to ask for.
+        guard !store.canCommit, !store.isLoading, !store.isGeneratingCommitMessage else { return nil }
+        let hasContent = (store.amend && store.canAmend) || !store.stagedCommitEntries.isEmpty || store.canConcludeMerge
+        if !hasContent {
+            return "Stage files to commit"
+        }
+        if store.commitSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Write a summary"
+        }
+        return nil
     }
 
     private var summaryBinding: Binding<String> {
@@ -307,17 +346,6 @@ struct CommitPanelView: View {
 
     private var bodyBinding: Binding<String> {
         Binding(get: { store.commitBody }, set: { store.commitBody = $0 })
-    }
-
-    private var commitHint: String {
-        if store.amend {
-            return store.stagedCommitEntries.isEmpty ? "Amend last commit message" : "Amend with staged changes"
-        }
-        let count = store.stagedCommitEntries.count
-        if count == 0 {
-            return store.entries.isEmpty ? "" : "Stage to commit"
-        }
-        return count == 1 ? "1 staged file" : "\(count) staged files"
     }
 }
 

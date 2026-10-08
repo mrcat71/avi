@@ -888,14 +888,18 @@ struct LocalBranchRow: View {
                 .foregroundStyle(.white)
         } else {
             Text(upstream)
-                .font(.system(size: 10))
+                .font(.system(size: 10, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 5)
                 .padding(.vertical, 1)
                 .background(
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.15))
+                    RoundedRectangle(cornerRadius: DS.Radius.md - 1, style: .continuous)
+                        .fill(Color.primary.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DS.Radius.md - 1, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5)
                 )
                 .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
                 .layoutPriority(-1)
@@ -934,7 +938,8 @@ struct LocalBranchRow: View {
         if ref.isUpstreamGone {
             return .red
         }
-        return ref.isCurrent ? Color.accentColor : .blue
+        // Same color as the lane the branch starts in History.
+        return HistoryGraphPalette.color(for: "local:\(ref.name)")
     }
 
     private var textColor: Color {
@@ -1346,12 +1351,7 @@ private struct TagRow: View {
 
             Text(ref.name)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(
-                    Capsule().fill(isSelected ? Color.white.opacity(0.20) : Color.orange.opacity(0.15))
-                )
-                .foregroundStyle(isSelected ? Color.white : Color.orange)
+                .foregroundStyle(isSelected ? Color.white : DS.Palette.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 

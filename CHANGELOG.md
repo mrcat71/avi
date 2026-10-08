@@ -6,6 +6,26 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Search History by message, author, email, or the start of a SHA. Matches are highlighted and the other commits dim; Return and Shift+Return, or the arrow keys, step between matches, and Escape closes the search. **Search Commits** in the command palette opens it.
+- History says at the bottom when older commits exist: **Load Older Commits** adds 1,000 more at a time. A search that finds nothing in the loaded commits offers **Search Older Commits**.
+- Drop folders onto the window to open them, each in its own tab. A folder inside a repository opens the whole repository.
+- Stage, unstage, or discard single lines. Select lines in a file's diff in Changes and use the buttons beside them, or click in a hunk to act on the whole hunk. Discarding asks first.
+- Commits in History get a context menu: **New Branch…**, **New Tag…**, **Interactive Rebase** from the commit or **Edit Commit**, **Reset '<branch>' to Here…** with soft, mixed, or hard, **Checkout Commit…**, **Cherry-pick Commit…**, **Revert Commit…**, **Save as Patch…**, **Compare to Local Changes**, and **Copy Commit SHA**. Cmd+C copies the selected commits' SHAs.
+- A cherry-pick or revert that stops on a conflict gets the same banner as a rebase, with Continue, Skip, and Abort.
+- Commits in History show their author's picture, looked up on GitHub, on the repository's GitLab, and on Gravatar, which receives only a hash of the address. Initials stand in until a picture arrives, or when there is none. **Settings > Appearance > Author pictures** turns the lookups off.
+
+### Changed
+- The commit message is one card with its actions along the bottom. **Generate** writes a message in one click, with **Split into Commits…** in the menu beside it. The Commit button says how many staged files it commits and shows Cmd+Return, and when it is off, the reason sits next to it.
+- AI work shows how long it has been running, next to a small animated grid, in the commit panel and in the banner above the workspace.
+- Commit dates from today and yesterday say "Today, 15:36" and "Yesterday, 11:17" in History, commit headers, file history, and blame.
+- In the changed-files tree, clicking a folder selects the folder and every file in it, collapsed subfolders included, so **Stage**, **Unstage**, **Discard**, Cmd+S, and dragging act on all of them. A folder's right-click menu stages, unstages, or discards its files too. Only the chevron and the folder icon open and close it. Command-click still adds or removes single files.
+
+### Fixed
+- **Create Merge Request** works on self-hosted GitLab whose host name does not contain "gitlab", such as git.example.com. Avi recognizes the instances `glab` is signed in to and those with a token in Settings > GitLab; the menu item was disabled there before. The toolbar's GitLab button appears for those repositories too.
+- **Settings > Appearance > Graph lane width** had no effect; History's graph now uses it.
+- History has a new look. Graph lanes are crisp lines over a soft halo in a calmer palette, merge commits get smaller dots, and branch labels are neutral chips marked with their lane's color. In the sidebar, each branch icon takes its lane's color and tags are listed as plain text. Panel, section, and column titles and the Changes status bar use small monospaced capitals, and dates line up in tabular figures.
+
 ## [0.7.4] - 2026-10-07
 
 ### Added
