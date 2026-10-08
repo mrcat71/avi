@@ -35,6 +35,10 @@ jobs:
       - name: Build
         run: swift build
       - name: Test
+        # XCTest buffers its output when piped, so a hung test left no trace
+        # in the log; unbuffered, the last "started" line names it.
+        env:
+          NSUnbufferedIO: "YES"
         run: swift test
 
   lint:
