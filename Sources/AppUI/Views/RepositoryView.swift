@@ -223,11 +223,7 @@ struct RepositoryView: View {
     /// you can switch views, tabs, and repositories until the result is ready.
     private var aiWorkBanner: some View {
         HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-            Text(store.aiWorkDescription.isEmpty ? "The AI is working…" : store.aiWorkDescription)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+            AviWorkingIndicator(title: store.aiWorkDescription.isEmpty ? "The AI is working…" : store.aiWorkDescription)
             Spacer()
             Button("Cancel") {
                 store.cancelCommitMessageGeneration()
@@ -436,7 +432,7 @@ private struct OperationBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: operation == .merge ? "arrow.triangle.merge" : "arrow.triangle.2.circlepath")
+            Image(systemName: symbol)
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
@@ -486,6 +482,19 @@ private struct OperationBanner: View {
                 Button("Abort Merge", role: .destructive) {
                     Task { await store.abortOperation() }
                 }
+            case .cherryPick, .revert:
+                Button("Continue") {
+                    Task { await store.continueOperation() }
+                }
+                .disabled(conflictCount > 0)
+                .help(conflictCount > 0 ? "Resolve and stage every conflicted file first" : "git \(verb) --continue")
+                Button("Skip Commit") {
+                    Task { await store.skipOperation() }
+                }
+                .help("Leave this commit out and finish")
+                Button(operation == .cherryPick ? "Abort Cherry-pick" : "Abort Revert", role: .destructive) {
+                    Task { await store.abortOperation() }
+                }
             }
         }
         .controlSize(.small)
@@ -501,10 +510,25 @@ private struct OperationBanner: View {
         store.entries.filter(\.isConflicted).count
     }
 
+    private var symbol: String {
+        switch operation {
+        case .merge: return "arrow.triangle.merge"
+        case .rebase: return "arrow.triangle.2.circlepath"
+        case .cherryPick: return "arrow.right.doc.on.clipboard"
+        case .revert: return "arrow.uturn.backward"
+        }
+    }
+
+    private var verb: String {
+        operation == .cherryPick ? "cherry-pick" : "revert"
+    }
+
     private var title: String {
         switch operation {
         case .merge: return "Merge in progress"
         case .rebase: return conflictCount > 0 ? "Rebase stopped on a conflict" : "Rebase paused"
+        case .cherryPick: return conflictCount > 0 ? "Cherry-pick stopped on a conflict" : "Cherry-pick paused"
+        case .revert: return conflictCount > 0 ? "Revert stopped on a conflict" : "Revert paused"
         }
     }
 
@@ -519,6 +543,10 @@ private struct OperationBanner: View {
             return conflictCount > 0
                 ? "Resolve \(files) in Changes and stage them, then Continue."
                 : "Amend the commit or stage your resolution if you need to, then Continue."
+        case .cherryPick, .revert:
+            return conflictCount > 0
+                ? "Resolve \(files) in Changes and stage them, then Continue to commit."
+                : "Stage your resolution, then Continue to commit, or Skip if nothing is left to apply."
         }
     }
 }
@@ -836,6 +864,13 @@ private struct RepositoryActionToolbarView: View {
         .sheet(isPresented: $showingPushSheet) {
             PushSheet(store: store, dismiss: { showingPushSheet = false })
         }
+        // A remote on an unrecognized host may be a self-hosted GitLab that
+        // `glab` knows; its button and merge requests appear once it loads.
+        .task(id: store.remotes.compactMap(\.fetchURL)) {
+            if providerHint == .unknown, !store.remotes.isEmpty {
+                await KnownProviderHosts.shared.loadIfNeeded()
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if store.isLoading || store.isRemoteOperationRunning || store.isAutoFetching {
                 Circle()
@@ -903,7 +938,7 @@ private struct RepositoryActionToolbarView: View {
         guard let remote = store.remotes.first(where: { $0.name == "origin" }) ?? store.remotes.first else {
             return .unknown
         }
-        return RemoteURLParser.hint(from: remote)
+        return RemoteURLParser.hint(from: remote, knownHosts: KnownProviderHosts.shared.hosts)
     }
 
     private var providerName: String {
@@ -1083,17 +1118,20 @@ struct LocalChangesWorkspaceView: View {
 private struct LocalChangesStatusBar: View {
     let store: RepositoryStore
 
+    @Environment(\.aviDensity) private var density
+
     var body: some View {
         HStack(spacing: 10) {
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 6, height: 6)
+                    .background(Circle().fill(statusColor.opacity(0.25)).frame(width: 12, height: 12))
                 Text(statusLabel)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .aviLabel(density, color: DS.Palette.textPrimary)
             }
 
+            // Ref names keep their case: monospaced, not uppercased.
             if let branchName = store.branch?.name {
                 Text("·")
                     .foregroundStyle(.tertiary)
@@ -1101,17 +1139,19 @@ private struct LocalChangesStatusBar: View {
                     Image(systemName: "arrow.triangle.branch")
                         .font(.system(size: 10))
                     Text(branchName)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                 }
                 .foregroundStyle(.secondary)
             }
 
             if let upstream = store.branch?.upstream {
-                Text("·")
+                Text("→")
+                    .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
+                    .accessibilityLabel("tracking")
                 Text(upstream)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.tertiary)
             }
 
             Spacer()
@@ -1126,7 +1166,7 @@ private struct LocalChangesStatusBar: View {
                         .font(.system(size: 10))
                 }
                 Text(fetchedLabel)
-                    .font(.system(size: 11))
+                    .aviLabel(density, color: DS.Palette.textTertiary)
             }
             .foregroundStyle(.tertiary)
             .help(fetchedTooltip)

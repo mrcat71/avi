@@ -297,7 +297,14 @@ struct ChangeListView: View {
                             dropOnUnstaged(items)
                         }
                 } else if isTreeMode {
-                    FileTreeRows(store: store, entries: unstagedEntries, fileTag: { $0 }, folderTag: { $0 }) { file in
+                    FileTreeRows(
+                        store: store,
+                        entries: unstagedEntries,
+                        fileTag: { $0 },
+                        folderTag: { $0 },
+                        folderMenu: { AnyView(unstagedFolderMenu($0)) },
+                        folderDragPaths: { unstagedFolderTargets($0).map(\.path) }
+                    ) { file in
                         unstagedRow(file, isTreeRow: true)
                     }
                 } else {
@@ -355,6 +362,36 @@ struct ChangeListView: View {
         }
     }
 
+    /// A folder's menu acts on the selection when the folder is part of it,
+    /// otherwise on every file inside the folder.
+    @ViewBuilder
+    private func unstagedFolderMenu(_ folder: String) -> some View {
+        let files = unstagedFolderTargets(folder)
+        let noun = files.count == 1 ? "1 File" : "\(files.count) Files"
+        Button("Stage \(noun)") { stageFiles(files) }
+            .disabled(files.isEmpty)
+        Button("Discard Changes to \(noun)…", role: .destructive) { requestDiscard(files) }
+            .disabled(files.isEmpty)
+        Divider()
+        Button("Copy Folder Path") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(folder, forType: .string)
+        }
+    }
+
+    /// The click that changed the selection held Command: it toggles rows.
+    static var isCommandClick: Bool {
+        NSApp.currentEvent?.modifierFlags.contains(.command) ?? false
+    }
+
+    /// The files a folder row's menu or drag works on: the selection when the
+    /// folder is part of it, otherwise everything inside the folder.
+    private func unstagedFolderTargets(_ folder: String) -> [FileStatus] {
+        multiSelection.contains(folder)
+            ? selectedUnstagedFiles
+            : FolderSelection.files(in: folder, entries: unstagedEntries)
+    }
+
     /// Files dragged here from a commit leave it: staged ones are unstaged.
     private func dropOnUnstaged(_ items: [String]) -> Bool {
         let paths = items.flatMap { $0.components(separatedBy: PlanRowTag.dragSeparator) }.filter { !$0.isEmpty }
@@ -376,6 +413,12 @@ struct ChangeListView: View {
                 // Clearing this list while you work in the stack must not clear the diff.
                 guard !selection.isEmpty || !stackIsActive else { return }
                 stackIsActive = false
+                let selection = isTreeMode
+                    ? FolderSelection.apply(
+                        old: multiSelection, new: selection, entries: unstagedEntries,
+                        fileTag: { $0 }, folderTag: { $0 }, isToggle: Self.isCommandClick
+                    )
+                    : selection
                 multiSelection = selection
                 // A click on a file row goes to the row's drag gesture, which
                 // selects without focusing the list, so the arrows went nowhere.
@@ -434,7 +477,30 @@ struct FileTreeRows<FileRow: View>: View {
     let entries: [FileStatus]
     let fileTag: (String) -> String
     let folderTag: (String) -> String
+    /// The right-click menu of a folder row, given the folder's path.
+    let folderMenu: ((String) -> AnyView)?
+    /// The paths a folder row drags, given the folder's path: dropped on
+    /// another list, they move there like dragged files.
+    let folderDragPaths: ((String) -> [String])?
     @ViewBuilder let fileRow: (FileStatus) -> FileRow
+
+    init(
+        store: RepositoryStore,
+        entries: [FileStatus],
+        fileTag: @escaping (String) -> String,
+        folderTag: @escaping (String) -> String,
+        folderMenu: ((String) -> AnyView)? = nil,
+        folderDragPaths: ((String) -> [String])? = nil,
+        @ViewBuilder fileRow: @escaping (FileStatus) -> FileRow
+    ) {
+        self.store = store
+        self.entries = entries
+        self.fileTag = fileTag
+        self.folderTag = folderTag
+        self.folderMenu = folderMenu
+        self.folderDragPaths = folderDragPaths
+        self.fileRow = fileRow
+    }
 
     var body: some View {
         let flat = FileTreeBuilder.flatten(FileTreeBuilder.build(entries: entries), expanded: store.expandedFolders)
@@ -449,11 +515,18 @@ struct FileTreeRows<FileRow: View>: View {
                     isExpanded: store.expandedFolders.contains(node.id),
                     onToggle: { store.toggleFolderExpanded(node.id) }
                 )
-                // Tag folder rows so arrow-key navigation traverses them and
-                // selection can cross folder boundaries naturally. Selection
-                // handlers filter folder tags back out so the diff view is
-                // never asked to render a folder path.
+                // Selecting a folder row selects the files inside it too (see
+                // FolderSelection); the chevron alone opens and closes it.
+                // Selection handlers keep folder tags out of the diff view.
+                // Like a file row, a folder row selects through its drag
+                // gesture, so a click on it selects even before the list has focus.
+                .draggable((folderDragPaths?(node.id) ?? []).joined(separator: PlanRowTag.dragSeparator))
                 .tag(folderTag(node.id))
+                .contextMenu {
+                    if let folderMenu {
+                        folderMenu(node.id)
+                    }
+                }
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
             case .file(let file):
@@ -474,15 +547,14 @@ struct PaneHeader: View {
     let actionEnabled: Bool
     let action: () -> Void
 
+    @Environment(\.aviDensity) private var density
+
     var body: some View {
         HStack(spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
+                .aviLabel(density)
             Text("\(count)")
-                .font(.system(size: 10, weight: .medium))
+                .font(DS.Font.label(density))
                 .padding(.horizontal, 5)
                 .frame(minHeight: 14)
                 .background(
@@ -782,16 +854,30 @@ struct FolderTreeRow: View {
 
     @State private var isHovering = false
 
+    /// The chevron and the folder icon open and close the folder; the rest of
+    /// the row is the list's, so a click there selects the folder and all of
+    /// its files.
     var body: some View {
-        Button(action: onToggle) {
+        HStack(spacing: 5) {
+            Button(action: onToggle) {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    Image(systemName: isExpanded ? "folder.fill" : "folder")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, CGFloat(depth) * 12 + 8)
+                .frame(height: 22)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isExpanded ? "Collapse \(name)" : "Expand \(name)")
+            .accessibilityLabel(isExpanded ? "Collapse \(name)" : "Expand \(name)")
+
             HStack(spacing: 5) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                Image(systemName: isExpanded ? "folder.fill" : "folder")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
                 Text(name)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(1)
@@ -803,18 +889,17 @@ struct FolderTreeRow: View {
                     .foregroundStyle(.tertiary)
                 Spacer()
             }
-            .padding(.leading, CGFloat(depth) * 12 + 8)
-            .padding(.trailing, 8)
-            .frame(height: 22)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(isHovering ? Color.primary.opacity(0.05) : Color.clear)
-            )
-            .contentShape(Rectangle())
+            .help(path)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(name) folder, \(changedCount) changed file\(changedCount == 1 ? "" : "s")")
         }
-        .buttonStyle(.plain)
+        .padding(.trailing, 8)
+        .frame(height: 22)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isHovering ? Color.primary.opacity(0.05) : Color.clear)
+        )
+        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .help(path)
-        .accessibilityLabel("\(name) folder, \(changedCount) changed file\(changedCount == 1 ? "" : "s")")
     }
 }

@@ -31,13 +31,10 @@ struct AviSectionHeader<Trailing: View>: View {
                         .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
                 }
                 Text(title)
-                    .font(DS.Font.captionStrong(density))
-                    .foregroundStyle(DS.Palette.textSecondary)
-                    .textCase(.uppercase)
-                    .tracking(0.6)
+                    .aviLabel(density)
                 if let count, count > 0 {
                     Text("\(count)")
-                        .font(.system(size: DS.IconScale.sm, weight: .medium))
+                        .font(DS.Font.label(density))
                         .foregroundStyle(DS.Palette.textTertiary)
                 }
                 Spacer()

@@ -2,8 +2,10 @@ import SwiftUI
 
 /// Standard visual treatments for ref labels (branch, remote branch, tag, current)
 /// plus the small numeric count chip used in sidebar items and toolbar buttons.
+/// Ref labels are neutral chips with a colored mark, so a branch chip can carry
+/// its commit-graph lane color through `tint`.
 struct AviBadge: View {
-    enum Kind {
+    enum Kind: Equatable {
         case localBranch
         case currentBranch
         case remoteBranch
@@ -19,18 +21,71 @@ struct AviBadge: View {
     let kind: Kind
     let text: String
     var icon: String?
+    var tintOverride: Color?
     var isSelected: Bool = false
 
     @Environment(\.aviDensity) private var density
 
-    init(_ kind: Kind, text: String, icon: String? = nil, isSelected: Bool = false) {
+    init(_ kind: Kind, text: String, icon: String? = nil, tint: Color? = nil, isSelected: Bool = false) {
         self.kind = kind
         self.text = text
         self.icon = icon ?? defaultIcon(for: kind)
+        tintOverride = tint
         self.isSelected = isSelected
     }
 
     var body: some View {
+        if isRef {
+            refChip
+        } else {
+            chip
+        }
+    }
+
+    private var isRef: Bool {
+        switch kind {
+        case .localBranch, .currentBranch, .remoteBranch, .tag: return true
+        default: return false
+        }
+    }
+
+    /// Branch and tag label: mark + monospaced name on a hairline pill.
+    private var refChip: some View {
+        let shape = RoundedRectangle(cornerRadius: DS.Radius.md - 1, style: .continuous)
+        return HStack(spacing: 4) {
+            refMark
+            Text(text)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(kind == .remoteBranch ? DS.Palette.textSecondary : DS.Palette.textPrimary)
+        }
+        .padding(.leading, 5)
+        .padding(.trailing, 6)
+        .padding(.vertical, 1.5)
+        .background(shape.fill(kind == .currentBranch ? tint.opacity(0.2) : Color.primary.opacity(0.05)))
+        .overlay(shape.strokeBorder(kind == .currentBranch ? tint.opacity(0.6) : Color.primary.opacity(0.14), lineWidth: 0.5))
+    }
+
+    @ViewBuilder
+    private var refMark: some View {
+        switch kind {
+        case .localBranch:
+            Circle().fill(tint).frame(width: 6, height: 6)
+        case .currentBranch:
+            Image(systemName: "checkmark")
+                .font(.system(size: 8, weight: .heavy))
+                .foregroundStyle(tint)
+        default:
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(kind == .remoteBranch ? DS.Palette.textSecondary : tint)
+            }
+        }
+    }
+
+    private var chip: some View {
         HStack(spacing: 3) {
             if let icon {
                 Image(systemName: icon)
@@ -107,6 +162,9 @@ struct AviBadge: View {
     }
 
     private var tint: Color {
+        if let tintOverride {
+            return tintOverride
+        }
         switch kind {
         case .localBranch: return DS.Palette.infoBlue
         case .currentBranch: return DS.Palette.accent

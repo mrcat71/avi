@@ -4,16 +4,64 @@ import SwiftUI
 struct DiffDetailView: View {
     let store: RepositoryStore
 
+    @State private var pendingDiscard: PendingLineDiscard?
+
     var body: some View {
         if let file = store.selectedFile {
-            FileDiffView(title: file.path, diff: store.diff, errorMessage: store.diffError) {
+            FileDiffView(title: file.path, diff: store.diff, errorMessage: store.diffError, lineActions: lineActions(for: file)) {
                 if let file = store.selectedFile {
                     await store.loadDiff(for: file)
                 }
             }
+            .confirmationDialog(
+                pendingDiscard?.title ?? "",
+                isPresented: Binding(get: { pendingDiscard != nil }, set: {
+                    if !$0 {
+                        pendingDiscard = nil
+                    }
+                }),
+                titleVisibility: .visible,
+                presenting: pendingDiscard
+            ) { pending in
+                Button("Discard", role: .destructive) {
+                    Task { await store.applyLines(.discard, keys: pending.keys, file: pending.file) }
+                }
+            } message: { _ in
+                Text("The working tree loses these changes. This cannot be undone.")
+            }
         } else {
             EmptyDiffState(store: store)
         }
+    }
+
+    /// Staging picked lines works on a file changed in place, in the unified diff.
+    private func lineActions(for file: FileStatus) -> DiffLineActions? {
+        guard !DiffPreferences.shared.sideBySide else { return nil }
+        let perform: (DiffLineCommand, Set<DiffLineKey>) -> Void = { command, keys in
+            if command == .discard {
+                pendingDiscard = PendingLineDiscard(file: file, keys: keys)
+            } else {
+                Task { await store.applyLines(command, keys: keys, file: file) }
+            }
+        }
+        switch store.selectedDiffSource {
+        case .unstaged where file.worktree == .modified:
+            return DiffLineActions(mode: .unstaged, perform: perform)
+        case .staged where file.index == .modified:
+            return DiffLineActions(mode: .staged, perform: perform)
+        default:
+            return nil
+        }
+    }
+}
+
+/// Lines waiting for you to confirm discarding them.
+private struct PendingLineDiscard {
+    let file: FileStatus
+    let keys: Set<DiffLineKey>
+
+    var title: String {
+        keys.count == 1 ? "Discard 1 changed line?" : "Discard \(keys.count) changed lines?"
     }
 }
 
@@ -55,6 +103,8 @@ struct FileDiffView: View {
     let title: String
     let diff: FileDiff?
     var errorMessage: String?
+    /// Staging picked lines, in the Changes view only.
+    var lineActions: DiffLineActions?
     /// Loads the diff again after the toolbar changes what Git is asked for.
     var reload: (@MainActor () async -> Void)?
 
@@ -102,7 +152,8 @@ struct FileDiffView: View {
             } else {
                 NativeDiffTextView(
                     diff: diff,
-                    display: DiffDisplay(wrapsLines: preferences.wrapLines, showsInvisibles: preferences.showInvisibles)
+                    display: DiffDisplay(wrapsLines: preferences.wrapLines, showsInvisibles: preferences.showInvisibles),
+                    lineActions: lineActions
                 )
                 .id(title)
             }

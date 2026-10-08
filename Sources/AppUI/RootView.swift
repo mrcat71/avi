@@ -16,6 +16,8 @@ public struct RootView: View {
 
     @State private var showingPicker: Bool = false
     @State private var showingCloneSheet: Bool = false
+    /// A folder is being dragged over the window.
+    @State private var isDropTargeted = false
 
     public init() {}
 
@@ -76,6 +78,24 @@ public struct RootView: View {
             )
         }
         .frame(minWidth: 1120, minHeight: 700)
+        // Dropping folders opens them, as the picker's Add would: each in its own
+        // tab, at the root of the repository it belongs to.
+        .dropDestination(for: URL.self) { urls, _ in
+            let folders = urls.filter(\.isExistingDirectory)
+            for folder in folders {
+                openRepository(folder)
+            }
+            return !folders.isEmpty
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
+        }
+        .overlay {
+            if isDropTargeted {
+                DropToOpenOverlay()
+                    .transition(.opacity)
+            }
+        }
+        .animation(Glass.Motion.snappy, value: isDropTargeted)
         .onAppear {
             AgentBridge.shared.register(session)
         }
@@ -194,5 +214,42 @@ public struct RootView: View {
 
     private func closeRepository(_ id: RepositoryStore.ID) {
         session.close(id)
+    }
+}
+
+private extension URL {
+    var isExistingDirectory: Bool {
+        isFileURL && (try? resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+    }
+}
+
+/// Covers the window while folders are dragged over it.
+struct DropToOpenOverlay: View {
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Glass.Corner.chrome, style: .continuous)
+        ZStack {
+            shape
+                .fill(DS.Palette.surface.opacity(0.95))
+            shape
+                .strokeBorder(DS.Palette.accent.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [7, 5]))
+            VStack(spacing: 10) {
+                Image(systemName: "folder.badge.plus")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(DS.Palette.accent)
+                    .frame(width: 52, height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: Glass.Corner.card, style: .continuous)
+                            .fill(DS.Palette.accent.opacity(0.12))
+                    )
+                Text("Drop to open the repository")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("A folder inside a repository opens the whole repository, in a new tab.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(DS.Palette.textSecondary)
+            }
+        }
+        .padding(16)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

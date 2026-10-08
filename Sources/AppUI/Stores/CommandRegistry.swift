@@ -115,6 +115,10 @@ enum CommandRegistry {
         }
 
         // History filters
+        result.append(AppCommand(id: "history.search", title: "Search Commits", subtitle: "By message, author, or SHA", group: "History", symbol: "magnifyingglass") {
+            setSelection(.allCommits)
+            store.wantsHistorySearchFocus = true
+        })
         result.append(AppCommand(id: "history.scopeCurrent", title: "History: Current Branch", subtitle: nil, group: "History", symbol: "line.3.horizontal.decrease") {
             Task { await store.setHistoryFilter(HistoryFilter(scope: .currentBranch, hideMerges: store.historyFilter.hideMerges)) }
         })

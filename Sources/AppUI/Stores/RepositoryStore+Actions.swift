@@ -56,6 +56,18 @@ public extension RepositoryStore {
         guard let operation = operationState else { return }
         await perform { try await $0.abortOperation(operation, in: $1) }
     }
+
+    /// Continue the stopped cherry-pick or revert (or rebase).
+    func continueOperation() async {
+        guard let operation = operationState else { return }
+        await runIntegration { try await $0.continueOperation(operation, in: $1) }
+    }
+
+    /// Skip the commit the cherry-pick or revert (or rebase) stopped at.
+    func skipOperation() async {
+        guard let operation = operationState else { return }
+        await runIntegration { try await $0.skipOperation(operation, in: $1) }
+    }
 }
 
 // MARK: - Branch actions
@@ -193,12 +205,20 @@ public extension RepositoryStore {
         resolveRemoteName(forBranch: branch)
     }
 
+    /// The GitLab instance this repository's main remote is on, for author pictures.
+    var gitLabHost: String? {
+        guard let remote = remotes.first(where: { $0.name == "origin" }) ?? remotes.first,
+              case .gitlab(let host, _) = RemoteURLParser.hint(from: remote, knownHosts: KnownProviderHosts.shared.hosts)
+        else { return nil }
+        return host
+    }
+
     /// GitHub, GitLab, or unknown, for the remote a pull request of `branch` targets.
     func pullRequestProvider(for branch: String) -> ProviderHint {
         guard let name = pushRemoteName(for: branch), let remote = remotes.first(where: { $0.name == name }) else {
             return .unknown
         }
-        return RemoteURLParser.hint(from: remote)
+        return RemoteURLParser.hint(from: remote, knownHosts: KnownProviderHosts.shared.hosts)
     }
 
     /// A pull request shows the branch as the remote has it, so it needs a push

@@ -4,9 +4,36 @@ import SwiftUI
 /// "Interactively Rebase on <branch>": the commits the rebase replays, oldest
 /// first. Reorder them by dragging or with Move Up / Move Down, and pick what
 /// happens to each before Git runs the plan.
+/// What an interactive rebase replays the current branch's commits onto: a
+/// branch tip from the branch menu, or a commit from History's commit menu.
+struct RebaseBase: Equatable {
+    /// For people: a branch name, or a commit's short SHA.
+    let title: String
+    /// For Git: `refs/heads/<branch>`, or a full commit ID.
+    let revision: String
+    let isCommit: Bool
+
+    static func branch(_ ref: GitReference) -> RebaseBase {
+        RebaseBase(title: ref.name, revision: "refs/heads/\(ref.name)", isCommit: false)
+    }
+
+    static func commit(_ commit: CommitSummary) -> RebaseBase {
+        RebaseBase(title: commit.shortOID, revision: commit.oid, isCommit: true)
+    }
+}
+
 struct InteractiveRebaseSheet: View {
     let store: RepositoryStore
-    let onto: GitReference
+    let base: RebaseBase
+
+    init(store: RepositoryStore, base: RebaseBase) {
+        self.store = store
+        self.base = base
+    }
+
+    init(store: RepositoryStore, onto ref: GitReference) {
+        self.init(store: store, base: .branch(ref))
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var rows: [Row] = []
@@ -61,7 +88,9 @@ struct InteractiveRebaseSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Interactive Rebase")
                     .font(.system(size: 14, weight: .semibold))
-                Text("Replays \(current)'s commits onto \(onto.name), oldest at the top. Git applies them from top to bottom.")
+                Text(base.isCommit
+                    ? "Replays \(current)'s commits after \(base.title), oldest at the top. Git applies them from top to bottom."
+                    : "Replays \(current)'s commits onto \(base.title), oldest at the top. Git applies them from top to bottom.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -112,7 +141,7 @@ struct InteractiveRebaseSheet: View {
             ContentUnavailableView(
                 "Nothing to Rebase",
                 systemImage: "checkmark.circle",
-                description: Text("\(current) has no commits that \(onto.name) lacks.")
+                description: Text(base.isCommit ? "\(current) has no commits after \(base.title)." : "\(current) has no commits that \(base.title) lacks.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -163,7 +192,7 @@ struct InteractiveRebaseSheet: View {
     @Sendable
     private func load() async {
         do {
-            let commits = try await store.rebaseCandidates(onto: onto.name)
+            let commits = try await store.rebaseCandidates(ontoRevision: base.revision)
             original = commits.map(\.oid)
             rows = commits.map { commit in
                 Row(commit: commit, message: commit.body.isEmpty ? commit.subject : commit.subject + "\n\n" + commit.body)
@@ -189,7 +218,8 @@ struct InteractiveRebaseSheet: View {
         guard let plan else { return }
         let autostash = autostash
         dismiss()
-        Task { await store.interactiveRebase(onto: onto.name, plan: plan, autostash: autostash) }
+        let revision = base.revision
+        Task { await store.interactiveRebase(ontoRevision: revision, plan: plan, autostash: autostash) }
     }
 }
 

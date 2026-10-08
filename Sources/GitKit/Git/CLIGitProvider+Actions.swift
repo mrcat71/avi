@@ -77,18 +77,26 @@ public extension CLIGitProvider {
     }
 
     func rebaseCandidates(onto branch: String, in repository: URL) async throws -> [CommitSummary] {
+        try await rebaseCandidates(ontoRevision: "refs/heads/\(branch)", in: repository)
+    }
+
+    func rebaseCandidates(ontoRevision revision: String, in repository: URL) async throws -> [CommitSummary] {
         // The same selection Git makes for the todo list: commits on HEAD's side
         // of the symmetric range, merges dropped, commits whose patch is already
-        // in `branch` skipped, in graph order oldest first.
+        // in `revision` skipped, in graph order oldest first.
         let result = try await run([
             "log", "--reverse", "--topo-order", "--no-merges", "--cherry-pick", "--right-only",
             "--pretty=format:%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x00",
-            "refs/heads/\(branch)...HEAD", "--"
+            "\(revision)...HEAD", "--"
         ], in: repository)
         return try LogParser.parse(result.stdout)
     }
 
     func interactiveRebase(onto branch: String, plan: InteractiveRebasePlan, autostash: Bool, in repository: URL) async throws -> IntegrationOutcome {
+        try await interactiveRebase(ontoRevision: "refs/heads/\(branch)", plan: plan, autostash: autostash, in: repository)
+    }
+
+    func interactiveRebase(ontoRevision revision: String, plan: InteractiveRebasePlan, autostash: Bool, in repository: URL) async throws -> IntegrationOutcome {
         let fileManager = FileManager.default
         let workDir = fileManager.temporaryDirectory.appendingPathComponent("avi-rebase-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: workDir, withIntermediateDirectories: true)
@@ -120,7 +128,7 @@ public extension CLIGitProvider {
             "-c", "core.commentChar=#",
             "rebase", "-i", "--no-autosquash", "--no-rebase-merges", "--no-update-refs",
             autostash ? "--autostash" : "--no-autostash",
-            "refs/heads/\(branch)"
+            revision
         ]
         let result = try await execute(arguments, in: repository, environment: environment)
         return try await rebaseOutcome(arguments, result, in: repository)
@@ -144,6 +152,10 @@ public extension CLIGitProvider {
             try await run(["merge", "--abort"], in: repository)
         case .rebase:
             try await run(["rebase", "--abort"], in: repository)
+        case .cherryPick:
+            try await run(["cherry-pick", "--abort"], in: repository)
+        case .revert:
+            try await run(["revert", "--abort"], in: repository)
         }
     }
 

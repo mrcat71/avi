@@ -33,7 +33,7 @@ A complete example with every section is in
 
 | Section          | Purpose                                                                 |
 | ---------------- | ----------------------------------------------------------------------- |
-| `appearance`     | Theme, density, font sizes, file-list mode (tree / flat), graph width.  |
+| `appearance`     | Theme, density, font sizes, file-list mode (tree / flat), graph lane width, and `authorPictures`: show author pictures in History, looked up on GitHub, the repository's GitLab, and Gravatar (default `true`; `false` shows plain dots and contacts no server). |
 | `git`            | Default author identity, fetch interval, auto-refresh, terminal/editor. |
 | `clone`          | Default clone directory, and whether a clone starts on HTTPS or SSH.    |
 | `ai`             | AI commit-message backend (command / openai), model (default `gpt-6-luna`), prompts, limits, timeout. |

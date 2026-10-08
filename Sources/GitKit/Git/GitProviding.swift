@@ -287,6 +287,40 @@ public protocol GitProviding: Sendable {
     /// failure is reported.
     func abortOperation(_ operation: GitOperationState, in repository: URL) async throws
 
+    /// History's commit menu: `git cherry-pick` onto HEAD. Conflicts stop it
+    /// with CHERRY_PICK_HEAD in place. A merge is picked against its first parent.
+    func cherryPick(commit oid: String, isMerge: Bool, in repository: URL) async throws -> IntegrationOutcome
+
+    /// `git revert` with Git's message. Conflicts stop it with REVERT_HEAD in place.
+    func revert(commit oid: String, isMerge: Bool, in repository: URL) async throws -> IntegrationOutcome
+
+    /// Continue a stopped rebase, cherry-pick, or revert.
+    func continueOperation(_ operation: GitOperationState, in repository: URL) async throws -> IntegrationOutcome
+
+    /// Skip the commit a rebase, cherry-pick, or revert stopped at.
+    func skipOperation(_ operation: GitOperationState, in repository: URL) async throws -> IntegrationOutcome
+
+    /// One commit as an mbox patch (`git format-patch -1 --stdout`).
+    func formatPatch(commit oid: String, in repository: URL) async throws -> Data
+
+    /// Detach HEAD at `oid`.
+    func checkoutDetached(commit oid: String, in repository: URL) async throws
+
+    /// Tracked files that differ between `oid` and the working tree.
+    func changedFilesAgainstWorkingTree(from oid: String, in repository: URL) async throws -> [CommitFileChange]
+
+    /// One file's diff from `oid` to the working tree.
+    func diffAgainstWorkingTree(from oid: String, path: String, oldPath: String?, options: DiffOptions, in repository: URL) async throws -> FileDiff
+
+    /// `rebaseCandidates(onto:)` for any revision, such as a commit in History.
+    func rebaseCandidates(ontoRevision revision: String, in repository: URL) async throws -> [CommitSummary]
+
+    /// `interactiveRebase(onto:)` for any revision, such as a commit in History.
+    func interactiveRebase(ontoRevision revision: String, plan: InteractiveRebasePlan, autostash: Bool, in repository: URL) async throws -> IntegrationOutcome
+
+    /// `git apply` of a `PartialPatch`: to the index, or to the working tree.
+    func applyPatch(_ patch: String, toIndex: Bool, reverse: Bool, in repository: URL) async throws
+
     /// Delete `branch` on `remote` (`git push --delete -- <remote> refs/heads/<branch>`).
     func deleteRemoteBranch(named branch: String, remote: String, in repository: URL) async throws -> GitRemoteOperationResult
 
@@ -347,6 +381,51 @@ public enum SingleCommitRebaseAction: Sendable {
 }
 
 public extension GitProviding {
+    /// Providers without History's commit actions refuse them.
+    func cherryPick(commit _: String, isMerge _: Bool, in _: URL) async throws -> IntegrationOutcome {
+        throw GitError.invalidInput("Cherry-pick is not supported here.")
+    }
+
+    func revert(commit _: String, isMerge _: Bool, in _: URL) async throws -> IntegrationOutcome {
+        throw GitError.invalidInput("Revert is not supported here.")
+    }
+
+    func continueOperation(_: GitOperationState, in _: URL) async throws -> IntegrationOutcome {
+        throw GitError.invalidInput("Continue is not supported here.")
+    }
+
+    func skipOperation(_: GitOperationState, in _: URL) async throws -> IntegrationOutcome {
+        throw GitError.invalidInput("Skip is not supported here.")
+    }
+
+    func formatPatch(commit _: String, in _: URL) async throws -> Data {
+        throw GitError.invalidInput("Patches are not supported here.")
+    }
+
+    func checkoutDetached(commit _: String, in _: URL) async throws {
+        throw GitError.invalidInput("Checking out a commit is not supported here.")
+    }
+
+    func changedFilesAgainstWorkingTree(from _: String, in _: URL) async throws -> [CommitFileChange] {
+        throw GitError.invalidInput("Comparing is not supported here.")
+    }
+
+    func diffAgainstWorkingTree(from _: String, path _: String, oldPath _: String?, options _: DiffOptions, in _: URL) async throws -> FileDiff {
+        throw GitError.invalidInput("Comparing is not supported here.")
+    }
+
+    func rebaseCandidates(ontoRevision _: String, in _: URL) async throws -> [CommitSummary] {
+        throw GitError.invalidInput("Rebasing onto a commit is not supported here.")
+    }
+
+    func interactiveRebase(ontoRevision _: String, plan _: InteractiveRebasePlan, autostash _: Bool, in _: URL) async throws -> IntegrationOutcome {
+        throw GitError.invalidInput("Rebasing onto a commit is not supported here.")
+    }
+
+    func applyPatch(_: String, toIndex _: Bool, reverse _: Bool, in _: URL) async throws {
+        throw GitError.invalidInput("Staging lines is not supported here.")
+    }
+
     /// Safe delete stays the default; forcing is always an explicit decision.
     func deleteBranch(named name: String, in repository: URL) async throws {
         try await deleteBranch(named: name, force: false, in: repository)

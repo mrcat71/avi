@@ -19,6 +19,7 @@ struct CommitStackView: View {
     @State private var confirmingPlanDiscard = false
     /// Keyboard focus for the list, so the arrow keys reach it.
     @FocusState private var isFocused: Bool
+    @Environment(\.aviDensity) private var density
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,12 +81,9 @@ struct CommitStackView: View {
     private var header: some View {
         HStack(spacing: 6) {
             Text("Commits")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.5)
+                .aviLabel(density)
             Text("\(store.stackCount)")
-                .font(.system(size: 10, weight: .medium))
+                .font(DS.Font.label(density))
                 .padding(.horizontal, 5)
                 .frame(minHeight: 14)
                 .background(Capsule().fill(Color.primary.opacity(0.10)))
@@ -292,7 +290,14 @@ struct CommitStackView: View {
                     drop(items, on: .staged)
                 }
         } else if isTreeMode {
-            FileTreeRows(store: store, entries: entries, fileTag: PlanRowTag.file, folderTag: PlanRowTag.folder) { file in
+            FileTreeRows(
+                store: store,
+                entries: entries,
+                fileTag: PlanRowTag.file,
+                folderTag: PlanRowTag.folder,
+                folderMenu: { AnyView(stagedFolderMenu($0)) },
+                folderDragPaths: { stagedFolderTargets($0).map(\.path) }
+            ) { file in
                 stagedRow(file, isTreeRow: true)
             }
         } else {
@@ -431,6 +436,29 @@ struct CommitStackView: View {
         Task { await store.unstage(files, advancingFrom: order) }
     }
 
+    /// A staged folder's menu acts on the selection when the folder is part
+    /// of it, otherwise on every file inside the folder.
+    @ViewBuilder
+    private func stagedFolderMenu(_ folder: String) -> some View {
+        let files = stagedFolderTargets(folder)
+        Button("Unstage \(files.count == 1 ? "1 File" : "\(files.count) Files")") { unstage(files) }
+            .disabled(files.isEmpty)
+        MoveToMenu(store: store, paths: files.map(\.path), current: .staged)
+        Divider()
+        Button("Copy Folder Path") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(folder, forType: .string)
+        }
+    }
+
+    /// The staged files a folder row's menu or drag works on: the selection
+    /// when the folder is part of it, otherwise everything inside the folder.
+    private func stagedFolderTargets(_ folder: String) -> [FileStatus] {
+        selection.contains(PlanRowTag.folder(folder))
+            ? selectedStagedFiles
+            : FolderSelection.files(in: folder, entries: store.stagedCommitEntries)
+    }
+
     private var selectedStagedFiles: [FileStatus] {
         let chosen = Set(selection.compactMap(PlanRowTag.path(of:)))
         return store.stagedCommitEntries.filter { chosen.contains($0.path) }
@@ -472,7 +500,14 @@ struct CommitStackView: View {
     private var selectionBinding: Binding<Set<String>> {
         Binding(
             get: { selection },
-            set: { newValue in
+            set: { reported in
+                // Selecting a staged folder selects the files inside it.
+                let newValue = isTreeMode
+                    ? FolderSelection.apply(
+                        old: selection, new: reported, entries: store.stagedCommitEntries,
+                        fileTag: PlanRowTag.file, folderTag: PlanRowTag.folder, isToggle: ChangeListView.isCommandClick
+                    )
+                    : reported
                 selection = newValue
                 onActivate()
                 // Dragging rows select without focusing the list; see ChangeListView.

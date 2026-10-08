@@ -1,10 +1,13 @@
 import Foundation
 
-/// A merge or rebase that stopped half-way and waits for you: conflicts to
-/// resolve, or a commit to amend during an interactive rebase.
+/// A merge, rebase, cherry-pick, or revert that stopped half-way and waits
+/// for you: conflicts to resolve, or a commit to amend during an interactive
+/// rebase.
 public enum GitOperationState: Sendable, Equatable {
     case merge
     case rebase
+    case cherryPick
+    case revert
 
     /// Reads the state Git keeps in `gitDir`. A linked worktree has its own
     /// git dir, so each working tree reports only its own operation.
@@ -19,6 +22,12 @@ public enum GitOperationState: Sendable, Equatable {
         }
         if exists("MERGE_HEAD") {
             return .merge
+        }
+        if exists("CHERRY_PICK_HEAD") {
+            return .cherryPick
+        }
+        if exists("REVERT_HEAD") {
+            return .revert
         }
         return nil
     }
