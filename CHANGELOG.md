@@ -6,6 +6,11 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-10-08
+
+### Changed
+- Author pictures in History sit beside the author's name in the Author column, as rounded squares, instead of on the graph's commit dots. The graph keeps its plain dots and no longer widens its lanes to fit them.
+
 ## [0.7.5] - 2026-10-08
 
 ### Added
