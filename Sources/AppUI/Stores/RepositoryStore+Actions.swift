@@ -205,12 +205,10 @@ public extension RepositoryStore {
         resolveRemoteName(forBranch: branch)
     }
 
-    /// The GitLab instance this repository's main remote is on, for author pictures.
-    var gitLabHost: String? {
-        guard let remote = remotes.first(where: { $0.name == "origin" }) ?? remotes.first,
-              case .gitlab(let host, _) = RemoteURLParser.hint(from: remote, knownHosts: KnownProviderHosts.shared.hosts)
-        else { return nil }
-        return host
+    /// The forge this repository's main remote is on, for author pictures.
+    internal var avatarOrigin: AvatarOrigin? {
+        guard let remote = remotes.first(where: { $0.name == "origin" }) ?? remotes.first else { return nil }
+        return AvatarOrigin(RemoteURLParser.hint(from: remote, knownHosts: KnownProviderHosts.shared.hosts))
     }
 
     /// GitHub, GitLab, or unknown, for the remote a pull request of `branch` targets.

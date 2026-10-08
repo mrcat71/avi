@@ -10,7 +10,8 @@ import Observation
 public final class KnownProviderHosts {
     public static let shared = KnownProviderHosts()
 
-    private var glabHosts: Set<String> = []
+    /// Instances `glab` is signed in to, lowercased.
+    private(set) var glabHosts: Set<String> = []
     private var hasLoaded = false
     private var loading: Task<Void, Never>?
 

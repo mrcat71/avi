@@ -7,7 +7,9 @@ struct AuthorAvatar: View {
     let name: String
     let email: String
     let size: CGFloat
-    var gitLabHost: String?
+    /// Commits by this author the repository's forge can be asked about.
+    var commits: [String] = []
+    var origin: AvatarOrigin?
 
     @Environment(\.displayScale) private var displayScale
 
@@ -31,7 +33,7 @@ struct AuthorAvatar: View {
         .accessibilityHidden(true)
         .task(id: email) {
             guard ConfigStore.shared.config.appearance.authorPictures else { return }
-            await AvatarStore.shared.load(email: email, gitLabHost: gitLabHost, pixels: Int(size * max(displayScale, 2)))
+            await AvatarStore.shared.load(email: email, commits: commits, origin: origin, pixels: Int(size * max(displayScale, 2)))
         }
     }
 

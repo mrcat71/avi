@@ -60,7 +60,7 @@ struct AppearanceSettingsView: View {
                 Divider().padding(.vertical, 4)
                 SettingsFormRow(
                     "Author pictures",
-                    description: "Shows each author's picture beside their name in History. Avi looks it up on GitHub, the repository's GitLab, and Gravatar, which only receives a hash of the email address. Off shows the names alone and asks no server."
+                    description: "Shows each author's picture beside their name in History. Avi asks the repository's GitHub or GitLab which account wrote each commit, signed in with your token from Settings or through gh or glab, and otherwise looks the email address up there and on Gravatar, which only receives a hash of it. Off shows the names alone and asks no server."
                 ) {
                     Toggle("", isOn: authorPicturesBinding)
                         .toggleStyle(.switch)

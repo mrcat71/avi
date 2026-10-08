@@ -3,10 +3,11 @@ import CryptoKit
 import Foundation
 import Observation
 
-/// Where an author's picture comes from, most specific first: the GitHub
-/// account behind a no-reply address, the GitLab instance the repository is
-/// on, then Gravatar, which is asked by a SHA-256 hash of the address and
-/// answers 404 rather than a placeholder.
+/// Where an author's picture comes from by address alone, once the forge that
+/// hosts the repository (`ForgeAvatars`) could not say: the GitHub account
+/// behind a no-reply address, the public lookup of the GitLab instance the
+/// repository is on, then Gravatar, which is asked by a SHA-256 hash of the
+/// address and answers 404 rather than a placeholder.
 enum AvatarSource {
     static func urls(email: String, gitLabHost: String?, pixels: Int) -> [URL] {
         var urls: [URL] = []
@@ -104,14 +105,23 @@ final class AvatarStore {
     }
 
     /// Looks the picture up unless this launch already tried; nothing found
-    /// leaves the initials in place.
-    func load(email: String, gitLabHost: String?, pixels: Int) async {
+    /// leaves the initials in place. The forge that hosts the repository is
+    /// asked first, about `commits` by this author.
+    func load(email: String, commits: [String], origin: AvatarOrigin?, pixels: Int) async {
         let key = AvatarSource.normalized(email)
+        let place = origin.map { "\($0.host)/\($0.project)" } ?? ""
         guard !Self.isRunningTests, !key.isEmpty, images[key] == nil,
-              attempted.insert("\(key)|\(gitLabHost ?? "")").inserted else { return }
+              attempted.insert("\(key)|\(place)").inserted else { return }
+        // The forge's answer waits for the other authors on screen, so it
+        // comes before taking one of the few download slots.
+        var urls: [URL] = []
+        if let origin, let account = await ForgeAvatars.shared.avatarURL(email: key, commits: commits, origin: origin, pixels: pixels) {
+            urls.append(account)
+        }
+        urls += AvatarSource.urls(email: key, gitLabHost: origin?.gitLabHost, pixels: pixels)
         await acquire()
         defer { release() }
-        for url in AvatarSource.urls(email: key, gitLabHost: gitLabHost, pixels: pixels) {
+        for url in urls {
             if let image = await fetch(url, gitLabLookup: url.path == "/api/v4/avatar") {
                 images[key] = image
                 return

@@ -15,7 +15,7 @@ fontSize = 13
 diffFont = "SF Mono"
 fileListMode = "tree"      # tree | flat
 graphLaneWidth = 16        # 12 | 16 | 20
-authorPictures = true      # look up pictures on GitHub, your GitLab, Gravatar
+authorPictures = true      # ask GitHub/GitLab who wrote each commit, then Gravatar
 
 [git]
 defaultAuthorName = ""

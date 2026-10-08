@@ -162,7 +162,8 @@ struct HistoryListView: View {
         } else {
             let ancestry = store.headAncestry()
             let headOID = store.detachedHead?.oid ?? store.branch?.oid
-            let gitLabHost = store.gitLabHost
+            let avatarOrigin = store.avatarOrigin
+            let avatarCommits = avatarSize == nil ? [:] : ForgeAvatarQuery.candidates(in: store.historyRows.lazy.map(\.commit))
             List(selection: $multiSelection) {
                 ForEach(store.historyRows) { row in
                     HistoryRowView(
@@ -179,7 +180,8 @@ struct HistoryListView: View {
                         isHead: row.commit.oid == headOID,
                         laneWidth: laneWidth,
                         avatarSize: avatarSize,
-                        gitLabHost: gitLabHost,
+                        avatarOrigin: avatarOrigin,
+                        avatarCommits: avatarCommits[AvatarSource.normalized(row.commit.authorEmail)] ?? [row.commit.oid],
                         menu: handle
                     ) { ref in
                         Task { await store.checkout(ref) }
@@ -595,7 +597,9 @@ private struct HistoryRowView: View {
     var laneWidth: CGFloat = 16
     /// Set when author pictures are on.
     var avatarSize: CGFloat?
-    var gitLabHost: String?
+    var avatarOrigin: AvatarOrigin?
+    /// The commits by this row's author that the forge is asked about.
+    var avatarCommits: [String] = []
     var menu: (CommitMenuAction, CommitSummary) -> Void = { _, _ in }
     let checkoutRef: (GitReference) -> Void
 
@@ -657,7 +661,10 @@ private struct HistoryRowView: View {
             Group {
                 HStack(spacing: Self.avatarSpacing) {
                     if let avatarSize {
-                        AuthorAvatar(name: row.commit.authorName, email: row.commit.authorEmail, size: avatarSize, gitLabHost: gitLabHost)
+                        AuthorAvatar(
+                            name: row.commit.authorName, email: row.commit.authorEmail, size: avatarSize,
+                            commits: avatarCommits, origin: avatarOrigin
+                        )
                     }
                     Text(highlighted(row.commit.authorName))
                         .foregroundStyle(.secondary)
@@ -909,7 +916,7 @@ struct CommitDetailView: View {
     var body: some View {
         if let commit = store.selectedCommit {
             VStack(alignment: .leading, spacing: 0) {
-                CommitHeaderView(commit: commit, gitLabHost: store.gitLabHost)
+                CommitHeaderView(commit: commit, avatarOrigin: store.avatarOrigin)
                 Divider()
                 HSplitView {
                     CommitFileListView(store: store)
@@ -947,12 +954,12 @@ struct CommitDetailView: View {
 
 private struct CommitHeaderView: View {
     let commit: CommitSummary
-    var gitLabHost: String?
+    var avatarOrigin: AvatarOrigin?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             if ConfigStore.shared.config.appearance.authorPictures {
-                AuthorAvatar(name: commit.authorName, email: commit.authorEmail, size: 30, gitLabHost: gitLabHost)
+                AuthorAvatar(name: commit.authorName, email: commit.authorEmail, size: 30, commits: [commit.oid], origin: avatarOrigin)
                     .padding(.top, 1)
             }
             details

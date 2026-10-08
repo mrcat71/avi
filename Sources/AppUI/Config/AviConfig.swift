@@ -133,8 +133,9 @@ public struct AppearanceConfig: Codable, Equatable, Sendable {
     public var diffFont: String
     public var fileListMode: String // tree | flat
     public var graphLaneWidth: Int
-    /// Authors' pictures beside their names in History, looked up on GitHub,
-    /// the repository's GitLab, and Gravatar. Off shows the names alone.
+    /// Authors' pictures beside their names in History: the account the
+    /// repository's GitHub or GitLab says wrote the commit, else lookups by
+    /// address there and on Gravatar. Off shows the names alone.
     public var authorPictures: Bool
 
     public init(
