@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.7.5. The config schema, the UI, and the
+Alpha. The current release is v0.7.6. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -59,9 +59,9 @@ around provider authentication, OAuth, and multi-account flows.
   SHA: matches are highlighted, the rest dims, and Return and Shift+Return step
   between them. **Search Commits** in the command palette opens the search.
   History loads the latest 200 commits; **Load Older Commits** adds 1,000 more
-  at a time. Commits show their author's picture, from GitHub, the
-  repository's GitLab, or Gravatar, with initials until one arrives, and recent
-  ones say Today or Yesterday instead of a date.
+  at a time. Commits show their author's picture beside the name, from
+  GitHub, the repository's GitLab, or Gravatar, with initials until one
+  arrives, and recent ones say Today or Yesterday instead of a date.
 - A commit menu in History: new branch or tag at the commit, an
   interactive rebase from it or a stop to edit it, reset the current branch to
   it (soft, mixed, or hard), check it out, cherry-pick or revert it, save it as
