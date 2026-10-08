@@ -83,11 +83,18 @@ final class FolderRowClickTests: XCTestCase {
             tables(in: host).max { frameInWindow($0).maxY < frameInWindow($1).maxY }
         }
 
+        /// A click that cannot hang. When the window is key, as on a CI runner,
+        /// NSTableView's mouse-down tracks the mouse until a mouse-up arrives in
+        /// the event queue, so the mouse-up is queued before the mouse-down is
+        /// sent. Where nothing tracked, it is still waiting and is sent after.
         func click(_ table: NSTableView, row: Int, atX x: CGFloat) {
             let rect = table.convert(table.rect(ofRow: row), to: nil)
             let point = NSPoint(x: rect.minX + x, y: rect.midY)
+            NSApp.postEvent(event(.leftMouseUp, at: point), atStart: false)
             window.sendEvent(event(.leftMouseDown, at: point))
-            window.sendEvent(event(.leftMouseUp, at: point))
+            if let pending = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true) {
+                window.sendEvent(pending)
+            }
             RunLoop.current.run(until: Date().addingTimeInterval(0.3))
             host.layoutSubtreeIfNeeded()
         }
