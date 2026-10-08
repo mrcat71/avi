@@ -33,7 +33,7 @@ struct HistoryListView: View {
                 Divider()
                 HStack(spacing: 12) {
                     Text("Commit").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Author").frame(width: 130, alignment: .leading)
+                    Text("Author").frame(width: HistoryRowView.authorWidth(avatarSize: avatarSize), alignment: .leading)
                     Text("SHA").frame(width: 65, alignment: .leading)
                     Text("Date").frame(width: 120, alignment: .trailing)
                 }
@@ -245,11 +245,9 @@ struct HistoryListView: View {
         CGFloat(max(store.historyRows.map(\.laneCount).max() ?? 1, 1)) * laneWidth + HistoryGraphView.horizontalInset * 2
     }
 
-    /// Settings > Appearance > Graph lane width, widened to fit author pictures.
+    /// Settings > Appearance > Graph lane width.
     private var laneWidth: CGFloat {
-        let configured = CGFloat(ConfigStore.shared.config.appearance.graphLaneWidth)
-        guard let avatarSize else { return configured }
-        return max(configured, avatarSize + 5)
+        CGFloat(ConfigStore.shared.config.appearance.graphLaneWidth)
     }
 
     private var avatarSize: CGFloat? {
@@ -605,6 +603,14 @@ private struct HistoryRowView: View {
 
     private let maxVisibleBadges = 4
 
+    private static let avatarSpacing: CGFloat = 6
+
+    /// The Author column keeps 130 points for the name and adds the author's
+    /// picture beside it, so the header lines up with the rows.
+    static func authorWidth(avatarSize: CGFloat?) -> CGFloat {
+        130 + (avatarSize.map { $0 + avatarSpacing } ?? 0)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             HStack(spacing: 4) {
@@ -612,16 +618,9 @@ private struct HistoryRowView: View {
                     row: row,
                     isSelected: isSelected,
                     laneColors: laneColors,
-                    laneWidth: laneWidth,
-                    avatarDiameter: avatarSize
+                    laneWidth: laneWidth
                 )
                 .frame(width: graphWidth, alignment: .leading)
-                .overlay(alignment: .leading) {
-                    if let avatarSize, row.commit.parentOIDs.count < 2 {
-                        AuthorAvatar(name: row.commit.authorName, email: row.commit.authorEmail, size: avatarSize, gitLabHost: gitLabHost)
-                            .offset(x: HistoryGraphView.nodeX(lane: row.lane, laneWidth: laneWidth) - avatarSize / 2)
-                    }
-                }
 
                 HStack(spacing: 4) {
                     ForEach(visibleBadges) { badge in
@@ -656,9 +655,14 @@ private struct HistoryRowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .clipped()
             Group {
-                Text(highlighted(row.commit.authorName))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 130, alignment: .leading)
+                HStack(spacing: Self.avatarSpacing) {
+                    if let avatarSize {
+                        AuthorAvatar(name: row.commit.authorName, email: row.commit.authorEmail, size: avatarSize, gitLabHost: gitLabHost)
+                    }
+                    Text(highlighted(row.commit.authorName))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: Self.authorWidth(avatarSize: avatarSize), alignment: .leading)
                 Text(shortOIDText)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)

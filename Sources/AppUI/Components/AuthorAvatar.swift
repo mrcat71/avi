@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// An author's picture in a circle, or their initials on a color of their own
-/// until the picture arrives, or when there is none. Settings > Appearance >
-/// Author pictures off keeps it to initials and asks no server.
+/// An author's picture in a rounded square, or their initials on a color of
+/// their own until the picture arrives, or when there is none. Settings >
+/// Appearance > Author pictures off keeps it to initials and asks no server.
 struct AuthorAvatar: View {
     let name: String
     let email: String
@@ -12,8 +12,9 @@ struct AuthorAvatar: View {
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: size / 5, style: .continuous)
         ZStack {
-            Circle().fill(tint)
+            shape.fill(tint)
             Text(AvatarSource.initials(for: name))
                 .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
@@ -26,7 +27,7 @@ struct AuthorAvatar: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
+        .clipShape(shape)
         .accessibilityHidden(true)
         .task(id: email) {
             guard ConfigStore.shared.config.appearance.authorPictures else { return }
