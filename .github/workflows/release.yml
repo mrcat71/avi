@@ -76,6 +76,10 @@ jobs:
           fi
 
       - name: Test
+        # Unbuffered, XCTest's "started" lines reach the log as they happen,
+        # so a hang names its test (see ci.yml).
+        env:
+          NSUnbufferedIO: "YES"
         run: swift test
 
       - name: Release build (arm64)
