@@ -42,6 +42,12 @@ Avi runs entirely on your Mac and has no backend. The parts worth looking at:
   repositories you have opened in Avi; it must never commit, push, run a
   command, or make Avi open a repository you did not approve. Anything that lets
   another user, a web page, or a sandboxed agent go beyond that is in scope.
+- Author pictures. Avi asks the GitHub or GitLab a repository is on which
+  account wrote its commits, naming them by SHA, with the Settings token for
+  that host or through `gh` or `glab` (`glab` only for an instance it is signed
+  in to). A Settings token goes to its own host and nowhere else; Gravatar
+  receives only a SHA-256 hash of an address. Anything that sends a token or an
+  address anywhere else is in scope.
 - The installer in Settings > Agents, which writes `~/.local/bin/avi` and the
   agent skills and must not overwrite files it did not write.
 - In-app updates. Avi uses Sparkle to read `appcast.xml` from the latest

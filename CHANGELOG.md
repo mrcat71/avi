@@ -6,6 +6,11 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-10-08
+
+### Changed
+- Author pictures come from the GitHub or GitLab account behind each commit, so authors who keep their email address private get theirs too. Avi asks the repository's own GitHub or GitLab about the commits, signed in with a token from Settings or through `gh` or `glab`; without either, a public GitHub repository is asked without a token, within GitHub's 60 requests an hour. The lookups by address, Gravatar, and initials remain for the rest.
+
 ## [0.7.6] - 2026-10-08
 
 ### Changed
