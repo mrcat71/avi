@@ -43,6 +43,9 @@ final class FolderRowClickTests: XCTestCase {
         let store: RepositoryStore
         let window: NSWindow
         let host: NSHostingView<ChangeListView>
+        /// Numbers the clicks: a mouse-down and its mouse-up share a number,
+        /// as they do from the window server.
+        private var clicks = 0
 
         init() throws {
             _ = NSApplication.shared
@@ -83,17 +86,20 @@ final class FolderRowClickTests: XCTestCase {
             tables(in: host).max { frameInWindow($0).maxY < frameInWindow($1).maxY }
         }
 
-        /// A click that cannot hang. When the window is key, as on a CI runner,
-        /// NSTableView's mouse-down tracks the mouse until a mouse-up arrives in
-        /// the event queue, so the mouse-up is queued before the mouse-down is
-        /// sent. Where nothing tracked, it is still waiting and is sent after.
+        /// A click delivered the way the window server delivers one: the
+        /// mouse-down and its later mouse-up both wait in the event queue, and
+        /// NSApp dispatches them in order, so `NSApp.currentEvent` is right
+        /// while each is handled. Where the mouse-down tracks the mouse, as on
+        /// the CI runner, it takes the waiting mouse-up itself and the click
+        /// cannot hang; elsewhere the mouse-up is dispatched next.
         func click(_ table: NSTableView, row: Int, atX x: CGFloat) {
             let rect = table.convert(table.rect(ofRow: row), to: nil)
             let point = NSPoint(x: rect.minX + x, y: rect.midY)
+            clicks += 1
+            NSApp.postEvent(event(.leftMouseDown, at: point), atStart: false)
             NSApp.postEvent(event(.leftMouseUp, at: point), atStart: false)
-            window.sendEvent(event(.leftMouseDown, at: point))
-            if let pending = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true) {
-                window.sendEvent(pending)
+            while let next = NSApp.nextEvent(matching: [.leftMouseDown, .leftMouseUp], until: Date(), inMode: .default, dequeue: true) {
+                NSApp.sendEvent(next)
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.3))
             host.layoutSubtreeIfNeeded()
@@ -108,7 +114,7 @@ final class FolderRowClickTests: XCTestCase {
                 with: type, location: point, modifierFlags: [],
                 timestamp: ProcessInfo.processInfo.systemUptime,
                 windowNumber: window.windowNumber, context: nil,
-                eventNumber: 1, clickCount: 1, pressure: 1
+                eventNumber: clicks, clickCount: 1, pressure: 1
             )!
         }
 
