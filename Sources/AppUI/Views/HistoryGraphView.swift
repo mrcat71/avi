@@ -10,9 +10,6 @@ struct HistoryGraphView: View {
     let isSelected: Bool
     let laneColors: [Int: Color]
     var laneWidth: CGFloat = 16
-    /// With author pictures on, a commit's node is a ring this wide around
-    /// the picture the row lays over it. Merges keep their small dot.
-    var avatarDiameter: CGFloat?
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -117,15 +114,6 @@ struct HistoryGraphView: View {
             let center = CGPoint(x: xPosition(for: dotLane), y: midY)
             let dotColor = color(for: dotLane)
             let isMerge = row.commit.parentOIDs.count > 1
-            if let avatarDiameter, !isMerge {
-                let ring = avatarDiameter + (isSelected ? 4 : 3)
-                context.fill(
-                    Path(ellipseIn: circle(center, ring + 6)),
-                    with: .color(dotColor.opacity(isSelected ? haloOpacity * 1.8 : haloOpacity))
-                )
-                context.fill(Path(ellipseIn: circle(center, ring)), with: .color(dotColor))
-                return
-            }
             let dotSize: CGFloat = isSelected ? 10 : (isMerge ? 5 : 7)
             let ringSize: CGFloat = isSelected ? 18 : (isMerge ? 9 : 13)
             context.fill(

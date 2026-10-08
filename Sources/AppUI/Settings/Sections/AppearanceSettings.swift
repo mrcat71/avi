@@ -47,7 +47,7 @@ struct AppearanceSettingsView: View {
                         .frame(maxWidth: 260)
                 }
                 Divider().padding(.vertical, 4)
-                SettingsFormRow("Graph lane width", description: "Author pictures need at least 20 pt and widen narrower lanes.") {
+                SettingsFormRow("Graph lane width") {
                     Picker("", selection: laneWidthBinding) {
                         Text("12 pt").tag(12)
                         Text("16 pt").tag(16)
@@ -60,7 +60,7 @@ struct AppearanceSettingsView: View {
                 Divider().padding(.vertical, 4)
                 SettingsFormRow(
                     "Author pictures",
-                    description: "Shows each author's picture on their commits in History. Avi looks it up on GitHub, the repository's GitLab, and Gravatar, which only receives a hash of the email address. Off shows plain commit dots and asks no server."
+                    description: "Shows each author's picture beside their name in History. Avi looks it up on GitHub, the repository's GitLab, and Gravatar, which only receives a hash of the email address. Off shows the names alone and asks no server."
                 ) {
                     Toggle("", isOn: authorPicturesBinding)
                         .toggleStyle(.switch)
