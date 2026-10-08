@@ -6,6 +6,8 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-10-08
+
 ### Added
 - Search History by message, author, email, or the start of a SHA. Matches are highlighted and the other commits dim; Return and Shift+Return, or the arrow keys, step between matches, and Escape closes the search. **Search Commits** in the command palette opens it.
 - History says at the bottom when older commits exist: **Load Older Commits** adds 1,000 more at a time. A search that finds nothing in the loaded commits offers **Search Older Commits**.
@@ -16,6 +18,7 @@ All notable changes to Avi are documented here. The format is based on
 - Commits in History show their author's picture, looked up on GitHub, on the repository's GitLab, and on Gravatar, which receives only a hash of the address. Initials stand in until a picture arrives, or when there is none. **Settings > Appearance > Author pictures** turns the lookups off.
 
 ### Changed
+- History has a new look. Graph lanes are crisp lines over a soft halo in a calmer palette, merge commits get smaller dots, and branch labels are neutral chips marked with their lane's color. In the sidebar, each branch icon takes its lane's color and tags are listed as plain text. Panel, section, and column titles and the Changes status bar use small monospaced capitals, and dates line up in tabular figures.
 - The commit message is one card with its actions along the bottom. **Generate** writes a message in one click, with **Split into Commits…** in the menu beside it. The Commit button says how many staged files it commits and shows Cmd+Return, and when it is off, the reason sits next to it.
 - AI work shows how long it has been running, next to a small animated grid, in the commit panel and in the banner above the workspace.
 - Commit dates from today and yesterday say "Today, 15:36" and "Yesterday, 11:17" in History, commit headers, file history, and blame.
@@ -24,7 +27,6 @@ All notable changes to Avi are documented here. The format is based on
 ### Fixed
 - **Create Merge Request** works on self-hosted GitLab whose host name does not contain "gitlab", such as git.example.com. Avi recognizes the instances `glab` is signed in to and those with a token in Settings > GitLab; the menu item was disabled there before. The toolbar's GitLab button appears for those repositories too.
 - **Settings > Appearance > Graph lane width** had no effect; History's graph now uses it.
-- History has a new look. Graph lanes are crisp lines over a soft halo in a calmer palette, merge commits get smaller dots, and branch labels are neutral chips marked with their lane's color. In the sidebar, each branch icon takes its lane's color and tags are listed as plain text. Panel, section, and column titles and the Changes status bar use small monospaced capitals, and dates line up in tabular figures.
 
 ## [0.7.4] - 2026-10-07
 
