@@ -4,10 +4,15 @@ import GitKit
 import SwiftUI
 import XCTest
 
-/// Real clicks on a folder row of the Unstaged list: the chevron only opens
-/// and closes the folder; the rest of the row selects the folder and its files.
+/// Clicks on a folder row of the Unstaged list: the chevron only opens and
+/// closes the folder, and a click on the name never reaches it. Selecting the
+/// folder's row selects the folder and its files.
+///
+/// The selection goes through the table, as in ChangesArrowKeysTests. A real
+/// click on the name selects through the row's drag gesture, but on the CI
+/// runner a synthetic click there selects nothing, however it is delivered.
 final class FolderRowClickTests: XCTestCase {
-    func testChevronTogglesAndNameSelectsTheFolderWithItsFiles() throws {
+    func testChevronTogglesAndSelectingTheFolderSelectsItsFiles() throws {
         try MainActor.assumeIsolated {
             guard ConfigStore.shared.config.appearance.fileListMode == "tree" else {
                 throw XCTSkip("Folder rows show in tree mode only.")
@@ -25,16 +30,18 @@ final class FolderRowClickTests: XCTestCase {
             fixture.click(table, row: 0, atX: 13)
             XCTAssertTrue(fixture.store.expandedFolders.contains("Sources/App"), "the chevron expands it again")
 
-            fixture.click(table, row: 0, atX: 90)
-            XCTAssertEqual(table.selectedRowIndexes, IndexSet([0, 1, 2]), "the name selects the folder and its files")
+            fixture.select(table, row: 0)
+            XCTAssertEqual(table.selectedRowIndexes, IndexSet([0, 1, 2]), "the folder's row selects the folder and its files")
             XCTAssertTrue(fixture.store.expandedFolders.contains("Sources/App"), "selecting leaves the folder open")
 
-            fixture.click(table, row: 3, atX: 90)
-            XCTAssertEqual(table.selectedRowIndexes, IndexSet([3]), "a file click selects just that file")
+            fixture.select(table, row: 3)
+            XCTAssertEqual(table.selectedRowIndexes, IndexSet([3]), "a file's row selects just that file")
 
-            fixture.click(table, row: 0, atX: 200)
-            fixture.click(table, row: 0, atX: 200)
-            XCTAssertEqual(table.selectedRowIndexes, IndexSet([0, 1, 2]), "clicking the selected folder again keeps its files")
+            fixture.select(table, row: 0)
+            XCTAssertEqual(table.selectedRowIndexes, IndexSet([0, 1, 2]), "selecting the folder after a file takes its files, not the file")
+
+            fixture.click(table, row: 0, atX: 90)
+            XCTAssertTrue(fixture.store.expandedFolders.contains("Sources/App"), "a click on the name leaves the folder open")
         }
     }
 
@@ -88,10 +95,8 @@ final class FolderRowClickTests: XCTestCase {
 
         /// A click delivered the way the window server delivers one: the
         /// mouse-down and its later mouse-up both wait in the event queue, and
-        /// NSApp dispatches them in order, so `NSApp.currentEvent` is right
-        /// while each is handled. Where the mouse-down tracks the mouse, as on
-        /// the CI runner, it takes the waiting mouse-up itself and the click
-        /// cannot hang; elsewhere the mouse-up is dispatched next.
+        /// NSApp dispatches them in order. A mouse-down that tracks the mouse
+        /// finds its mouse-up waiting, so the click cannot hang.
         func click(_ table: NSTableView, row: Int, atX x: CGFloat) {
             let rect = table.convert(table.rect(ofRow: row), to: nil)
             let point = NSPoint(x: rect.minX + x, y: rect.midY)
@@ -101,8 +106,14 @@ final class FolderRowClickTests: XCTestCase {
             while let next = NSApp.nextEvent(matching: [.leftMouseDown, .leftMouseUp], until: Date(), inMode: .default, dequeue: true) {
                 NSApp.sendEvent(next)
             }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-            host.layoutSubtreeIfNeeded()
+            settle()
+        }
+
+        /// Selects `row` through the table, as the row's drag gesture does on a
+        /// real click; the list then widens a folder to its files.
+        func select(_ table: NSTableView, row: Int) {
+            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            settle()
         }
 
         func close() {
@@ -116,6 +127,11 @@ final class FolderRowClickTests: XCTestCase {
                 windowNumber: window.windowNumber, context: nil,
                 eventNumber: clicks, clickCount: 1, pressure: 1
             )!
+        }
+
+        private func settle() {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            host.layoutSubtreeIfNeeded()
         }
 
         private func waitUntil(timeout: TimeInterval = 5, _ condition: () -> Bool) {
