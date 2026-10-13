@@ -79,7 +79,8 @@ defaults write com.svinarenko.avi SUEnableAutomaticChecks -bool false
 
 Open repository paths, tab order, and the selected repository are saved in
 macOS user defaults under `avi.workspaceSession`, separately from the recent
-repository list and `config.toml`. Changes are saved as tabs are opened,
+repository list and `config.toml`. Each open worktree is saved as its own path;
+worktrees of one repository reopen in that repository's tab. Changes are saved as tabs are opened,
 selected, reordered, or closed, not only when Avi quits.
 If several repository windows are open, the most recently changed window
 provides the saved workspace.
