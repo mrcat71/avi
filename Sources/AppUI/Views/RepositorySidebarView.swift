@@ -802,15 +802,21 @@ struct LocalBranchRow: View {
                 .frame(width: 12)
                 .foregroundStyle(iconColor)
 
-            Text(ref.name)
-                .font(.system(size: 12, weight: ref.isCurrent ? .semibold : .regular))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(textColor)
+            // The name gets the room first, then the upstream chip, then the
+            // spacer, so a long name hides the chip instead of squeezing it.
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(ref.name)
+                    .font(.system(size: 12, weight: ref.isCurrent ? .semibold : .regular))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(textColor)
+                    .layoutPriority(1)
 
-            if let upstream = ref.upstream {
-                upstreamChip(upstream: upstream)
+                if let upstream = ref.upstream {
+                    upstreamChip(upstream: upstream)
+                }
             }
+            .layoutPriority(1)
 
             aheadBehindChip
 
@@ -886,24 +892,38 @@ struct LocalBranchRow: View {
                 .padding(.vertical, 1)
                 .background(Capsule().fill(Color.red))
                 .foregroundStyle(.white)
+                .padding(.leading, 6)
         } else {
-            Text(upstream)
-                .font(.system(size: 10, design: .monospaced))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(
-                    RoundedRectangle(cornerRadius: DS.Radius.md - 1, style: .continuous)
-                        .fill(Color.primary.opacity(0.05))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: DS.Radius.md - 1, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5)
-                )
-                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
-                .layoutPriority(-1)
+            let labels = UpstreamChipLabels(upstream: upstream, branch: ref.name)
+            // Whole or not at all: a chip squeezed to "o…lt" says nothing, and
+            // the tooltip names the upstream either way.
+            ViewThatFits(in: .horizontal) {
+                upstreamLabel(labels.full)
+                if let short = labels.short {
+                    upstreamLabel(short)
+                }
+                Color.clear.frame(width: 0, height: 0)
+            }
         }
+    }
+
+    private func upstreamLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, design: .monospaced))
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.md - 1, style: .continuous)
+                    .fill(Color.primary.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.Radius.md - 1, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5)
+            )
+            .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
+            .padding(.leading, 6)
     }
 
     @ViewBuilder
@@ -922,6 +942,7 @@ struct LocalBranchRow: View {
     private func chip(text: String, color: Color) -> some View {
         Text(text)
             .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .fixedSize()
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
             .background(
@@ -980,6 +1001,28 @@ struct LocalBranchRow: View {
             parts.append("checked out in \(heldBy.path.lastPathComponent)")
         }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// What a branch's upstream chip says. Most branches track the branch of the
+/// same name, so the remote alone tells you everything new; an upstream with
+/// another name is spelled out, with the remote alone to fall back on.
+struct UpstreamChipLabels: Equatable {
+    let full: String
+    /// A shorter label for a narrow sidebar; nil when `full` is already short.
+    let short: String?
+
+    init(upstream: String, branch: String) {
+        if upstream.hasSuffix("/" + branch), upstream.count > branch.count + 1 {
+            full = String(upstream.dropLast(branch.count + 1))
+            short = nil
+        } else if let slash = upstream.firstIndex(of: "/"), slash != upstream.startIndex {
+            full = upstream
+            short = String(upstream[..<slash])
+        } else {
+            full = upstream
+            short = nil
+        }
     }
 }
 
