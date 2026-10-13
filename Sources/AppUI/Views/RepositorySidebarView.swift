@@ -297,7 +297,7 @@ struct RepositorySidebarView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text(store.root?.lastPathComponent ?? "Avi")
+                Text(store.repositoryName)
                     .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
                 Spacer()
@@ -318,13 +318,26 @@ struct RepositorySidebarView: View {
 
             if let branch = store.branch {
                 HStack(spacing: 5) {
+                    // The tab names the repository; this line says which of
+                    // its worktrees you are in, in the same one line.
+                    if store.location?.isLinkedWorktree == true, let folder = store.root?.lastPathComponent {
+                        Image(systemName: "square.split.2x1")
+                            .font(.system(size: 10))
+                        Text(folder)
+                            .font(.system(size: 11, weight: .medium))
+                            .layoutPriority(1)
+                        Text("·")
+                            .font(.system(size: 11))
+                    }
                     Image(systemName: "arrow.triangle.branch")
                         .font(.system(size: 10))
                     Text(branchLabel(branch))
                         .font(.system(size: 11))
+                        .truncationMode(.middle)
                 }
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .help(store.root?.path ?? "")
             }
         }
         .padding(.horizontal, 12)
@@ -1195,10 +1208,10 @@ private struct RemoteBranchRow: View {
     }
 }
 
-/// One linked worktree. Opening it adds a tab for that working tree; the
-/// worktree this tab already shows is not openable again. A detached worktree,
-/// as agents often leave them, names its commit. Hovering offers its path, for
-/// a terminal in a worktree an agent just created.
+/// One worktree of the repository. Clicking it switches the repository's
+/// tab to that worktree; the one the tab shows is checked. A detached
+/// worktree, as agents often leave them, names its commit. Hovering offers
+/// its path, for a terminal in a worktree an agent just created.
 private struct WorktreeRow: View {
     let worktree: Worktree
     let isCurrent: Bool
@@ -1243,7 +1256,7 @@ private struct WorktreeRow: View {
         )
         .onHover { isHovering = $0 }
         .contextMenu {
-            Button("Open in New Tab", action: open)
+            Button("Switch to Worktree", action: open)
                 .disabled(isCurrent || worktree.isPrunable)
             Button("Open in Terminal") {
                 FolderActions.openInTerminal(worktree.path)

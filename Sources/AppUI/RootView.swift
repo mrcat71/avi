@@ -43,25 +43,18 @@ public struct RootView: View {
     private var workspace: some View {
         Group {
             if let selectedStore {
-                RepositoryView(
-                    store: selectedStore,
-                    repositories: repositories,
-                    selectedRepositoryID: Binding(get: { session.selectedRepositoryID }, set: { session.select($0) }),
-                    openRepositoryPicker: openRepositoryPicker,
-                    closeRepository: closeRepository,
-                    moveRepository: { session.moveRepository($0, toPlaceOf: $1) }
-                )
-                .id(selectedStore.id)
-                .sheet(isPresented: $showingPicker) {
-                    RepositoryPickerView(
-                        openRepository: { url in
-                            openRepository(url)
-                        },
-                        onClone: { showingPicker = false; showingCloneSheet = true },
-                        onDismiss: { showingPicker = false },
-                        presentation: .sheet
-                    )
-                }
+                RepositoryView(store: selectedStore, session: session, openRepositoryPicker: openRepositoryPicker)
+                    .id(selectedStore.id)
+                    .sheet(isPresented: $showingPicker) {
+                        RepositoryPickerView(
+                            openRepository: { url in
+                                openRepository(url)
+                            },
+                            onClone: { showingPicker = false; showingCloneSheet = true },
+                            onDismiss: { showingPicker = false },
+                            presentation: .sheet
+                        )
+                    }
             } else {
                 RepositoryPickerView(
                     openRepository: openRepository,

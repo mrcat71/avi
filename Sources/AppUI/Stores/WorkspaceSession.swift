@@ -333,6 +333,11 @@ struct RepositoryTab: Identifiable {
         active.worktrees.filter { !$0.isBare }
     }
 
+    /// Whether the tab shows `worktree`.
+    func isActive(_ worktree: Worktree) -> Bool {
+        active.root?.resolvingSymlinksInPath().standardizedFileURL.path == worktree.path.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
     /// The open worktree at `worktree`'s path, if any.
     func member(for worktree: Worktree) -> RepositoryStore? {
         let path = worktree.path.resolvingSymlinksInPath().standardizedFileURL.path

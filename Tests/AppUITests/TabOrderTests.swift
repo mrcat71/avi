@@ -103,21 +103,19 @@ struct TabOrderTests {
     /// Tabs named long enough to reach the widest tab, 198 points, so 3 fit in
     /// a row of an 800-point bar.
     @Test(arguments: [(1, 32.0, false), (3, 32.0, false), (4, 58.0, false), (9, 84.0, false), (10, 84.0, true)])
-    func theBarKeepsOneRowUntilTabsNeedMoreAndScrollsPastThree(count: Int, height: CGFloat, scrolls: Bool) async {
-        var stores: [RepositoryStore] = []
+    func theBarKeepsOneRowUntilTabsNeedMoreAndScrollsPastThree(count: Int, height: CGFloat, scrolls: Bool) async throws {
+        let suite = "avi-tab-bar-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let session = WorkspaceSession(git: Fixtures.clean(), defaults: defaults)
         for number in 0 ..< count {
-            let store = RepositoryStore(git: Fixtures.clean())
-            await store.open(URL(fileURLWithPath: "/tmp/avi-tab-with-a-rather-long-repository-name-\(number)", isDirectory: true))
-            store.stopBackgroundObservation()
-            stores.append(store)
+            await session.open(URL(fileURLWithPath: "/tmp/avi-tab-with-a-rather-long-repository-name-\(number)", isDirectory: true))
         }
-        let bar = RepositoryTabsBar(
-            repositories: stores,
-            selectedRepositoryID: .constant(stores.first?.id),
-            openRepositoryPicker: {},
-            closeRepository: { _ in },
-            moveRepository: { _, _ in }
-        )
+        for store in session.repositories {
+            store.stopBackgroundObservation()
+        }
+        session.select(session.repositories.first?.id)
+        let bar = RepositoryTabsBar(session: session, openRepositoryPicker: {})
         let controller = NSHostingController(rootView: bar)
         let size = controller.sizeThatFits(in: CGSize(width: 800, height: 1000))
         #expect(size.height == height)

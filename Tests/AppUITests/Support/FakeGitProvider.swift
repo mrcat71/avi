@@ -41,6 +41,8 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public var worktrees: [Worktree] = []
     /// Common dir reported by `location(of:)`; nil means an ordinary repository.
     public var commonDir: URL?
+    /// Common dirs by repository path, so linked worktrees share a repository.
+    public var commonDirs: [String: URL] = [:]
     /// When set, batched stage/unstage calls update `status` like Git would.
     public var appliesStaging = false
     /// Plans passed to `commitFiles`, in call order.
@@ -87,7 +89,7 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         RepositoryLocation(
             workingTree: repository,
             gitDir: repository.appendingPathComponent(".git"),
-            commonDir: commonDir ?? repository.appendingPathComponent(".git")
+            commonDir: commonDirs[repository.standardizedFileURL.path] ?? commonDir ?? repository.appendingPathComponent(".git")
         )
     }
 

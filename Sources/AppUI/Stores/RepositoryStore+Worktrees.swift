@@ -139,6 +139,15 @@ public extension RepositoryStore {
         }
     }
 
+    /// The repository's name: its main worktree's folder, also when this
+    /// store is open on a linked worktree.
+    var repositoryName: String {
+        if location?.isLinkedWorktree == true, let main = worktrees.first(where: { !$0.isBare }) {
+            return main.path.lastPathComponent
+        }
+        return root?.lastPathComponent ?? "Avi"
+    }
+
     /// Other worktrees whose changes and detached commits the sidebar shows.
     var otherWorktrees: [Worktree] {
         let current = currentWorktree?.id

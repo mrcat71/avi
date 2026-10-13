@@ -218,7 +218,7 @@ struct WorktreeCheckoutSheet: View {
     var body: some View {
         BranchSheetLayout(
             title: "Checkout as Worktree",
-            summary: "Checks out \(branch.name) in a new folder linked to this repository, so you can work on it while this tab stays on its own branch.",
+            summary: "Checks out \(branch.name) in a new folder linked to this repository, so you can work on it while this worktree stays on its own branch.",
             actionTitle: "Create Worktree",
             actionEnabled: problem == nil,
             action: create
@@ -231,7 +231,8 @@ struct WorktreeCheckoutSheet: View {
                 Button("Choose…", action: choose)
             }
             SheetNote(text: problem ?? "Git creates this folder.", tint: problem == nil ? .secondary : .red)
-            Toggle("Open it in a new tab", isOn: $openAfterwards)
+            Toggle("Switch to it", isOn: $openAfterwards)
+                .help("The repository's tab shows the new worktree. Its other worktrees are a hover over the tab away.")
                 .controlSize(.small)
         }
         .onAppear {

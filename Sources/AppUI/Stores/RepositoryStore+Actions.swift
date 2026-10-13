@@ -100,7 +100,7 @@ public extension RepositoryStore {
         }
     }
 
-    /// Check `branch` out in a new linked worktree, then open it in a tab.
+    /// Check `branch` out in a new linked worktree, then switch to it.
     @discardableResult
     func addWorktree(branch: String, at path: URL, openAfterwards: Bool) async -> Bool {
         guard let root else { return false }
