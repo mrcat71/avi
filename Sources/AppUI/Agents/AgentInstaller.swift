@@ -9,6 +9,7 @@ public struct AgentInstaller: Sendable {
         case command
         case claude
         case codex
+        case opencode
 
         public var id: String {
             rawValue
@@ -19,6 +20,7 @@ public struct AgentInstaller: Sendable {
             case .command: return "avi command"
             case .claude: return "Claude Code skill"
             case .codex: return "Codex skill"
+            case .opencode: return "OpenCode skill"
             }
         }
     }
@@ -62,6 +64,9 @@ public struct AgentInstaller: Sendable {
     public let version: String
     /// Codex honors `CODEX_HOME`; Avi launched from Finder never sees it, the CLI may.
     public let codexHome: URL
+    /// OpenCode keeps its global config under `XDG_CONFIG_HOME/opencode` when
+    /// `XDG_CONFIG_HOME` is set, otherwise under `~/.config/opencode`.
+    public let opencodeConfigHome: URL
 
     public init(
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
@@ -77,6 +82,12 @@ public struct AgentInstaller: Sendable {
         } else {
             codexHome = home.appendingPathComponent(".codex", isDirectory: true)
         }
+        if let custom = environment["XDG_CONFIG_HOME"], !custom.isEmpty {
+            opencodeConfigHome = URL(fileURLWithPath: custom, isDirectory: true)
+                .appendingPathComponent("opencode", isDirectory: true)
+        } else {
+            opencodeConfigHome = home.appendingPathComponent(".config/opencode", isDirectory: true)
+        }
     }
 
     // MARK: Locations
@@ -89,6 +100,8 @@ public struct AgentInstaller: Sendable {
             return home.appendingPathComponent(".claude/skills/\(AgentSkillContent.name)", isDirectory: true)
         case .codex:
             return codexHome.appendingPathComponent("skills/\(AgentSkillContent.name)", isDirectory: true)
+        case .opencode:
+            return opencodeConfigHome.appendingPathComponent("skills/\(AgentSkillContent.name)", isDirectory: true)
         }
     }
 
@@ -108,6 +121,8 @@ public struct AgentInstaller: Sendable {
                 ("SKILL.md", AgentSkillContent.skillMarkdown(version: version)),
                 ("agents/openai.yaml", AgentSkillContent.codexInterface)
             ]
+        case .opencode:
+            return [("SKILL.md", AgentSkillContent.skillMarkdown(version: version))]
         }
     }
 
@@ -123,6 +138,9 @@ public struct AgentInstaller: Sendable {
         case .codex:
             guard exists(codexHome) else { return .unavailable("Codex is not set up here (no \(tildePath(codexHome))).") }
             return skillState(at: location(of: .codex))
+        case .opencode:
+            guard exists(opencodeConfigHome) else { return .unavailable("OpenCode is not set up here (no \(tildePath(opencodeConfigHome))).") }
+            return skillState(at: location(of: .opencode))
         }
     }
 
