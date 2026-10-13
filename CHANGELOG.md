@@ -6,6 +6,19 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-13
+
+### Added
+- Resolve conflicts directly in Changes. Each text conflict offers Current, Incoming, or both in either order, with the common ancestor when available. Whole-file choices handle binary files and delete/modify conflicts too. **Mark as Resolved** stages the result and asks before staging files that still have conflict markers; **Stage All** skips conflicted files.
+- **Settings > External Tools > Merge Tool** chooses an installed merge tool, including FileMerge, Visual Studio Code, Cursor, and JetBrains IDEs, or a custom command. **Merge Tool** in Changes opens the conflicted file and refreshes its status when the tool closes; leaving without resolving keeps the conflict.
+
+### Changed
+- Pull asks whether to rebase or merge when the branch and its upstream both have new commits and Git has no setting that reconciles them. Existing Git reconciliation settings still apply, and a conflict stops the operation for you to resolve.
+
+### Fixed
+- The commit stack and commit-message panel keep the heights you set as files appear and disappear, instead of moving the split beneath your pointer.
+- Upstream chips in the branch sidebar show just the remote when the branch names match. In a narrow sidebar, a chip shortens or disappears instead of squeezing the branch name and ahead/behind counts.
+
 ## [0.8.0] - 2026-10-13
 
 ### Added
