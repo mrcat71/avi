@@ -12,8 +12,17 @@ final class WorkspaceSession {
     }
 
     private(set) var selectedRepositoryID: RepositoryStore.ID? {
-        didSet { saveWorkspace() }
+        didSet {
+            if let selected = selectedRepository {
+                lastActive[Self.tabID(of: selected)] = selected.id
+            }
+            saveWorkspace()
+        }
     }
+
+    /// The worktree each tab showed last, by tab id, so coming back to a tab
+    /// returns to the worktree you left it on.
+    private var lastActive: [RepositoryTab.ID: RepositoryStore.ID] = [:]
 
     var errorMessage: String?
     private var openingPaths: [String: UUID] = [:]
@@ -178,14 +187,84 @@ final class WorkspaceSession {
         return candidate
     }
 
-    /// Adds `store` as the last tab. Its tab closes on its own once its folder
-    /// is deleted, such as a worktree an agent or another app removed.
+    /// Adds `store` to its repository's tab, or as the last tab when it is
+    /// the repository's first. It closes on its own once its folder is
+    /// deleted, such as a worktree an agent or another app removed.
     private func append(_ store: RepositoryStore) {
         store.onFolderRemoved = { [weak self, weak store] in
             guard let self, let store else { return }
             close(store.id)
         }
-        repositories.append(store)
+        let tab = Self.tabID(of: store)
+        if let last = repositories.lastIndex(where: { Self.tabID(of: $0) == tab }) {
+            repositories.insert(store, at: last + 1)
+        } else {
+            repositories.append(store)
+        }
+    }
+
+    // MARK: - Tabs
+
+    /// The open repositories as tabs. Worktrees of one repository share its
+    /// tab, which shows the selected one, else the one you left it on. Tabs
+    /// keep the order their first worktree has in `repositories`.
+    var tabs: [RepositoryTab] {
+        var order: [RepositoryTab.ID] = []
+        var members: [RepositoryTab.ID: [RepositoryStore]] = [:]
+        for store in repositories {
+            let id = Self.tabID(of: store)
+            if members[id] == nil {
+                order.append(id)
+            }
+            members[id, default: []].append(store)
+        }
+        let selected = selectedRepository?.id
+        return order.compactMap { id in
+            guard let group = members[id], let first = group.first else { return nil }
+            let active = group.first { $0.id == selected } ?? group.first { $0.id == lastActive[id] } ?? first
+            return RepositoryTab(id: id, members: group, active: active)
+        }
+    }
+
+    var selectedTabID: RepositoryTab.ID? {
+        selectedRepository.map(Self.tabID(of:))
+    }
+
+    /// Worktrees of one repository share its common git dir, so they share a tab.
+    static func tabID(of store: RepositoryStore) -> RepositoryTab.ID {
+        let folder = store.location?.commonDir ?? store.root
+        return folder?.resolvingSymlinksInPath().standardizedFileURL.path ?? store.id.uuidString
+    }
+
+    func selectTab(_ id: RepositoryTab.ID) {
+        guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        select(tab.active.id)
+    }
+
+    /// Moves the tab `id`, with all its worktrees, into the place of `target`.
+    func moveTab(_ id: RepositoryTab.ID, toPlaceOf target: RepositoryTab.ID) {
+        var order = tabs.map(\.id)
+        guard id != target, let from = order.firstIndex(of: id), let to = order.firstIndex(of: target) else { return }
+        order.insert(order.remove(at: from), at: to)
+        let groups = Dictionary(grouping: repositories, by: Self.tabID(of:))
+        repositories = order.flatMap { groups[$0] ?? [] }
+    }
+
+    /// Closes the tab with every worktree of it that is open.
+    func closeTab(_ id: RepositoryTab.ID) {
+        let before = tabs
+        guard let position = before.firstIndex(where: { $0.id == id }) else { return }
+        let wasSelected = selectedTabID == id
+        let neighbor = before.indices.contains(position + 1) ? before[position + 1] : (position > 0 ? before[position - 1] : nil)
+        let closing = Set(before[position].members.map(\.id))
+        for store in before[position].members {
+            store.stopBackgroundObservation()
+        }
+        repositories.removeAll { closing.contains($0.id) }
+        lastActive[id] = nil
+        if wasSelected {
+            selectedRepositoryID = neighbor?.active.id
+        }
     }
 
     func repository(at root: URL) -> RepositoryStore? {
@@ -202,12 +281,70 @@ final class WorkspaceSession {
         repositories.insert(repositories.remove(at: from), at: to)
     }
 
+    /// Closes one worktree. When the tab has others, it shows one of them.
     func close(_ id: RepositoryStore.ID) {
         guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
+        let tab = Self.tabID(of: repositories[index])
         repositories[index].stopBackgroundObservation()
         repositories.remove(at: index)
-        if selectedRepositoryID == id {
-            selectedRepositoryID = repositories.indices.contains(index) ? repositories[index].id : repositories.last?.id
+        if lastActive[tab] == id {
+            lastActive[tab] = nil
         }
+        if selectedRepositoryID == id {
+            if let sibling = repositories.first(where: { Self.tabID(of: $0) == tab }) {
+                selectedRepositoryID = sibling.id
+            } else {
+                selectedRepositoryID = repositories.indices.contains(index) ? repositories[index].id : repositories.last?.id
+            }
+        }
+    }
+}
+
+/// One repository tab: the worktrees of a repository you have open, and the
+/// one it shows.
+@MainActor
+struct RepositoryTab: Identifiable {
+    /// The repository's common git dir.
+    let id: String
+    /// Open worktrees, in the order they were opened.
+    let members: [RepositoryStore]
+    let active: RepositoryStore
+
+    /// The main worktree's folder name, which names the repository even when
+    /// only a linked worktree is open.
+    var name: String {
+        if let main = active.worktrees.first(where: { !$0.isBare }) {
+            return main.path.lastPathComponent
+        }
+        let commonDir = URL(fileURLWithPath: id)
+        if commonDir.lastPathComponent == ".git" {
+            return commonDir.deletingLastPathComponent().lastPathComponent
+        }
+        if let root = active.root, commonDir.path == root.resolvingSymlinksInPath().standardizedFileURL.path {
+            return root.lastPathComponent
+        }
+        let name = commonDir.lastPathComponent
+        return name.hasSuffix(".git") ? String(name.dropLast(4)) : name
+    }
+
+    /// The repository's worktrees you can switch to: all of them Git lists,
+    /// main first, without bare ones.
+    var worktrees: [Worktree] {
+        active.worktrees.filter { !$0.isBare }
+    }
+
+    /// The open worktree at `worktree`'s path, if any.
+    func member(for worktree: Worktree) -> RepositoryStore? {
+        let path = worktree.path.resolvingSymlinksInPath().standardizedFileURL.path
+        return members.first { $0.root?.resolvingSymlinksInPath().standardizedFileURL.path == path }
+    }
+
+    var hasUnseenProposal: Bool {
+        members.contains { $0.hasUnseenProposal }
+    }
+
+    /// Uncommitted changes across the open worktrees.
+    var changeCount: Int {
+        members.reduce(0) { $0 + $1.entries.count }
     }
 }
