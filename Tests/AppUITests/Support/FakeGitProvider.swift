@@ -184,12 +184,34 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
 
     /// Thrown by `pull(in:)`, like Git stopping on a conflict.
     public var pullError: GitError?
+    /// How many times `pull(in:)` ran.
+    public private(set) var pullCalls = 0
+    /// Whether Git's config says how to join a diverged branch.
+    public var pullReconcileConfigured = false
 
     public func pull(in _: URL) async throws -> GitRemoteOperationResult {
+        pullCalls += 1
         if let pullError {
             throw pullError
         }
         return GitRemoteOperationResult(output: "ok")
+    }
+
+    public func pullReconcileIsConfigured(branch _: String?, in _: URL) async throws -> Bool {
+        pullReconcileConfigured
+    }
+
+    public func reconcileWithUpstream(_ how: PullReconcile, in _: URL) async throws -> IntegrationOutcome {
+        actionCalls.append("reconcile \(how.rawValue)")
+        return integrationOutcome
+    }
+
+    public func resolveConflicts(paths: [String], taking side: ConflictSide, in _: URL) async throws {
+        actionCalls.append("take \(side.rawValue) \(paths.joined(separator: ","))")
+    }
+
+    public func markResolved(paths: [String], in _: URL) async throws {
+        actionCalls.append("resolved \(paths.joined(separator: ","))")
     }
 
     public func pull(branch _: String?, in _: URL) async throws -> GitRemoteOperationResult {

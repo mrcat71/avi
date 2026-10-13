@@ -17,6 +17,7 @@ struct ChangeListView: View {
     @State private var confirmingDiscard = false
     /// Keyboard focus for the Unstaged list, so the arrow keys reach it.
     @FocusState private var unstagedFocused: Bool
+    @AppStorage("avi.commitStackHeight") private var commitStackHeight: Double = 240
 
     var body: some View {
         VStack(spacing: 0) {
@@ -187,23 +188,16 @@ struct ChangeListView: View {
         if store.entries.isEmpty, store.commitPlan.isEmpty {
             CleanTreeCard(store: store, switchToAllCommits: switchToAllCommits)
         } else {
-            VSplitView {
+            // The commits keep the height you gave them as files come and go,
+            // so nothing moves under the pointer while an agent edits files.
+            StableVSplit(bottomHeight: $commitStackHeight, minTopHeight: 34, minBottomHeight: 120) {
                 unstagedPane
-                    .frame(minHeight: unstagedMinHeight, idealHeight: unstagedIdealHeight)
+            } bottom: {
                 CommitStackView(store: store, selection: $stackSelection) {
                     stackIsActive = true
                 }
-                .frame(minHeight: 120, idealHeight: 240)
             }
         }
-    }
-
-    private var unstagedMinHeight: CGFloat {
-        unstagedEntries.isEmpty ? 34 : 120
-    }
-
-    private var unstagedIdealHeight: CGFloat {
-        unstagedEntries.isEmpty ? 34 : 240
     }
 
     private var unstagedPane: some View {
@@ -243,7 +237,18 @@ struct ChangeListView: View {
     private func stageFiles(_ files: [FileStatus]) {
         guard !files.isEmpty else { return }
         let order = visibleOrder(unstagedEntries)
-        Task { await store.stage(files, advancingFrom: order) }
+        // Staging a conflicted file marks it resolved, so it asks first when
+        // conflict markers are still in it.
+        let conflicted = files.filter(\.isConflicted)
+        let others = files.filter { !$0.isConflicted }
+        Task {
+            if !others.isEmpty {
+                await store.stage(others, advancingFrom: order)
+            }
+            if !conflicted.isEmpty {
+                await store.markResolved(conflicted)
+            }
+        }
     }
 
     /// Files a row action applies to: the whole selection when the row is part
@@ -661,7 +666,13 @@ struct ChangeRow: View {
                 .help(fullPathDescription)
                 .accessibilityLabel(fullPathDescription)
             Spacer(minLength: 6)
-            if staged {
+            if file.isConflicted {
+                // Staging is how Git records a resolution; Discard cannot
+                // restore a conflicted file.
+                inlineAction("checkmark.circle", help: menuFiles.count > 1 ? "Mark \(menuFiles.count) Files as Resolved" : "Mark as Resolved") {
+                    Task { await store.markResolved(menuFiles) }
+                }
+            } else if staged {
                 inlineAction("minus.circle", help: "Unstage") {
                     onUnstage(file)
                 }
@@ -727,7 +738,9 @@ struct ChangeRow: View {
 
         Divider()
 
-        if staged {
+        if file.isConflicted {
+            conflictMenu(files.filter(\.isConflicted))
+        } else if staged {
             Button(files.count > 1 ? "Unstage \(files.count) Files" : "Unstage") {
                 onUnstage(file)
             }
@@ -782,6 +795,26 @@ struct ChangeRow: View {
         Button("Copy Full Path") {
             copy(files.compactMap { store.absoluteURL(for: $0)?.path })
         }
+    }
+
+    /// What a conflicted file can do instead of Stage and Discard.
+    @ViewBuilder
+    private func conflictMenu(_ files: [FileStatus]) -> some View {
+        let count = files.count
+        Button(count > 1 ? "Mark \(count) Files as Resolved" : "Mark as Resolved") {
+            Task { await store.markResolved(files) }
+        }
+        .keyboardShortcut("s", modifiers: .command)
+        Button(count > 1 ? "Use Current Version for \(count) Files…" : "Use Current Version…") {
+            store.pendingSideChoice = PendingSideChoice(files: files, side: .current)
+        }
+        Button(count > 1 ? "Use Incoming Version for \(count) Files…" : "Use Incoming Version…") {
+            store.pendingSideChoice = PendingSideChoice(files: files, side: .incoming)
+        }
+        Button("Open in Merge Tool") {
+            store.openMergeTool(for: file)
+        }
+        .disabled(store.mergeToolPaths.contains(file.path))
     }
 
     /// A staged rename has no history under its new name yet.

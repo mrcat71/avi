@@ -92,6 +92,17 @@ public final class RepositoryStore: Identifiable {
     public internal(set) var operationState: GitOperationState?
     /// What Git said when the merge or rebase stopped, for the banner.
     public internal(set) var operationNotice: String?
+    /// A pull that found the branch and its upstream diverged, waiting for
+    /// you to choose rebase or merge.
+    public var divergedPull: DivergedPull?
+    /// The selected conflicted file as it stands in the working tree.
+    public internal(set) var selectedConflict: SelectedConflict?
+    /// Conflicted files open in a merge tool right now.
+    public internal(set) var mergeToolPaths: Set<String> = []
+    /// Files you asked to mark resolved that still have conflict markers.
+    public var pendingResolve: PendingResolve?
+    /// A whole-file side you picked for conflicted files, waiting for you to confirm.
+    public var pendingSideChoice: PendingSideChoice?
     /// The message a stopped merge put in the commit field. Set once, so
     /// clearing the field yourself does not bring it back; when the merge ends
     /// without that commit, an untouched message goes with it.
@@ -211,7 +222,7 @@ public final class RepositoryStore: Identifiable {
     }
 
     public var canStageAll: Bool {
-        !unplannedUnstagedEntries.isEmpty && !isLoading
+        unplannedUnstagedEntries.contains { !$0.isConflicted } && !isLoading
     }
 
     public var canUnstageAll: Bool {
@@ -373,15 +384,17 @@ public final class RepositoryStore: Identifiable {
         await perform { try await $0.stage(path: file.path, in: $1) }
     }
 
-    /// Stages every unstaged change into Commit 1, except files a planned commit holds.
+    /// Stages every unstaged change into Commit 1, except files a planned
+    /// commit holds and conflicted files, which Mark as Resolved stages.
     public func stageAll() async {
         let planned = commitPlan.claimedPaths
-        // `git add --all` would also add hidden worktrees as embedded repositories.
-        guard !planned.isEmpty || hiddenWorktreeCount > 0 else {
+        // `git add --all` would also add hidden worktrees as embedded
+        // repositories, and mark conflicts resolved with their markers in.
+        guard !planned.isEmpty || hiddenWorktreeCount > 0 || entries.contains(where: \.isConflicted) else {
             await perform { try await $0.stageAll(in: $1) }
             return
         }
-        let paths = unplannedUnstagedEntries.map(\.path)
+        let paths = unplannedUnstagedEntries.filter { !$0.isConflicted }.map(\.path)
         guard !paths.isEmpty else { return }
         await perform { try await $0.stage(paths: paths, in: $1) }
     }
@@ -737,16 +750,34 @@ public final class RepositoryStore: Identifiable {
     }
 
     public func pull() async {
-        await performRemoteOperation {
+        var diverged: DivergedPull?
+        await performRemoteOperation { git, root in
             // Fetch (all remotes, pruned) before pulling so remote-tracking refs
             // and the sidebar - ahead/behind and "gone" branches - are current.
-            _ = try await $0.fetch(remote: nil, in: $1)
-            return try await $0.pull(in: $1)
+            let fetched = try await git.fetch(remote: nil, in: root)
+            // Both sides have new commits, and Git's config does not say
+            // whether to rebase or merge (or says pull.ff=only, which refuses):
+            // that is your call, not an error.
+            let head = try await git.status(in: root).branch
+            if let name = head.name, let upstream = head.upstream, head.ahead > 0, head.behind > 0,
+               try await !git.pullReconcileIsConfigured(branch: name, in: root) {
+                diverged = DivergedPull(branch: name, upstream: upstream, ahead: head.ahead, behind: head.behind)
+                return fetched
+            }
+            return try await git.pull(in: root)
+        }
+        if let diverged {
+            divergedPull = diverged
+            return
         }
         await showStoppedPullAsOperation()
     }
 
     public func pull(branch: String?) async {
+        guard let branch, branch != self.branch?.name else {
+            await pull()
+            return
+        }
         await performRemoteOperation {
             _ = try await $0.fetch(remote: nil, in: $1)
             return try await $0.pull(branch: branch, in: $1)
@@ -1428,6 +1459,16 @@ public final class RepositoryStore: Identifiable {
         }
         selectedDiffSource = source
         diffError = nil
+        // Git shows a conflict as a combined diff; the resolver shows the
+        // file itself, conflict by conflict.
+        if file.isConflicted {
+            let conflict = await SelectedConflict.read(file, in: root)
+            guard diffRequestID == requestID, selectedPath == file.path, self.root == root else { return }
+            selectedConflict = conflict
+            diff = nil
+            return
+        }
+        selectedConflict = nil
         do {
             let result = try await git.diff(path: file.path, source: source, options: DiffPreferences.shared.gitOptions, in: root)
             guard diffRequestID == requestID, selectedPath == file.path, self.root == root else { return }

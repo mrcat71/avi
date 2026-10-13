@@ -7,7 +7,9 @@ struct DiffDetailView: View {
     @State private var pendingDiscard: PendingLineDiscard?
 
     var body: some View {
-        if let file = store.selectedFile {
+        if let file = store.selectedFile, file.isConflicted {
+            ConflictResolverView(store: store, file: file)
+        } else if let file = store.selectedFile {
             FileDiffView(title: file.path, diff: store.diff, errorMessage: store.diffError, lineActions: lineActions(for: file)) {
                 if let file = store.selectedFile {
                     await store.loadDiff(for: file)

@@ -25,7 +25,32 @@ struct RepositoryView: View {
 
     /// Split into functions so the type checker handles each modifier chain.
     var body: some View {
-        sheets(receivingCommands(layout))
+        divergedPullChoice(sheets(receivingCommands(layout)))
+    }
+
+    /// A pull whose branch and upstream both moved asks how to join them.
+    private func divergedPullChoice(_ content: some View) -> some View {
+        content
+            .alert(
+                store.divergedPull.map { "\($0.branch) and \($0.upstream) Have Diverged" } ?? "",
+                isPresented: Binding(get: { store.divergedPull != nil }, set: {
+                    if !$0 {
+                        store.divergedPull = nil
+                    }
+                }),
+                presenting: store.divergedPull
+            ) { _ in
+                Button("Rebase") {
+                    Task { await store.reconcileDivergedPull(.rebase) }
+                }
+                .keyboardShortcut(.defaultAction)
+                Button("Merge") {
+                    Task { await store.reconcileDivergedPull(.merge) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { diverged in
+                Text(DivergedPullText.message(diverged))
+            }
     }
 
     private var layout: some View {
@@ -423,6 +448,18 @@ private struct DetachedHeadBanner: View {
     }
 }
 
+/// What the diverged-pull dialog says.
+enum DivergedPullText {
+    static func message(_ diverged: DivergedPull) -> String {
+        let mine = diverged.ahead == 1 ? "1 commit" : "\(diverged.ahead) commits"
+        let theirs = diverged.behind == 1 ? "1 commit" : "\(diverged.behind) commits"
+        return "\(diverged.branch) has \(mine) that \(diverged.upstream) does not, and \(diverged.upstream) has \(theirs) that \(diverged.branch) does not.\n\n"
+            + "Rebase replays your \(mine) on top of \(diverged.upstream), keeping the history in one line. "
+            + "Merge joins the two with a merge commit. A conflict stops either one for you to resolve.\n\n"
+            + "To skip this question, set pull.rebase in your Git config."
+    }
+}
+
 /// A merge or rebase that stopped: what Git needs from you, and the ways out.
 private struct OperationBanner: View {
     let store: RepositoryStore
@@ -470,7 +507,7 @@ private struct OperationBanner: View {
                     Task { await store.continueRebase() }
                 }
                 .disabled(conflictCount > 0)
-                .help(conflictCount > 0 ? "Resolve and stage every conflicted file first" : "git rebase --continue")
+                .help(conflictCount > 0 ? "Resolve every conflicted file and mark it resolved first" : "git rebase --continue")
                 Button("Skip Commit") {
                     Task { await store.skipRebaseCommit() }
                 }
@@ -487,7 +524,7 @@ private struct OperationBanner: View {
                     Task { await store.continueOperation() }
                 }
                 .disabled(conflictCount > 0)
-                .help(conflictCount > 0 ? "Resolve and stage every conflicted file first" : "git \(verb) --continue")
+                .help(conflictCount > 0 ? "Resolve every conflicted file and mark it resolved first" : "git \(verb) --continue")
                 Button("Skip Commit") {
                     Task { await store.skipOperation() }
                 }
@@ -537,15 +574,15 @@ private struct OperationBanner: View {
         switch operation {
         case .merge:
             return conflictCount > 0
-                ? "Resolve \(files) in Changes and stage them, then commit to finish the merge."
+                ? "Resolve \(files) in Changes and mark them resolved, then commit to finish the merge."
                 : "Conflicts are resolved. Commit to finish the merge, or abort it."
         case .rebase:
             return conflictCount > 0
-                ? "Resolve \(files) in Changes and stage them, then Continue."
+                ? "Resolve \(files) in Changes and mark them resolved, then Continue."
                 : "Amend the commit or stage your resolution if you need to, then Continue."
         case .cherryPick, .revert:
             return conflictCount > 0
-                ? "Resolve \(files) in Changes and stage them, then Continue to commit."
+                ? "Resolve \(files) in Changes and mark them resolved, then Continue to commit."
                 : "Stage your resolution, then Continue to commit, or Skip if nothing is left to apply."
         }
     }
@@ -978,6 +1015,10 @@ private struct RepositoryActionToolbarView: View {
             return "No commits yet"
         }
         guard let upstream = branch.upstream else { return "Set upstream for \(name) first" }
+        if branch.behind > 0, branch.ahead > 0 {
+            return "Pull \(branch.behind) commit\(branch.behind == 1 ? "" : "s") from \(upstream). \(name) has \(branch.ahead) of its own, "
+                + "so Avi asks whether to rebase or merge them, unless Git's pull.rebase says"
+        }
         if branch.behind > 0 {
             return "Pull \(branch.behind) commit\(branch.behind == 1 ? "" : "s") from \(upstream) into \(name)"
         }
@@ -1118,7 +1159,51 @@ struct LocalChangesWorkspaceView: View {
     let store: RepositoryStore
     let switchToAllCommits: () -> Void
 
+    @AppStorage("avi.commitPanelHeight") private var commitPanelHeight: Double = 220
+
     var body: some View {
+        conflictDialogs(workspace)
+    }
+
+    /// Confirmations for resolving conflicts, from the list or the resolver.
+    private func conflictDialogs(_ content: some View) -> some View {
+        content
+            .confirmationDialog(
+                store.pendingSideChoice.map(SideChoiceText.init)?.title ?? "",
+                isPresented: Binding(get: { store.pendingSideChoice != nil }, set: {
+                    if !$0 {
+                        store.pendingSideChoice = nil
+                    }
+                }),
+                titleVisibility: .visible,
+                presenting: store.pendingSideChoice
+            ) { choice in
+                Button(SideChoiceText(choice).button, role: .destructive) {
+                    Task { await store.resolveConflicts(choice.files, taking: choice.side) }
+                }
+            } message: { choice in
+                Text(SideChoiceText(choice).message)
+            }
+            .alert(
+                store.pendingResolve.map { $0.withMarkers.count == 1 ? "\($0.withMarkers[0]) Still Has Conflict Markers" : "\($0.withMarkers.count) Files Still Have Conflict Markers" } ?? "",
+                isPresented: Binding(get: { store.pendingResolve != nil }, set: {
+                    if !$0 {
+                        store.pendingResolve = nil
+                    }
+                }),
+                presenting: store.pendingResolve
+            ) { pending in
+                Button("Mark as Resolved Anyway", role: .destructive) {
+                    Task { await store.markResolved(pending.files, force: true) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { pending in
+                Text((pending.withMarkers.count > 1 ? pending.withMarkers.joined(separator: "\n") + "\n\n" : "")
+                    + "The <<<<<<< and >>>>>>> lines would be committed as they are. Resolve each conflict first, unless the file really contains them.")
+            }
+    }
+
+    private var workspace: some View {
         VStack(spacing: 0) {
             LocalChangesStatusBar(store: store)
             Divider()
@@ -1127,10 +1212,12 @@ struct LocalChangesWorkspaceView: View {
                     .frame(minWidth: 260, idealWidth: 320, maxWidth: 520)
                     .aviPane()
 
-                VSplitView {
+                // The commit panel keeps the height you gave it whatever it
+                // shows: AI results and planned commits scroll inside it.
+                StableVSplit(bottomHeight: $commitPanelHeight, minTopHeight: 240, minBottomHeight: 190) {
                     DiffDetailView(store: store)
-                        .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
                         .aviPane()
+                } bottom: {
                     Group {
                         // The composer edits whichever commit of the stack is selected.
                         if store.composerDraft != nil {
@@ -1139,7 +1226,6 @@ struct LocalChangesWorkspaceView: View {
                             CommitPanelView(store: store)
                         }
                     }
-                    .frame(minHeight: 190, idealHeight: 220, maxHeight: commitPanelMaxHeight)
                     .aviPane()
                 }
                 .frame(minWidth: 460)
@@ -1165,16 +1251,6 @@ struct LocalChangesWorkspaceView: View {
     private func markSeenIfFrontmost() {
         guard store.hasUnseenProposal, NSApp.isActive else { return }
         store.hasUnseenProposal = false
-    }
-
-    private var commitPanelMaxHeight: CGFloat {
-        let hasExpandedContent = store.isGeneratingCommitMessage
-            || store.aiPendingPreview != nil
-            || store.aiErrorDetail != nil
-            || store.aiDebugDrawerVisible
-            || store.fieldProposal != nil
-            || store.stackCount > 1
-        return hasExpandedContent ? .infinity : 280
     }
 }
 
