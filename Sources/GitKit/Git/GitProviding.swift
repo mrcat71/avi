@@ -364,6 +364,29 @@ public protocol GitProviding: Sendable {
     /// Open `path` in an external diff tool: `toolPath` when set, else Git's
     /// `diff.tool`. Returns once the tool exits.
     func launchDiffTool(path: String, staged: Bool, toolPath: String?, in repository: URL) async throws
+
+    // MARK: - Diverged pulls and conflicts
+
+    /// Whether Git's config already says how `git pull` joins a diverged
+    /// `branch`: `pull.rebase`, `branch.<name>.rebase`, or a `pull.ff` other
+    /// than `only`, which refuses a diverged branch instead.
+    func pullReconcileIsConfigured(branch: String?, in repository: URL) async throws -> Bool
+
+    /// After a fetch: rebase the current branch onto its upstream, or merge
+    /// the upstream into it. Conflicts stop it like any merge or rebase.
+    func reconcileWithUpstream(_ how: PullReconcile, in repository: URL) async throws -> IntegrationOutcome
+
+    /// Resolve the conflicted `paths` with one side's whole version and stage
+    /// them. Taking a side that deleted a file deletes it.
+    func resolveConflicts(paths: [String], taking side: ConflictSide, in repository: URL) async throws
+
+    /// Stage conflicted files as resolved, including ones you deleted.
+    func markResolved(paths: [String], in repository: URL) async throws
+
+    /// `git mergetool` on one conflicted file, with `tool` or Git's
+    /// `merge.tool` when nil. Returns once the tool closes; Git stages the
+    /// file when the tool merged it.
+    func launchMergeTool(path: String, tool: MergeToolLaunch?, in repository: URL) async throws -> MergeToolOutcome
 }
 
 public enum GitResetMode: String, Sendable {
@@ -381,6 +404,27 @@ public enum SingleCommitRebaseAction: Sendable {
 }
 
 public extension GitProviding {
+    /// Providers without conflict tools leave a diverged pull to Git.
+    func pullReconcileIsConfigured(branch _: String?, in _: URL) async throws -> Bool {
+        true
+    }
+
+    func reconcileWithUpstream(_: PullReconcile, in _: URL) async throws -> IntegrationOutcome {
+        throw GitError.invalidInput("Rebasing or merging the upstream is not supported here.")
+    }
+
+    func resolveConflicts(paths _: [String], taking _: ConflictSide, in _: URL) async throws {
+        throw GitError.invalidInput("Resolving conflicts is not supported here.")
+    }
+
+    func markResolved(paths _: [String], in _: URL) async throws {
+        throw GitError.invalidInput("Resolving conflicts is not supported here.")
+    }
+
+    func launchMergeTool(path _: String, tool _: MergeToolLaunch?, in _: URL) async throws -> MergeToolOutcome {
+        throw GitError.invalidInput("Merge tools are not supported here.")
+    }
+
     /// Providers without History's commit actions refuse them.
     func cherryPick(commit _: String, isMerge _: Bool, in _: URL) async throws -> IntegrationOutcome {
         throw GitError.invalidInput("Cherry-pick is not supported here.")

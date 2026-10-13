@@ -39,16 +39,21 @@ public struct FileStatus: Sendable, Equatable, Identifiable {
         worktree == .untracked
     }
 
-    /// True when there is something staged for the next commit.
+    /// True when there is something staged for the next commit. A conflicted
+    /// file has nothing staged until you mark it resolved, whatever X says:
+    /// for a conflict, X and Y describe what each side did.
     public var isStaged: Bool {
+        guard !isConflicted else { return false }
         switch index {
         case .unmodified, .untracked, .ignored: return false
         default: return true
         }
     }
 
-    /// True when the working tree differs from the index.
+    /// True when the working tree differs from the index, which is always so
+    /// for a conflicted file.
     public var hasUnstagedChanges: Bool {
+        guard !isConflicted else { return true }
         switch worktree {
         case .unmodified, .ignored: return false
         default: return true
