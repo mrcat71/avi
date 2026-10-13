@@ -983,12 +983,7 @@ public struct CLIGitProvider: GitProviding {
             let subcommand = arguments.first == "--literal-pathspecs" ? arguments.dropFirst().first : arguments.first
             let backoff = subcommand.map { retryableCommands.contains($0) } == true ? Self.lockRetryBackoff : []
             return try await Self.runWithLockRetry(backoff: backoff) {
-                try await ProcessRunner.run(
-                    executable: executable,
-                    arguments: arguments,
-                    workingDirectory: repository,
-                    environment: env
-                )
+                try await Self.launch(executable, arguments: arguments, in: repository, environment: env)
             }
         }
         if ownsCommandSlot {
@@ -996,6 +991,32 @@ public struct CLIGitProvider: GitProviding {
             return try await operation()
         }
         return try await GitCommandQueue.shared.run(repository: repository, operation)
+    }
+
+    /// Runs one git process in `repository`. Process reports a working
+    /// directory that no longer exists as a missing file named after it; a
+    /// folder deleted underneath Avi, such as a worktree another app removed,
+    /// fails as `GitError.missingFolder` instead.
+    static func launch(
+        _ executable: URL,
+        arguments: [String],
+        in repository: URL,
+        environment: [String: String]
+    ) async throws -> ProcessResult {
+        do {
+            return try await ProcessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                workingDirectory: repository,
+                environment: environment
+            )
+        } catch {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: repository.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                throw GitError.missingFolder(repository.path)
+            }
+            throw error
+        }
     }
 
     /// Backoff schedule for retrying a git command that failed because another

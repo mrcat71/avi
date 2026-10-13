@@ -115,10 +115,10 @@ public extension RepositoryStore {
             if !force, case let .commandFailed(_, _, stderr) = error, GitError.indicatesDirtyWorktree(stderr) {
                 return .needsForce
             }
-            errorMessage = error.localizedDescription
+            report(error)
             return .failed
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
             return .failed
         }
         // A tab open on it has nothing left to show.

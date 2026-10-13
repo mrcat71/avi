@@ -4,6 +4,9 @@ public enum GitError: Error, Sendable, Equatable {
     case commandFailed(command: String, exitCode: Int32, stderr: String)
     case invalidInput(String)
     case parseFailed(String)
+    /// The folder Git was to run in is gone, such as a worktree another app
+    /// removed. Process reports it as a missing file named after the folder.
+    case missingFolder(String)
 }
 
 extension GitError: LocalizedError {
@@ -25,11 +28,13 @@ extension GitError: LocalizedError {
             return detail
         case let .parseFailed(detail):
             return "Failed to parse git output: \(detail)"
+        case let .missingFolder(path):
+            return "The folder \(path) no longer exists."
         }
     }
 }
 
-extension GitError {
+public extension GitError {
     /// True when a failed git command's stderr indicates the repository's index
     /// or a ref lock is held by another process. avi's in-process
     /// `GitCommandQueue` only serializes avi's own commands, so an external git
@@ -38,7 +43,7 @@ extension GitError {
     /// message instead of a raw `fatal:`.
     /// Path from git's refusal to check out a branch another worktree holds:
     /// "fatal: 'x' is already used by worktree at '/path'". nil for anything else.
-    static func worktreeHoldingBranch(_ stderr: String) -> String? {
+    internal static func worktreeHoldingBranch(_ stderr: String) -> String? {
         guard stderr.contains("is already used by worktree at") else { return nil }
         guard let start = stderr.range(of: "is already used by worktree at ") else { return nil }
         let tail = stderr[start.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -52,17 +57,23 @@ extension GitError {
     /// True when git refused `branch -d` because the branch still holds commits
     /// it cannot see in HEAD. A squash-merged branch always looks like this: its
     /// commits were never replayed, only their content.
-    public static func indicatesUnmergedBranch(_ stderr: String) -> Bool {
+    static func indicatesUnmergedBranch(_ stderr: String) -> Bool {
         stderr.contains("is not fully merged")
     }
 
     /// True when `git worktree remove` refused because the worktree has
     /// uncommitted or untracked files, which `--force` would delete.
-    public static func indicatesDirtyWorktree(_ stderr: String) -> Bool {
+    static func indicatesDirtyWorktree(_ stderr: String) -> Bool {
         stderr.contains("contains modified or untracked files")
     }
 
-    static func indicatesLockContention(_ stderr: String) -> Bool {
+    /// True when Git found no repository where it ran, as in a worktree whose
+    /// `.git` file or Git's record of it was deleted.
+    static func indicatesMissingRepository(_ stderr: String) -> Bool {
+        stderr.contains("not a git repository")
+    }
+
+    internal static func indicatesLockContention(_ stderr: String) -> Bool {
         // index.lock: "Another git process seems to be running in this repository"
         // ref/index .lock: "... Unable to create '/path/X.lock': File exists."
         stderr.contains("git process seems to be running")

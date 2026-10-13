@@ -66,6 +66,12 @@ final class WorkspaceSession {
         var failures: [String] = []
         for path in snapshot.paths {
             guard !Task.isCancelled else { return }
+            // A worktree removed while Avi was closed left nothing to reopen,
+            // which is no failure to report.
+            guard FileManager.default.fileExists(atPath: path) else {
+                Self.log.notice("Not reopening a deleted folder: \(path, privacy: .private)")
+                continue
+            }
             let restored = await openInBackground(URL(fileURLWithPath: path, isDirectory: true))
             guard !Task.isCancelled else { return }
             if restored == nil {
@@ -136,7 +142,7 @@ final class WorkspaceSession {
                 }
                 return
             }
-            repositories.append(candidate)
+            append(candidate)
             if latestOpenRequest == requestID || selectedRepositoryID == nil {
                 selectedRepositoryID = candidate.id
             }
@@ -165,11 +171,21 @@ final class WorkspaceSession {
             candidate.stopBackgroundObservation()
             return existing
         }
-        repositories.append(candidate)
+        append(candidate)
         if selectedRepositoryID == nil {
             selectedRepositoryID = candidate.id
         }
         return candidate
+    }
+
+    /// Adds `store` as the last tab. Its tab closes on its own once its folder
+    /// is deleted, such as a worktree an agent or another app removed.
+    private func append(_ store: RepositoryStore) {
+        store.onFolderRemoved = { [weak self, weak store] in
+            guard let self, let store else { return }
+            close(store.id)
+        }
+        repositories.append(store)
     }
 
     func repository(at root: URL) -> RepositoryStore? {

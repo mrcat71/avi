@@ -63,7 +63,7 @@ public extension RepositoryStore {
             let patch = try await git.formatPatch(commit: commit.oid, in: root)
             try patch.write(to: url, options: .atomic)
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -113,7 +113,7 @@ extension RepositoryStore {
             }
             await perform { try await $0.applyPatch(patch, toIndex: command != .discard, reverse: command != .stage, in: $1) }
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 }

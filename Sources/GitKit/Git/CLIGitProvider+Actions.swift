@@ -281,12 +281,7 @@ public extension CLIGitProvider {
         arguments += ["--", path]
         // Not through the command queue: the tool runs until you close it, and
         // Avi's other Git commands must not wait for that. It only reads.
-        let result = try await ProcessRunner.run(
-            executable: gitURL,
-            arguments: arguments,
-            workingDirectory: repository,
-            environment: gitEnvironment()
-        )
+        let result = try await Self.launch(gitURL, arguments: arguments, in: repository, environment: gitEnvironment())
         guard result.exitCode == 0 else {
             throw failure(arguments, result)
         }

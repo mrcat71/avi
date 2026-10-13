@@ -63,6 +63,11 @@ public final class RepositoryStore: Identifiable {
     public private(set) var isRefsLoading = false
     public private(set) var isRemoteOperationRunning = false
     public internal(set) var errorMessage: String?
+    /// Set once this tab's folder turns out deleted, such as a worktree an
+    /// agent or another app removed. Nothing refreshes it after that.
+    public private(set) var isFolderRemoved = false
+    /// Called once when the folder turns out deleted; the workspace closes the tab.
+    @ObservationIgnored var onFolderRemoved: (@MainActor () -> Void)?
     public var historyFilter: HistoryFilter = .default
 
     public var commitSummary: String = ""
@@ -154,6 +159,7 @@ public final class RepositoryStore: Identifiable {
     /// retried once per interval rather than on every check.
     private var lastAutoFetchAttempt: Date?
     private static let fetchLog = Logger(subsystem: "com.svinarenko.avi", category: "fetch")
+    private static let workspaceLog = Logger(subsystem: "com.svinarenko.avi", category: "workspace")
 
     public init(git: GitProviding = CLIGitProvider()) {
         self.git = git
@@ -271,7 +277,7 @@ public final class RepositoryStore: Identifiable {
     }
 
     private func refreshSnapshot() async {
-        guard let root else { return }
+        guard let root, !isFolderRemoved else { return }
         isLoading = true
         defer {
             isLoading = false
@@ -326,7 +332,7 @@ public final class RepositoryStore: Identifiable {
                 defaultBranchName = nil
             }
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -400,7 +406,7 @@ public final class RepositoryStore: Identifiable {
             await refresh()
             await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(unstagedEntries.map(\.path)), source: .unstaged)
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -414,7 +420,7 @@ public final class RepositoryStore: Identifiable {
             await refresh()
             await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(stagedEntries.map(\.path)), source: .staged)
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -445,7 +451,7 @@ public final class RepositoryStore: Identifiable {
             await refresh()
             await advanceSelection(visibleOrder: visibleOrder, acted: acted, surviving: Set(unstagedEntries.map(\.path)), source: .unstaged)
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -466,7 +472,7 @@ public final class RepositoryStore: Identifiable {
             }
             refreshWorktreeDetails(force: changed)
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -499,7 +505,7 @@ public final class RepositoryStore: Identifiable {
                 stashes = latestStashes
             }
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -681,7 +687,7 @@ public final class RepositoryStore: Identifiable {
                 remotes = latestRemotes
             }
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -924,7 +930,7 @@ public final class RepositoryStore: Identifiable {
             }
         } catch {
             guard historyRequestID == requestID, self.root == root else { return }
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -980,7 +986,7 @@ public final class RepositoryStore: Identifiable {
             await selectCommitFile(commitFiles.first)
         } catch {
             guard commitRequestID == requestID, self.root == root else { return }
-            errorMessage = error.localizedDescription
+            report(error)
             commitDiffError = error.localizedDescription
             commitFiles = []
             commitDiff = nil
@@ -1026,7 +1032,7 @@ public final class RepositoryStore: Identifiable {
             stashFiles = try await git.stashChangedFiles(ref: ref, in: root)
             await selectStashFile(stashFiles.first)
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
             stashFiles = []
             stashFileDiff = nil
         }
@@ -1042,7 +1048,7 @@ public final class RepositoryStore: Identifiable {
         do {
             stashFileDiff = try await git.stashDiff(ref: selectedStashRef, path: file.path, options: DiffPreferences.shared.gitOptions, in: root)
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
             stashFileDiff = nil
         }
     }
@@ -1104,6 +1110,47 @@ public final class RepositoryStore: Identifiable {
 
     public func dismissError() {
         errorMessage = nil
+    }
+
+    /// Shows why a command failed, unless it failed because this tab's folder
+    /// is gone: a worktree removed by an agent or another app is no error to
+    /// show, and its tab closes instead.
+    func report(_ error: Error) {
+        guard !closeIfFolderRemoved(after: error) else { return }
+        errorMessage = error.localizedDescription
+    }
+
+    /// True when `error` came from this tab's folder being deleted. The first
+    /// time, the store stops watching it and asks the workspace to close it.
+    private func closeIfFolderRemoved(after error: Error) -> Bool {
+        if isFolderRemoved {
+            return true
+        }
+        guard let root, Self.folderRemovalCaused(error, root: root, gitDir: location?.gitDir) else { return false }
+        isFolderRemoved = true
+        errorMessage = nil
+        stopBackgroundObservation()
+        Self.workspaceLog.notice("Closing the tab of a deleted folder: \(root.path, privacy: .private)")
+        onFolderRemoved?()
+        return true
+    }
+
+    /// Removing a worktree deletes its files, then its folder, then Git's
+    /// record of it, and Git fails at every step: in a folder that is gone, or
+    /// finding no repository because the `.git` file or the record went first.
+    /// The same message with all of them still there is a real error.
+    static func folderRemovalCaused(_ error: Error, root: URL, gitDir: URL?) -> Bool {
+        let fileManager = FileManager.default
+        switch error as? GitError {
+        case .missingFolder?:
+            return !fileManager.fileExists(atPath: root.path)
+        case let .commandFailed(_, _, stderr)? where GitError.indicatesMissingRepository(stderr):
+            return [root, root.appendingPathComponent(".git"), gitDir]
+                .compactMap(\.self)
+                .contains { !fileManager.fileExists(atPath: $0.path) }
+        default:
+            return false
+        }
     }
 
     // MARK: - AI commit message
@@ -1401,7 +1448,7 @@ public final class RepositoryStore: Identifiable {
             await refresh()
             await preserveSelection(priorPath: priorPath, priorEntries: priorEntries)
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -1445,7 +1492,7 @@ public final class RepositoryStore: Identifiable {
             remoteOutput = result.isEmpty ? "Done" : result.output
             await refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -1460,7 +1507,7 @@ public final class RepositoryStore: Identifiable {
     }
 
     private func scheduleAutoRefresh() {
-        guard root != nil else { return }
+        guard root != nil, !isFolderRemoved else { return }
         if isLoading || isRemoteOperationRunning || isAutoFetching {
             refreshPending = true
             return
@@ -1594,7 +1641,7 @@ public final class RepositoryStore: Identifiable {
                 await refresh()
                 await refreshHistory()
             } catch {
-                errorMessage = error.localizedDescription
+                report(error)
                 refreshOperationState()
             }
         }
