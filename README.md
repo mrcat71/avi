@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.8.0. The config schema, the UI, and the
+Alpha. The current release is v0.8.1. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -92,6 +92,12 @@ around provider authentication, OAuth, and multi-account flows.
 - A merge, rebase, cherry-pick, or revert that stops on a conflict, or at a
   commit to edit, shows a banner with Continue, Skip, and Abort; a stopped
   merge's message is already in the commit field.
+- Resolve conflicts in Changes: take Current, Incoming, or both for each text
+  conflict, choose a whole-file version, or open an external merge tool from
+  Settings > External Tools > Merge Tool. **Mark as Resolved** stages the
+  result and asks first if conflict markers remain; Stage All skips conflicts.
+- A pull with commits on both sides asks whether to rebase or merge when Git
+  has no reconciliation setting. An existing Git setting keeps deciding.
 - Built for agents' habits: a detached HEAD says whether its commits are on
   no branch and offers to create one, and checking out something else asks
   before stranding them. Worktrees show their uncommitted changes and detached
