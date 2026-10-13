@@ -347,14 +347,14 @@ extension CLIGitProvider {
         return environment
     }
 
-    private func combinedOutput(_ result: ProcessResult) -> String {
+    func combinedOutput(_ result: ProcessResult) -> String {
         [result.stdoutString, result.stderrString]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
     }
 
-    private func failure(_ arguments: [String], _ result: ProcessResult) -> GitError {
+    func failure(_ arguments: [String], _ result: ProcessResult) -> GitError {
         let stderr = result.stderrString.trimmingCharacters(in: .whitespacesAndNewlines)
         return GitError.commandFailed(
             command: (["git"] + arguments).joined(separator: " "),

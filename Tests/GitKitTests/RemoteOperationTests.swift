@@ -170,15 +170,102 @@ struct RemoteOperationTests {
         #expect(try fixture.repo.read("remote.txt") == "remote\n")
     }
 
+    struct PullConfig: Sendable, CustomTestStringConvertible {
+        let settings: [(String, String)]
+        let decides: Bool
+
+        var testDescription: String {
+            settings.isEmpty ? "nothing set" : settings.map { "\($0.0)=\($0.1)" }.joined(separator: ", ")
+        }
+    }
+
+    /// Whether Avi has to ask how to join a diverged branch. A global
+    /// pull.* setting would decide instead, so the local one is set either way.
+    @Test(arguments: [
+        PullConfig(settings: [("pull.ff", "only")], decides: false),
+        PullConfig(settings: [("pull.ff", "false")], decides: true),
+        PullConfig(settings: [("pull.ff", "only"), ("pull.rebase", "true")], decides: true),
+        PullConfig(settings: [("pull.ff", "only"), ("branch.main.rebase", "false")], decides: true)
+    ])
+    func pullReconcileFollowsGitConfig(_ config: PullConfig) async throws {
+        let fixture = try await makeDivergedClone()
+        defer { fixture.removeAll() }
+        for (key, value) in config.settings {
+            try await fixture.repo.git("config", key, value)
+        }
+
+        let decides = try await CLIGitProvider(gitURL: gitURL).pullReconcileIsConfigured(branch: "main", in: fixture.repo.url)
+
+        #expect(decides == config.decides)
+    }
+
+    /// The ansible repository's case: pull.ff=only refuses the pull, and
+    /// choosing Rebase replays the local commit on top of the remote one.
+    @Test func reconcileRebasesTheLocalCommitsOntoTheUpstream() async throws {
+        let fixture = try await makeDivergedClone()
+        defer { fixture.removeAll() }
+        try await fixture.repo.git("config", "pull.ff", "only")
+        let provider = CLIGitProvider(gitURL: gitURL)
+        _ = try await provider.fetch(remote: nil, in: fixture.repo.url)
+
+        let outcome = try await provider.reconcileWithUpstream(.rebase, in: fixture.repo.url)
+
+        #expect(outcome == .completed)
+        let log = try await fixture.repo.git("log", "--format=%s %P", "-2").stdoutString.split(separator: "\n")
+        #expect(log.count == 2)
+        #expect(log[0].hasPrefix("local work "))
+        #expect(log[0].split(separator: " ").count == 3)
+        #expect(log[1].hasPrefix("remote work "))
+        let status = try await provider.status(in: fixture.repo.url)
+        #expect(status.branch.ahead == 1)
+        #expect(status.branch.behind == 0)
+    }
+
+    @Test func reconcileMergesTheUpstreamEvenWhenMergesMustFastForward() async throws {
+        let fixture = try await makeDivergedClone()
+        defer { fixture.removeAll() }
+        try await fixture.repo.git("config", "pull.ff", "only")
+        try await fixture.repo.git("config", "merge.ff", "only")
+        let provider = CLIGitProvider(gitURL: gitURL)
+        _ = try await provider.fetch(remote: nil, in: fixture.repo.url)
+
+        let outcome = try await provider.reconcileWithUpstream(.merge, in: fixture.repo.url)
+
+        #expect(outcome == .completed)
+        let parents = try await fixture.repo.git("log", "-1", "--format=%P").stdoutString.split(separator: " ")
+        #expect(parents.count == 2)
+        #expect(try fixture.repo.read("remote.txt") == "remote\n")
+        #expect(try fixture.repo.read("local.txt") == "local\n")
+    }
+
+    @Test func reconcileStopsOnAConflictInsteadOfFailing() async throws {
+        let fixture = try await makeDivergedClone(conflicting: true)
+        defer { fixture.removeAll() }
+        let provider = CLIGitProvider(gitURL: gitURL)
+        _ = try await provider.fetch(remote: nil, in: fixture.repo.url)
+
+        let outcome = try await provider.reconcileWithUpstream(.rebase, in: fixture.repo.url)
+
+        guard case .stopped = outcome else {
+            Issue.record("Expected the rebase to stop on the conflict, got \(outcome)")
+            return
+        }
+        #expect(try await provider.status(in: fixture.repo.url).entries.contains { $0.isConflicted && $0.path == "a.txt" })
+    }
+
     /// A clone with a commit of its own while the remote got another one.
-    private func makeDivergedClone() async throws -> RemoteRepoFixture {
+    /// With `conflicting`, both commits change the same line of a.txt.
+    private func makeDivergedClone(conflicting: Bool = false) async throws -> RemoteRepoFixture {
         let remote = try await makeBareRemote()
         let other = try await makeClone(of: remote)
         try await other.repo.git("config", "user.email", "test@example.com")
         try await other.repo.git("config", "user.name", "Avi Test")
         try await other.repo.git("config", "commit.gpgsign", "false")
         try other.repo.write("remote.txt", "remote\n")
-        try await other.repo.git("add", "remote.txt")
+        if conflicting {
+            try other.repo.write("a.txt", "remote line\n")
+        }
+        try await other.repo.git("add", ".")
         try await other.repo.git("commit", "-q", "-m", "remote work")
         try await other.repo.git("push", "-q", "origin", "main")
         other.repo.removeDirectory()
@@ -189,7 +276,10 @@ struct RemoteOperationTests {
         try await fixture.repo.git("config", "commit.gpgsign", "false")
         try await fixture.repo.git("reset", "-q", "--hard", "HEAD~1")
         try fixture.repo.write("local.txt", "local\n")
-        try await fixture.repo.git("add", "local.txt")
+        if conflicting {
+            try fixture.repo.write("a.txt", "local line\n")
+        }
+        try await fixture.repo.git("add", ".")
         try await fixture.repo.git("commit", "-q", "-m", "local work")
         return fixture
     }
