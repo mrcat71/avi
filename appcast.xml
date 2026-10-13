@@ -1,0 +1,26 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Avi</title>
+        <item>
+            <title>0.8.3</title>
+            <pubDate>Tue, 13 Oct 2026 18:37:03 +0200</pubDate>
+            <link>https://github.com/mrcat71/avi</link>
+            <sparkle:fullReleaseNotesLink>https://github.com/mrcat71/avi/blob/main/CHANGELOG.md</sparkle:fullReleaseNotesLink>
+            <sparkle:version>0.8.3</sparkle:version>
+            <sparkle:shortVersionString>0.8.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[
+### Added
+- Settings > Agents and `avi skill` install the `avi` skill for OpenCode too, in `~/.config/opencode/skills/avi` (`$XDG_CONFIG_HOME/opencode` when `XDG_CONFIG_HOME` is set), and `avi skill install --opencode` selects it. The `avi` command recognizes OpenCode sessions from `OPENCODE_SESSION_ID`.
+
+]]></description>
+            <enclosure url="https://github.com/mrcat71/avi/releases/download/v0.8.3/avi-0.8.3-macos-arm64.zip" length="7382909" type="application/octet-stream" sparkle:edSignature="SS1J5I6EfcwBLVGhEtM7mkwSYOaP7EfJ+06cHdn8m1E08iW5agIRsK27hTbGUxtBOrGdJVLq0zq/bDX+20pGDQ=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: UYSKUXlLHU8uzUK6vh7jzWgzFh2CE595SNstF/d53x6feyGa8ujW8d/SXEJUS754+BfYvIryl/RGo0zF6SecAA==
+length: 1689
+-->
