@@ -27,8 +27,8 @@ enum ExternalToolsScanner {
         ToolSpec(id: "claude", displayName: "Claude Code CLI", executableName: "claude", versionArgs: ["--version"], bundleID: nil),
         ToolSpec(id: "editor", displayName: "VS Code", executableName: "code", versionArgs: ["--version"], bundleID: "com.microsoft.VSCode"),
         ToolSpec(id: "terminal", displayName: "iTerm2", executableName: "", versionArgs: [], bundleID: "com.googlecode.iterm2"),
-        ToolSpec(id: "diffTool", displayName: "Diff Tool", executableName: "", versionArgs: [], bundleID: nil),
-        ToolSpec(id: "mergeTool", displayName: "Merge Tool", executableName: "", versionArgs: [], bundleID: nil)
+        ToolSpec(id: "diffTool", displayName: "Diff Tool", executableName: "", versionArgs: [], bundleID: nil)
+        // The merge tool has its own picker; see MergeToolCatalog.
     ]
 
     /// Run on a background queue.

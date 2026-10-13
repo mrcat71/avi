@@ -57,6 +57,10 @@ editorPath = ""
 terminalPath = ""
 diffToolPath = ""
 mergeToolPath = ""
+# Empty uses Git's merge.tool; a preset id (for example "vscode" or "goland")
+# selects that tool. "custom" runs mergeToolCommand as a shell command.
+mergeTool = ""
+mergeToolCommand = ""
 
 [advanced]
 historyLimit = 200

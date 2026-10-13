@@ -37,6 +37,8 @@ struct ExternalToolsSettingsView: View {
                     }
                 }
             }
+            MergeToolSettings(store: store)
+                .padding(.top, 16)
         }
         .task {
             if detection.isEmpty {
@@ -170,7 +172,6 @@ struct ExternalToolsSettingsView: View {
         case "editor": return store.config.externalTools.editorPath
         case "terminal": return store.config.externalTools.terminalPath
         case "diffTool": return store.config.externalTools.diffToolPath
-        case "mergeTool": return store.config.externalTools.mergeToolPath
         default: return ""
         }
     }
@@ -186,7 +187,6 @@ struct ExternalToolsSettingsView: View {
             case "editor": config.externalTools.editorPath = value
             case "terminal": config.externalTools.terminalPath = value
             case "diffTool": config.externalTools.diffToolPath = value
-            case "mergeTool": config.externalTools.mergeToolPath = value
             default: break
             }
         }

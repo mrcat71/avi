@@ -423,7 +423,14 @@ public struct ExternalToolsConfig: Codable, Equatable, Sendable {
     public var editorPath: String
     public var terminalPath: String
     public var diffToolPath: String
+    /// The chosen merge tool's executable, when it is not where Avi looks.
     public var mergeToolPath: String
+    /// Which tool resolves conflicts: empty uses Git's `merge.tool`; else a
+    /// `MergeToolCatalog` id, or `custom` for `mergeToolCommand`.
+    public var mergeTool: String
+    /// The `custom` tool's shell command, with `$BASE`, `$LOCAL`, `$REMOTE`,
+    /// and `$MERGED`.
+    public var mergeToolCommand: String
 
     public init(
         gitPath: String = "",
@@ -434,7 +441,9 @@ public struct ExternalToolsConfig: Codable, Equatable, Sendable {
         editorPath: String = "",
         terminalPath: String = "",
         diffToolPath: String = "",
-        mergeToolPath: String = ""
+        mergeToolPath: String = "",
+        mergeTool: String = "",
+        mergeToolCommand: String = ""
     ) {
         self.gitPath = gitPath
         self.ghPath = ghPath
@@ -445,6 +454,29 @@ public struct ExternalToolsConfig: Codable, Equatable, Sendable {
         self.terminalPath = terminalPath
         self.diffToolPath = diffToolPath
         self.mergeToolPath = mergeToolPath
+        self.mergeTool = mergeTool
+        self.mergeToolCommand = mergeToolCommand
+    }
+
+    /// Key by key, so a config written before a key existed keeps the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func string(_ key: CodingKeys) -> String {
+            (try? c.decode(String.self, forKey: key)) ?? ""
+        }
+        self.init(
+            gitPath: string(.gitPath),
+            ghPath: string(.ghPath),
+            glabPath: string(.glabPath),
+            codexPath: string(.codexPath),
+            claudePath: string(.claudePath),
+            editorPath: string(.editorPath),
+            terminalPath: string(.terminalPath),
+            diffToolPath: string(.diffToolPath),
+            mergeToolPath: string(.mergeToolPath),
+            mergeTool: string(.mergeTool),
+            mergeToolCommand: string(.mergeToolCommand)
+        )
     }
 }
 

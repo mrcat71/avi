@@ -29,6 +29,16 @@ struct ConfigStoreTests {
         #expect(config.advanced.historyLimit == 200)
     }
 
+    /// A config written before the merge tool keys existed keeps its paths.
+    @Test func externalToolsWithoutMergeToolKeysKeepTheirPaths() throws {
+        let older = #"{"externalTools": {"gitPath": "/opt/git", "diffToolPath": "/usr/local/bin/ksdiff", "mergeToolPath": ""}}"#
+        let decoded = try JSONDecoder().decode(AviConfig.self, from: Data(older.utf8))
+        #expect(decoded.externalTools.gitPath == "/opt/git")
+        #expect(decoded.externalTools.diffToolPath == "/usr/local/bin/ksdiff")
+        #expect(decoded.externalTools.mergeTool == "")
+        #expect(decoded.externalTools.mergeToolCommand == "")
+    }
+
     @Test func cloneConfigTolerantDecoderFillsMissingKeys() throws {
         // A clone config with only one field set should decode all other
         // keys to their defaults (the tolerant decoder behaviour exercised
