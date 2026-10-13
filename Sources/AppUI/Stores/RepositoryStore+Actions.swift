@@ -96,7 +96,7 @@ public extension RepositoryStore {
             }
         } catch {
             await refresh()
-            errorMessage = error.localizedDescription
+            report(error)
         }
     }
 
@@ -112,7 +112,7 @@ public extension RepositoryStore {
             }
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
             return false
         }
     }
@@ -181,10 +181,10 @@ public extension RepositoryStore {
             if !force, case let .commandFailed(_, _, stderr) = error, GitError.indicatesUnmergedBranch(stderr) {
                 return .needsForce
             }
-            errorMessage = error.localizedDescription
+            report(error)
             return .failed
         } catch {
-            errorMessage = error.localizedDescription
+            report(error)
             return .failed
         }
     }
@@ -340,7 +340,7 @@ extension RepositoryStore {
             }
         } catch {
             await refresh()
-            errorMessage = error.localizedDescription
+            report(error)
             return false
         }
     }

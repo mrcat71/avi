@@ -51,6 +51,8 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public var failCommit = false
     /// Makes `workingTreeDiff` fail, so AI plan requests stop before the AI.
     public var failWorkingTreeDiff = false
+    /// Makes `status(in:)` fail, as Git does in a folder deleted underneath it.
+    public var statusError: (any Error)?
     /// Index and commit calls in the order they happened.
     public private(set) var events: [String] = []
     /// Patches `applyPatch` received, with where they went.
@@ -94,7 +96,10 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     }
 
     public func status(in _: URL) async throws -> WorkingCopyStatus {
-        status
+        if let statusError {
+            throw statusError
+        }
+        return status
     }
 
     public func diff(path: String, source _: DiffSource, in _: URL) async throws -> FileDiff {

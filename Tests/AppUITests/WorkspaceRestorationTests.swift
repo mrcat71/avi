@@ -114,6 +114,28 @@ struct WorkspaceRestorationTests {
         #expect(nextLaunch.repositories.count == 2)
     }
 
+    @Test func foldersDeletedWhileAviWasClosedAreDroppedWithoutAnError() async throws {
+        let fixture = try Fixture()
+        defer { fixture.close() }
+        let original = fixture.session()
+        for name in ["a", "b", "c"] {
+            await original.open(fixture.url(name))
+        }
+        original.select(original.repositories[1].id)
+        // Such as a worktree an agent removed.
+        try FileManager.default.removeItem(at: fixture.url("b"))
+
+        let relaunched = fixture.session()
+        await relaunched.restore()
+
+        #expect(relaunched.repositories.compactMap { $0.root } == [fixture.url("a"), fixture.url("c")])
+        #expect(relaunched.selectedRepository?.root == fixture.url("a"))
+        #expect(relaunched.errorMessage == nil)
+        let nextLaunch = fixture.session()
+        await nextLaunch.restore()
+        #expect(nextLaunch.repositories.compactMap { $0.root } == [fixture.url("a"), fixture.url("c")])
+    }
+
     @Test func freshInstallAndUnreadableStateLeaveThePickerAvailable() async throws {
         let fixture = try Fixture()
         defer { fixture.close() }
