@@ -18,13 +18,13 @@ public struct AgentGuideView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Hand commits from AI agents to Avi")
                         .font(.system(size: 17, weight: .semibold))
-                    Text("Claude Code, Codex, and other local agents propose commits; you review and commit them in Avi. Agents never commit or push.")
+                    Text("Claude Code, Codex, OpenCode, and other local agents propose commits; you review and commit them in Avi. Agents never commit or push.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                step(1, "Install the skill", "Installs the `avi` command in ~/.local/bin, which must be on your PATH, and the avi skill for Claude Code and Codex.") {
+                step(1, "Install the skill", "Installs the `avi` command in ~/.local/bin, which must be on your PATH, and the avi skill for Claude Code, Codex, and OpenCode.") {
                     InstallAgentSkillsCommand()
                         .controlSize(.small)
                 }
@@ -48,7 +48,7 @@ public struct AgentGuideView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Make it the default")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("Add this line to your global agent instructions, such as ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md:")
+                    Text("Add this line to your global agent instructions, such as ~/.claude/CLAUDE.md, ~/.codex/AGENTS.md, or ~/.config/opencode/AGENTS.md:")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

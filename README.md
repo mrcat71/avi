@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.8.2. The config schema, the UI, and the
+Alpha. The current release is v0.8.3. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -185,7 +185,8 @@ again after creation. The policy lives in `.github/renovate.json`.
 ## Agent integration
 
 1. **Agents > Install Agent Skills…** opens Settings > Agents; **Install All**
-   installs `~/.local/bin/avi` and the `avi` skill for Claude Code and Codex.
+   installs `~/.local/bin/avi` and the `avi` skill for Claude Code, Codex, and
+   OpenCode.
    **Agents > How to Use Avi with AI Agents…** walks through the rest.
 2. Open the repository in Avi once; agents can only use repositories you have
    opened.

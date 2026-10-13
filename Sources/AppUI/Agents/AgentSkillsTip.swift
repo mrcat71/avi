@@ -73,7 +73,7 @@ struct AgentSkillsTipBanner: View {
                 .foregroundStyle(DS.Palette.accent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Let Claude Code and Codex hand their work to Avi")
+                Text("Let Claude Code, Codex, and OpenCode hand their work to Avi")
                     .font(.system(size: 12, weight: .semibold))
                 Text("Install the avi command and skill: agents stage files and propose commits, and nothing is committed until you approve it.")
                     .font(.system(size: 11))
