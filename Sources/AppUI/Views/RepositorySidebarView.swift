@@ -1154,7 +1154,8 @@ private struct RemoteBranchRow: View {
 
 /// One linked worktree. Opening it adds a tab for that working tree; the
 /// worktree this tab already shows is not openable again. A detached worktree,
-/// as agents often leave them, names its commit.
+/// as agents often leave them, names its commit. Hovering offers its path, for
+/// a terminal in a worktree an agent just created.
 private struct WorktreeRow: View {
     let worktree: Worktree
     let isCurrent: Bool
@@ -1169,75 +1170,48 @@ private struct WorktreeRow: View {
 
     @Environment(\.aviDensity) private var density
     @State private var isHovering = false
+    @State private var copied = false
 
     var body: some View {
-        Button(action: open) {
-            HStack(spacing: 6) {
-                Image(systemName: "square.split.2x1")
-                    .font(.system(size: 10))
-                    .frame(width: 12)
-                    .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
-
-                Text(worktree.path.lastPathComponent)
-                    .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text(headLabel)
-                    .font(.system(size: 10, design: worktree.isDetached ? .monospaced : .default))
-                    .foregroundStyle(worktree.isDetached ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                if worktree.isLocked {
-                    badge("locked", color: .orange)
-                }
-                if worktree.isPrunable {
-                    badge("prunable", color: .red)
-                }
-
-                Spacer(minLength: 4)
-
-                if let changes, changes > 0 {
-                    Text("\(changes)")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(RoundedRectangle(cornerRadius: 3).fill(Color.orange.opacity(0.16)))
-                        .foregroundStyle(.orange)
-                        .help(changes == 1 ? "1 uncommitted change" : "\(changes) uncommitted changes")
-                        .accessibilityLabel(changes == 1 ? "1 uncommitted change" : "\(changes) uncommitted changes")
-                }
-
-                if isCurrent {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Color.accentColor)
-                }
+        HStack(spacing: 0) {
+            Button(action: open) {
+                label
             }
-            .padding(.horizontal, 8)
-            .frame(height: DS.compactRowHeight(for: density))
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovering && !isCurrent ? Color.primary.opacity(0.05) : Color.clear)
-            )
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .disabled(isCurrent)
+            .help(tooltip)
+            .accessibilityLabel(tooltip)
+            .accessibilityAction(named: "Copy Path") {
+                FolderActions.copyPath(worktree.path)
+            }
+            .accessibilityAction(named: "Open in Terminal") {
+                FolderActions.openInTerminal(worktree.path)
+            }
+
+            if isHovering, !worktree.isPrunable {
+                copyPathButton
+                    .padding(.trailing, 4)
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(isCurrent)
+        .frame(height: DS.compactRowHeight(for: density))
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovering && !isCurrent ? Color.primary.opacity(0.05) : Color.clear)
+        )
         .onHover { isHovering = $0 }
-        .help(tooltip)
-        .accessibilityLabel(tooltip)
         .contextMenu {
             Button("Open in New Tab", action: open)
                 .disabled(isCurrent || worktree.isPrunable)
+            Button("Open in Terminal") {
+                FolderActions.openInTerminal(worktree.path)
+            }
+            .disabled(worktree.isPrunable)
             Button("Reveal in Finder") {
                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: worktree.path.path)
             }
             .disabled(worktree.isPrunable)
             Button("Copy Path") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(worktree.path.path, forType: .string)
+                FolderActions.copyPath(worktree.path)
             }
             if worktree.isDetached, !worktree.isPrunable {
                 Divider()
@@ -1249,6 +1223,75 @@ private struct WorktreeRow: View {
                     .disabled(worktree.isLocked)
             }
         }
+    }
+
+    private var copyPathButton: some View {
+        Button {
+            FolderActions.copyPath(worktree.path)
+            copied = true
+            Task {
+                try? await Task.safeSleep(for: .milliseconds(1200))
+                copied = false
+            }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(copied ? "Copied" : "Copy Path")
+        .accessibilityLabel("Copy path")
+    }
+
+    private var label: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "square.split.2x1")
+                .font(.system(size: 10))
+                .frame(width: 12)
+                .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
+
+            Text(worktree.path.lastPathComponent)
+                .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Text(headLabel)
+                .font(.system(size: 10, design: worktree.isDetached ? .monospaced : .default))
+                .foregroundStyle(worktree.isDetached ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            if worktree.isLocked {
+                badge("locked", color: .orange)
+            }
+            if worktree.isPrunable {
+                badge("prunable", color: .red)
+            }
+
+            Spacer(minLength: 4)
+
+            if let changes, changes > 0 {
+                Text("\(changes)")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 3).fill(Color.orange.opacity(0.16)))
+                    .foregroundStyle(.orange)
+                    .help(changes == 1 ? "1 uncommitted change" : "\(changes) uncommitted changes")
+                    .accessibilityLabel(changes == 1 ? "1 uncommitted change" : "\(changes) uncommitted changes")
+            }
+
+            if isCurrent {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
     }
 
     private var headLabel: String {
