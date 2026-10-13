@@ -38,7 +38,7 @@ A complete example with every section is in
 | `clone`          | Default clone directory, and whether a clone starts on HTTPS or SSH.    |
 | `ai`             | AI commit-message backend (command / openai), model (default `gpt-6-luna`), prompts, limits, timeout. |
 | `agents`         | `enabled`: accept proposals from local agents through the `avi` command. See [`AGENT-INTEGRATION.md`](AGENT-INTEGRATION.md). |
-| `externalTools`  | Override paths to `git`, `gh`, `glab`, `codex`, `claude`, editors. `diffToolPath` is the tool **External Diff** opens; empty uses Git's `diff.tool`. |
+| `externalTools`  | Override paths to `git`, `gh`, `glab`, `codex`, `claude`, editors. `diffToolPath` is the tool **External Diff** opens; empty uses Git's `diff.tool`. Merge-tool selection is described below. |
 | `advanced`       | History limit, verbose logging.                                         |
 | `integrations`   | Provider accounts (PAT + CLI). Tokens themselves are in the Keychain.   |
 
@@ -46,6 +46,22 @@ The TOML decoder is intentionally tolerant: missing keys decode to their
 defaults, unknown keys are dropped silently. Old config files keep working
 across upgrades unless a key is renamed. A blank `ai.model` also decodes to the
 default model, since no backend accepts an empty one.
+
+## Merge tools
+
+**Settings > External Tools > Merge Tool** chooses the tool **Merge Tool** in
+Changes opens for a conflicted file. `externalTools.mergeTool` is empty to use
+Git's `merge.tool`, a preset id such as `vscode`, `cursor`, or `goland` to use
+that app, or `custom` to run `externalTools.mergeToolCommand`.
+`externalTools.mergeToolPath` overrides a preset's executable path.
+
+A custom command runs in a shell with `$BASE` (the common ancestor), `$LOCAL`
+(Current), `$REMOTE` (Incoming), and `$MERGED` (the output file). Quote these
+variables to support paths containing spaces. Avi waits for the tool to exit;
+Git marks the file resolved if the output changed. Closing without merging
+leaves the conflict unresolved. During a rebase, Current is the upstream and
+Incoming is the commit being replayed, not the reverse. Git's temporary copies
+stay outside the working tree, and no `.orig` backups are left beside the file.
 
 ## Update settings
 
