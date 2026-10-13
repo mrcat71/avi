@@ -1,8 +1,8 @@
 import Foundation
 import GitKit
 
-/// The `avi` agent skill, installed for Claude Code and Codex by Avi's
-/// installer. The marker line records the app version that wrote it, so the
+/// The `avi` agent skill, installed for Claude Code, Codex, and OpenCode by
+/// Avi's installer. The marker line records the app version that wrote it, so the
 /// installer can tell an outdated copy from one you edited.
 enum AgentSkillContent {
     static let name = "avi"
@@ -114,9 +114,9 @@ enum AgentSkillContent {
 
     With no files, Avi only fills the message, for whatever is already staged.
 
-    Avi recognizes Claude Code and Codex sessions from the environment. Anywhere
-    else, pass `--agent <name> --session <id>` and keep the same session id for
-    the whole conversation.
+    Avi recognizes Claude Code, Codex, and OpenCode sessions from the environment.
+    Anywhere else, pass `--agent <name> --session <id>` and keep the same session id
+    for the whole conversation.
 
     ## Read the result
 

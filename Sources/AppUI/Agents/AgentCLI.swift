@@ -160,6 +160,7 @@ public enum AgentCLI {
             switch arg {
             case "--claude": targets.append(.claude)
             case "--codex": targets.append(.codex)
+            case "--opencode": targets.append(.opencode)
             case "--command": targets.append(.command)
             case "--force": force = true
             case "--json": json = true
@@ -187,7 +188,8 @@ public enum AgentCLI {
 
     /// Who is calling, from the environment agents set for their commands.
     /// Codex is checked first: it can run inside a Claude Code session and
-    /// inherit Claude's variables, never the other way round.
+    /// inherit Claude's variables, never the other way round. OpenCode is
+    /// checked last: its terminal can host the other two.
     static func detectAgent(in environment: [String: String]) -> (name: String, session: String)? {
         if let thread = environment["CODEX_THREAD_ID"], !thread.isEmpty {
             return ("Codex", thread)
@@ -200,6 +202,12 @@ public enum AgentCLI {
         }
         if environment["CLAUDECODE"] == "1" {
             return ("Claude Code", "default")
+        }
+        if let session = environment["OPENCODE_SESSION_ID"], !session.isEmpty {
+            return ("OpenCode", session)
+        }
+        if environment["OPENCODE"] == "1" {
+            return ("OpenCode", "default")
         }
         return nil
     }
@@ -233,7 +241,7 @@ public enum AgentCLI {
       avi propose --file PLAN.json|- [--repo PATH] [--agent NAME] [--session ID]
                   [--title TEXT] [--replace] [--focus] [--json]
       avi propose -m SUBJECT [-m BODY]... [--agent NAME] [--session ID] [--] [FILE...]
-      avi skill status | install | remove [--claude] [--codex] [--command] [--force]
+      avi skill status | install | remove [--claude] [--codex] [--opencode] [--command] [--force]
       avi version
 
     A plan file lists commits with paths relative to the repository root:

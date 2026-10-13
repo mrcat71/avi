@@ -15,6 +15,7 @@ struct AgentCLITests {
         (["open", ".", "--focus"], Invocation(command: .open(path: "."), focus: true)),
         (["skill"], Invocation(command: .skillStatus)),
         (["skill", "install", "--codex", "--force"], Invocation(command: .skillInstall(targets: [.codex], force: true))),
+        (["skill", "install", "--opencode"], Invocation(command: .skillInstall(targets: [.opencode], force: false))),
         (["skill", "remove"], Invocation(command: .skillRemove(targets: [], force: false)))
     ] as [([String], Invocation)])
     func parsesCommands(arguments: [String], expected: Invocation) throws {
@@ -59,7 +60,11 @@ struct AgentCLITests {
     @Test(arguments: [
         (["CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "c1"], "Claude Code", "c1"),
         (["CODEX_THREAD_ID": "t9", "CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "c1"], "Codex", "t9"),
-        (["CLAUDECODE": "1"], "Claude Code", "default")
+        (["CLAUDECODE": "1"], "Claude Code", "default"),
+        (["OPENCODE_SESSION_ID": "s1", "OPENCODE": "1"], "OpenCode", "s1"),
+        (["OPENCODE": "1"], "OpenCode", "default"),
+        (["CODEX_THREAD_ID": "t9", "OPENCODE": "1"], "Codex", "t9"),
+        (["CLAUDE_CODE_SESSION_ID": "c1", "OPENCODE": "1"], "Claude Code", "c1")
     ] as [([String: String], String, String)])
     func detectsTheCallingAgent(environment: [String: String], name: String, session: String) throws {
         let detected = try #require(AgentCLI.detectAgent(in: environment))
@@ -82,7 +87,7 @@ struct AgentCLITests {
 
 @Suite("Agent installer", .serialized)
 struct AgentInstallerTests {
-    private func home(claude: Bool = true, codex: Bool = true) throws -> URL {
+    private func home(claude: Bool = true, codex: Bool = true, opencode: Bool = true) throws -> URL {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("avi-home-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         if claude {
@@ -90,6 +95,9 @@ struct AgentInstallerTests {
         }
         if codex {
             try FileManager.default.createDirectory(at: home.appendingPathComponent(".codex"), withIntermediateDirectories: true)
+        }
+        if opencode {
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(".config/opencode"), withIntermediateDirectories: true)
         }
         return home
     }
@@ -99,17 +107,17 @@ struct AgentInstallerTests {
     }
 
     @Test func agentsThatAreNotSetUpAreUnavailable() throws {
-        let home = try home(claude: false, codex: false)
+        let home = try home(claude: false, codex: false, opencode: false)
         defer { try? FileManager.default.removeItem(at: home) }
         let installer = installer(home)
-        guard case .unavailable = installer.state(of: .claude), case .unavailable = installer.state(of: .codex) else {
+        guard case .unavailable = installer.state(of: .claude), case .unavailable = installer.state(of: .codex), case .unavailable = installer.state(of: .opencode) else {
             Issue.record("expected unavailable")
             return
         }
         #expect(throws: AgentInstaller.InstallError.self) { try installer.install(.claude) }
     }
 
-    @Test func installsBothSkillsAndTheCommand() throws {
+    @Test func installsEverySkillAndTheCommand() throws {
         let home = try home()
         defer { try? FileManager.default.removeItem(at: home) }
         let installer = installer(home)
@@ -121,6 +129,7 @@ struct AgentInstallerTests {
         #expect(skill.hasPrefix("---\nname: avi\n"))
         #expect(skill.contains("<!-- avi-skill 0.4.0 -->"))
         #expect(FileManager.default.fileExists(atPath: home.appendingPathComponent(".codex/skills/avi/agents/openai.yaml").path))
+        #expect(FileManager.default.fileExists(atPath: home.appendingPathComponent(".config/opencode/skills/avi/SKILL.md").path))
 
         let shim = home.appendingPathComponent(".local/bin/avi")
         #expect(try String(contentsOf: shim, encoding: .utf8).contains("exec '/Applications/Avi.app/Contents/MacOS/Avi' --cli \"$@\""))
@@ -177,6 +186,17 @@ struct AgentInstallerTests {
         let installer = AgentInstaller(home: home, executablePath: "/x", version: "0.4.0", environment: ["CODEX_HOME": custom.path])
         try installer.install(.codex)
         #expect(FileManager.default.fileExists(atPath: custom.appendingPathComponent("skills/avi/SKILL.md").path))
+    }
+
+    @Test func opencodeConfigHomeFromTheEnvironmentWins() throws {
+        let home = try home(opencode: false)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let custom = home.appendingPathComponent("xdg-config", isDirectory: true)
+        try FileManager.default.createDirectory(at: custom.appendingPathComponent("opencode"), withIntermediateDirectories: true)
+        let installer = AgentInstaller(home: home, executablePath: "/x", version: "0.4.0", environment: ["XDG_CONFIG_HOME": custom.path])
+        #expect(installer.location(of: .opencode).path == custom.appendingPathComponent("opencode/skills/avi").path)
+        try installer.install(.opencode)
+        #expect(FileManager.default.fileExists(atPath: custom.appendingPathComponent("opencode/skills/avi/SKILL.md").path))
     }
 
     @Test func skillDescribesTheCommandsItNeeds() {
