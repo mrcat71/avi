@@ -568,40 +568,62 @@ enum RepositorySelection: Hashable {
     }
 }
 
-private struct RepositoryTabsBar: View {
+struct RepositoryTabsBar: View {
     let repositories: [RepositoryStore]
     @Binding var selectedRepositoryID: RepositoryStore.ID?
     let openRepositoryPicker: () -> Void
     let closeRepository: (RepositoryStore.ID) -> Void
     let moveRepository: (RepositoryStore.ID, RepositoryStore.ID) -> Void
 
-    /// The tab being dragged sideways. The tabs it passes move aside as it
-    /// goes, so the order is already final when you let go.
+    /// The tab being dragged. The tabs it passes move aside as it goes, so the
+    /// order is already final when you let go.
     private struct TabDrag {
         let id: RepositoryStore.ID
-        /// How far the tab's place has moved since the drag began.
-        var shift: CGFloat = 0
+        /// The tab's frame in the rows when the drag began.
+        let start: CGRect
         /// How far the tab is drawn from its place, to stay under the pointer.
-        var offset: CGFloat = 0
+        var offset: CGSize
     }
 
+    static let tabHeight: CGFloat = 24
     private static let tabSpacing: CGFloat = 2
+    private static let rowSpacing: CGFloat = 2
+    private static let rowsPadding: CGFloat = 4
+    /// Rows shown at most; more tabs than fit in them scroll.
+    private static let maxRows = 3
+    private static let maxRowsHeight = CGFloat(maxRows) * tabHeight + CGFloat(maxRows - 1) * rowSpacing + 2 * rowsPadding
 
-    @State private var tabWidths: [RepositoryStore.ID: CGFloat] = [:]
+    @State private var tabSizes: [RepositoryStore.ID: CGSize] = [:]
+    /// The width the rows wrap in.
+    @State private var rowsWidth: CGFloat = 0
     @State private var drag: TabDrag?
     /// Turns false on its own when a drag ends or is cancelled, which also
     /// settles a tab whose gesture never reported its end.
     @GestureState private var isDraggingTab = false
 
+    /// One row while the tabs fit in it; more tabs wrap onto further rows, and
+    /// past three rows they scroll. Sized by layout rather than measured,
+    /// because switching repositories rebuilds the bar.
     var body: some View {
-        HStack(spacing: 4) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Self.tabSpacing) {
-                    ForEach(repositories) { repository in
-                        tab(repository)
+        HStack(alignment: .top, spacing: 4) {
+            MaxHeightLayout(maxHeight: Self.maxRowsHeight) {
+                ViewThatFits(in: .vertical) {
+                    rows
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical) {
+                            rows
+                        }
+                        .scrollBounceBehavior(.basedOnSize)
+                        // The tab you switch to, such as a repository opened
+                        // again, comes into view.
+                        .onChange(of: selectedRepositoryID, initial: true) { _, id in
+                            if let id {
+                                proxy.scrollTo(id)
+                            }
+                        }
                     }
+                    .frame(height: Self.maxRowsHeight)
                 }
-                .padding(.vertical, 4)
             }
 
             Button(action: openRepositoryPicker) {
@@ -613,9 +635,9 @@ private struct RepositoryTabsBar: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help("Open another repository")
+            .padding(.top, Self.rowsPadding + (Self.tabHeight - 22) / 2)
         }
         .padding(.horizontal, 8)
-        .frame(height: 32)
         .background(DS.Palette.surface)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -629,6 +651,17 @@ private struct RepositoryTabsBar: View {
         }
     }
 
+    private var rows: some View {
+        TabRowsLayout(spacing: Self.tabSpacing, rowSpacing: Self.rowSpacing) {
+            ForEach(repositories) { repository in
+                tab(repository)
+                    .id(repository.id)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowsWidth = $0 }
+        .padding(.vertical, Self.rowsPadding)
+    }
+
     private func tab(_ repository: RepositoryStore) -> some View {
         let isDragged = drag?.id == repository.id
         return RepositoryTabButton(
@@ -638,8 +671,8 @@ private struct RepositoryTabsBar: View {
             select: { selectedRepositoryID = repository.id },
             close: { closeRepository(repository.id) }
         )
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tabWidths[repository.id] = $0 }
-        .offset(x: isDragged ? drag?.offset ?? 0 : 0)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { tabSizes[repository.id] = $0 }
+        .offset(isDragged ? drag?.offset ?? .zero : .zero)
         .zIndex(isDragged ? 1 : 0)
         // The dragged tab takes its new place at once while its offset keeps it
         // under the pointer; only the tabs it passes slide aside.
@@ -658,25 +691,35 @@ private struct RepositoryTabsBar: View {
     private func dragGesture(for id: RepositoryStore.ID) -> some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: .global)
             .updating($isDraggingTab) { _, dragging, _ in dragging = true }
-            .onChanged { value in dragTab(id, by: value.translation.width) }
+            .onChanged { value in dragTab(id, by: value.translation) }
             .onEnded { _ in endDrag() }
     }
 
-    private func dragTab(_ id: RepositoryStore.ID, by translation: CGFloat) {
+    /// The rows as `TabRowsLayout` lays them out, so the dragged tab's new
+    /// place is known before the rows move there.
+    private func rowFrames(for sizes: [CGSize]) -> [CGRect] {
+        tabRowFrames(sizes: sizes, spacing: Self.tabSpacing, rowSpacing: Self.rowSpacing, width: rowsWidth)
+    }
+
+    private func dragTab(_ id: RepositoryStore.ID, by translation: CGSize) {
         guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
-        var current = drag.flatMap { $0.id == id ? $0 : nil } ?? TabDrag(id: id)
-        let target = tabDragTarget(
-            index: index,
-            offset: translation - current.shift,
-            widths: repositories.map { tabWidths[$0.id] ?? 0 },
-            spacing: Self.tabSpacing
+        var sizes = repositories.map { tabSizes[$0.id] ?? .zero }
+        let start = drag.flatMap { $0.id == id ? $0.start : nil } ?? rowFrames(for: sizes)[index]
+        let drawn = start.offsetBy(dx: translation.width, dy: translation.height)
+        let target = tabDropIndex(
+            dragged: index,
+            drawnAt: drawn,
+            sizes: sizes,
+            spacing: Self.tabSpacing,
+            rowSpacing: Self.rowSpacing,
+            width: rowsWidth
         )
-        current.shift = translation - target.offset
-        current.offset = target.offset
-        drag = current
-        if target.index != index {
+        sizes.insert(sizes.remove(at: index), at: target)
+        let place = rowFrames(for: sizes)[target]
+        drag = TabDrag(id: id, start: start, offset: CGSize(width: drawn.minX - place.minX, height: drawn.minY - place.minY))
+        if target != index {
             withAnimation(.easeOut(duration: 0.15)) {
-                moveRepository(id, repositories[target.index].id)
+                moveRepository(id, repositories[target].id)
             }
         }
     }
@@ -688,10 +731,23 @@ private struct RepositoryTabsBar: View {
         }
     }
 
-    /// The same moves without a mouse, for the keyboard and VoiceOver.
+    /// Hands the tab's folder to a terminal or Finder, and makes the same
+    /// moves as dragging without a mouse, for the keyboard and VoiceOver.
     @ViewBuilder
     private func tabMenu(for repository: RepositoryStore) -> some View {
         let index = repositories.firstIndex { $0.id == repository.id }
+        if let root = repository.root {
+            Button("Copy Path") {
+                FolderActions.copyPath(root)
+            }
+            Button("Open in Terminal") {
+                FolderActions.openInTerminal(root)
+            }
+            Button("Reveal in Finder") {
+                FolderActions.revealInFinder(root)
+            }
+            Divider()
+        }
         Button("Move Tab Left") {
             if let index, index > 0 {
                 moveRepository(repository.id, repositories[index - 1].id)
@@ -748,7 +804,7 @@ private struct RepositoryTabButton: View {
                     }
                     .padding(.leading, 9)
                     .padding(.trailing, canClose ? 2 : 9)
-                    .frame(height: 24, alignment: .leading)
+                    .frame(height: RepositoryTabsBar.tabHeight, alignment: .leading)
                     .frame(minWidth: 110, maxWidth: 180)
                     .contentShape(Rectangle())
                 }
@@ -784,7 +840,14 @@ private struct RepositoryTabButton: View {
         }
     }
 
+    /// The branch, then the folder, which for an agent's worktree says more
+    /// than its generated name.
     private var tabDetail: String {
+        guard let path = repository.root?.path else { return headDetail }
+        return "\(headDetail)\n\(path)"
+    }
+
+    private var headDetail: String {
         if let name = repository.branch?.name {
             let changes = repository.entries.count
             return changes == 0 ? name : "\(name), \(changes) changes"
