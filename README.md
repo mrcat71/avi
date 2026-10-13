@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.7.7. The config schema, the UI, and the
+Alpha. The current release is v0.8.0. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -74,7 +74,8 @@ around provider authentication, OAuth, and multi-account flows.
   opens and closes it.
 - Sidebar sections for branches, tags, stashes, and linked worktrees: checkout,
   push tags and delete them locally or on the remote too, apply / pop / drop
-  stashes, open a worktree in its own tab, and clean up local branches whose
+  stashes, open a worktree in its own tab or in a terminal, copy its path from
+  the button that appears on hover, and clean up local branches whose
   upstream is gone.
   Worktrees is the first section when linked worktrees exist; Remote Branches
   starts collapsed and can be expanded from its header.
@@ -95,7 +96,12 @@ around provider authentication, OAuth, and multi-account flows.
   no branch and offers to create one, and checking out something else asks
   before stranding them. Worktrees show their uncommitted changes and detached
   commits, can get a branch or be removed, and worktrees inside the repository
-  folder never appear in Changes or get staged.
+  folder never appear in Changes or get staged. A tab whose worktree an agent
+  or another app removed closes on its own.
+- Repository tabs keep one row while they fit and wrap onto up to three rows,
+  then scroll; drag them to reorder, across rows too. A tab's right-click menu
+  and the command palette copy the repository's path, open it in a terminal
+  (Settings > Git > Terminal, or Terminal), or show it in Finder.
 - Push sheet that states whether the push updates, adopts, or creates the remote
   branch, for the current branch or any other.
 - AI-assisted commit message generation, one click on **Generate** in the
