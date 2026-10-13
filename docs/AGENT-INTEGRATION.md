@@ -1,8 +1,8 @@
 # Agent integration
 
-Claude Code, Codex, and other local agents hand finished work to Avi instead of
-committing. Avi stages the files and fills its commit message, or lays out
-several commits as planned commits in Changes. You approve every commit in
+Claude Code, Codex, OpenCode, and other local agents hand finished work to Avi
+instead of committing. Avi stages the files and fills its commit message, or lays
+out several commits as planned commits in Changes. You approve every commit in
 Avi; agents never commit or push.
 
 ## Set up
@@ -17,6 +17,10 @@ Avi; agents never commit or push.
    | `avi` command | `~/.local/bin/avi`, a shim that runs `Avi.app/Contents/MacOS/Avi --cli` |
    | Claude Code skill | `~/.claude/skills/avi/SKILL.md` |
    | Codex skill | `~/.codex/skills/avi/SKILL.md` and `agents/openai.yaml` |
+   | OpenCode skill | `~/.config/opencode/skills/avi/SKILL.md` (`$XDG_CONFIG_HOME/opencode` when `XDG_CONFIG_HOME` is set) |
+
+   OpenCode also reads `~/.claude/skills` as a compatibility source, but its own
+   folder comes first, so install the OpenCode skill for an OpenCode-only setup.
 
    `~/.local/bin` must be on your `PATH`. If Avi moves, the command shows as
    outdated in Settings; click **Update**. Avi refuses to install the command
@@ -25,8 +29,8 @@ Avi; agents never commit or push.
    edited, without asking.
 
    From a terminal, `avi skill status` and
-   `avi skill install [--claude] [--codex] [--command] [--force]` do the same;
-   before the command exists, run it as
+   `avi skill install [--claude] [--codex] [--opencode] [--command] [--force]`
+   do the same; before the command exists, run it as
    `/Applications/Avi.app/Contents/MacOS/Avi --cli skill install`.
 
 2. Open each repository the agents work in once in Avi. Agents can only use
@@ -127,7 +131,7 @@ avi open [PATH] [--focus] [--json]
 avi propose --file PLAN.json|- [--repo PATH] [--agent NAME] [--session ID]
             [--title TEXT] [--replace] [--focus] [--json]
 avi propose -m SUBJECT [-m BODY]... [--agent NAME] [--session ID] [--] [FILE...]
-avi skill status | install | remove [--claude] [--codex] [--command] [--force]
+avi skill status | install | remove [--claude] [--codex] [--opencode] [--command] [--force]
 avi version
 ```
 
@@ -149,8 +153,8 @@ avi version
 - `-m` joins its values with blank lines, like `git commit -m`. Files after it
   are relative to the current directory.
 - The agent and session come from `--agent`/`--session`, then the plan file,
-  then the environment: `CODEX_THREAD_ID` (Codex) or `CLAUDE_CODE_SESSION_ID`
-  (Claude Code).
+  then the environment: `CODEX_THREAD_ID` (Codex), `CLAUDE_CODE_SESSION_ID`
+  (Claude Code), or `OPENCODE_SESSION_ID` (OpenCode).
 - `propose` and `open` start Avi in the background when it is not running and
   wait up to 15 seconds. `status` never starts it. `busy` and `no_window`
   answers are retried for up to 30 seconds.
@@ -165,7 +169,7 @@ one JSON request on one line and reads one JSON line back:
 
 ```text
 {"v":1,"method":"propose","params":{"repo":"/abs/worktree","agent":"Codex","session":"t1","commits":[{"message":"...","files":["a.swift"]}]}}
-{"v":1,"ok":true,"result":{"app":{"version":"0.8.2"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
+{"v":1,"ok":true,"result":{"app":{"version":"0.8.3"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
 ```
 
 Methods are `status`, `open`, and `propose`. `status` lists open repositories,

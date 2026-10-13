@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Settings > Agents: whether agents may send proposals, and one-click install
-/// of the `avi` command and the skill for Claude Code and Codex.
+/// of the `avi` command and the skill for Claude Code, Codex, and OpenCode.
 struct AgentsSettingsView: View {
     @Bindable var store = ConfigStore.shared
     private let bridge = AgentBridge.shared
@@ -161,7 +161,7 @@ struct AgentsSettingsView: View {
         switch target {
         case .command:
             return "\(path). Needs ~/.local/bin on your PATH."
-        case .claude, .codex:
+        case .claude, .codex, .opencode:
             return path
         }
     }
