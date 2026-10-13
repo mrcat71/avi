@@ -6,6 +6,12 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-13
+
+### Changed
+- A repository's worktrees share one tab instead of a tab each. The tab counts them; resting the pointer on it lists them with their branches, uncommitted changes, and agent proposals, and clicking one switches the tab to it, without taking the keyboard from what you are typing. The tab's right-click menu lists them too and closes one worktree or the whole tab. Coming back to a tab shows the worktree you left it on, and a saved workspace with a worktree in its own tab reopens with it in its repository's tab.
+- Clicking a worktree in the sidebar switches the tab to it, and **Checkout as Worktree…** switches to the new worktree. When the shown worktree is removed, the tab shows another one of the repository instead of jumping to the next tab. In a linked worktree, the sidebar header names the repository and shows which worktree you are in.
+
 ## [0.8.1] - 2026-10-13
 
 ### Added

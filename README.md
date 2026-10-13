@@ -18,15 +18,19 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.8.1. The config schema, the UI, and the
+Alpha. The current release is v0.8.2. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
 ## Features
 
 - Tab-based repository view with status bar, branch info, and remote actions;
-  drag tabs to reorder them. Relaunching restores the open repositories, their
-  tab order, and the selected tab. Closing a tab keeps it closed on relaunch.
+  drag tabs to reorder them. A repository's worktrees share one tab, which
+  counts them: rest the pointer on the tab to list them with their branches
+  and uncommitted changes, and click one to switch to it. The tab's
+  right-click menu lists them too. Relaunching restores the open repositories,
+  their tab order, and the selected tab and worktree. Closing a tab keeps it
+  closed on relaunch.
 - Auto-fetch: once the last fetch is older than Settings > Git > Auto-fetch
   interval (5 minutes by default), the open repository fetches when you come
   back to Avi or switch to its tab, and again while Avi stays in front. A
@@ -74,7 +78,7 @@ around provider authentication, OAuth, and multi-account flows.
   opens and closes it.
 - Sidebar sections for branches, tags, stashes, and linked worktrees: checkout,
   push tags and delete them locally or on the remote too, apply / pop / drop
-  stashes, open a worktree in its own tab or in a terminal, copy its path from
+  stashes, switch to a worktree or open it in a terminal, copy its path from
   the button that appears on hover, and clean up local branches whose
   upstream is gone.
   Worktrees is the first section when linked worktrees exist; Remote Branches
@@ -102,8 +106,9 @@ around provider authentication, OAuth, and multi-account flows.
   no branch and offers to create one, and checking out something else asks
   before stranding them. Worktrees show their uncommitted changes and detached
   commits, can get a branch or be removed, and worktrees inside the repository
-  folder never appear in Changes or get staged. A tab whose worktree an agent
-  or another app removed closes on its own.
+  folder never appear in Changes or get staged. A worktree an agent or
+  another app removed closes on its own, and its tab shows another worktree
+  of the repository.
 - Repository tabs keep one row while they fit and wrap onto up to three rows,
   then scroll; drag them to reorder, across rows too. A tab's right-click menu
   and the command palette copy the repository's path, open it in a terminal
