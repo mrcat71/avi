@@ -6,6 +6,11 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-10-13
+
+### Added
+- Settings > Agents and `avi skill` install the `avi` skill for OpenCode too, in `~/.config/opencode/skills/avi` (`$XDG_CONFIG_HOME/opencode` when `XDG_CONFIG_HOME` is set), and `avi skill install --opencode` selects it. The `avi` command recognizes OpenCode sessions from `OPENCODE_SESSION_ID`.
+
 ## [0.8.2] - 2026-10-13
 
 ### Changed
