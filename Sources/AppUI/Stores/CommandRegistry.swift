@@ -42,6 +42,14 @@ enum CommandRegistry {
                 NSWorkspace.shared.open(root)
             }
         })
+        if let root = store.root {
+            result.append(AppCommand(id: "repo.copyPath", title: "Copy Repository Path", subtitle: root.path, group: "Repository", symbol: "doc.on.doc") {
+                FolderActions.copyPath(root)
+            })
+            result.append(AppCommand(id: "repo.openInTerminal", title: "Open in Terminal", subtitle: root.path, group: "Repository", symbol: "terminal") {
+                FolderActions.openInTerminal(root)
+            })
+        }
 
         // Working copy
         if store.canStageAll {

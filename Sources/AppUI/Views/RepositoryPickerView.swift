@@ -175,9 +175,9 @@ public struct RepositoryPickerView: View {
                         entry: entry,
                         metadata: book.metadata(for: entry.url),
                         onOpen: { openRepository(entry.url); onDismiss?() },
-                        onReveal: { revealInFinder(entry.url) },
-                        onOpenInTerminal: { openInTerminal(entry.url) },
-                        onCopyPath: { copyPath(entry.url) },
+                        onReveal: { FolderActions.revealInFinder(entry.url) },
+                        onOpenInTerminal: { FolderActions.openInTerminal(entry.url) },
+                        onCopyPath: { FolderActions.copyPath(entry.url) },
                         onRemove: { remove(entry) }
                     )
                     .listRowSeparator(.hidden)
@@ -331,35 +331,6 @@ public struct RepositoryPickerView: View {
         RecentRepositories.remove(entry.url)
         entries = RecentRepositories.entries()
         book.invalidate(entry.url)
-    }
-
-    private func revealInFinder(_ url: URL) {
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
-    private func openInTerminal(_ url: URL) {
-        let terminalPath = ConfigStore.shared.config.git.terminalApp
-        if !terminalPath.isEmpty,
-           FileManager.default.fileExists(atPath: terminalPath) {
-            NSWorkspace.shared.openApplication(
-                at: URL(fileURLWithPath: terminalPath),
-                configuration: NSWorkspace.OpenConfiguration(),
-                completionHandler: { _, _ in }
-            )
-            // Best-effort: also open the folder via Finder so the user can drag-drop
-            // it into the terminal. A proper handoff requires a per-app script.
-            NSWorkspace.shared.open(url)
-            return
-        }
-        let terminalAppURL = URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
-        let configuration = NSWorkspace.OpenConfiguration()
-        NSWorkspace.shared.open([url], withApplicationAt: terminalAppURL, configuration: configuration, completionHandler: { _, _ in })
-    }
-
-    private func copyPath(_ url: URL) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(url.path, forType: .string)
     }
 }
 
