@@ -34,7 +34,7 @@ A complete example with every section is in
 | Section          | Purpose                                                                 |
 | ---------------- | ----------------------------------------------------------------------- |
 | `appearance`     | Theme, density, font sizes, file-list mode (tree / flat), graph lane width, and `authorPictures`: show author pictures beside their names in History, from the GitHub or GitLab account that wrote each commit (asked with a token from Settings or your `gh` or `glab` sign-in), else looked up by address there and on Gravatar (default `true`; `false` shows the names alone and contacts no server). |
-| `git`            | Default author identity, fetch interval, auto-refresh, terminal/editor. |
+| `git`            | Default author identity, fetch interval, auto-refresh, terminal/editor. `terminalApp` is the app **Open in Terminal** opens a repository or worktree folder in; empty uses Terminal. |
 | `clone`          | Default clone directory, and whether a clone starts on HTTPS or SSH.    |
 | `ai`             | AI commit-message backend (command / openai), model (default `gpt-6-luna`), prompts, limits, timeout. |
 | `agents`         | `enabled`: accept proposals from local agents through the `avi` command. See [`AGENT-INTEGRATION.md`](AGENT-INTEGRATION.md). |
@@ -69,9 +69,12 @@ If several repository windows are open, the most recently changed window
 provides the saved workspace.
 
 On launch, Avi reopens the saved tabs once. A repository that cannot be opened
-is skipped and reported without preventing the others from reopening. If the
-saved selection is unavailable, Avi selects the first restored repository.
-Closing every tab leaves the repository picker on the next launch.
+is skipped and reported without preventing the others from reopening. A saved
+tab whose folder no longer exists, such as a worktree removed while Avi was
+closed, is dropped without a report; while Avi runs, a tab closes as soon as
+its folder is deleted. If the saved selection is unavailable, Avi selects the
+first restored repository. Closing every tab leaves the repository picker on
+the next launch.
 
 ## Secret storage
 

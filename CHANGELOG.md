@@ -6,6 +6,17 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-13
+
+### Added
+- Repository tabs keep one row while they fit and wrap onto a second and third row when there are more; past three rows they scroll, and the selected tab scrolls into view. Dragging a tab moves it between rows too.
+- Hovering over a worktree in the sidebar shows a button that copies its path, for a terminal in a worktree an agent just created. Its right-click menu also gets **Open in Terminal**.
+- A tab's right-click menu copies the repository's path, opens it in a terminal, or shows it in Finder; the command palette has **Copy Repository Path** and **Open in Terminal**. The tab's tooltip shows the path. **Open in Terminal** uses **Settings > Git > Terminal**, or Terminal when that is empty.
+
+### Fixed
+- A tab whose folder is deleted, such as a worktree removed by an agent or another app, closes instead of showing "The file … doesn't exist." after every refresh. A folder deleted while Avi was closed is no longer reported as a repository that could not be reopened, and Git run in a missing folder says that folder no longer exists.
+- **Open in Terminal** in the repository picker opens the terminal set in Settings in the repository's folder, instead of opening the app and a Finder window.
+
 ## [0.7.7] - 2026-10-08
 
 ### Changed
