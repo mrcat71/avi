@@ -32,6 +32,12 @@ struct PushOutcomeTests {
             expected: "Creates origin/feature and makes it the upstream of feature."
         ),
         Case(
+            name: "a branch still tracking the branch it started from gets its own",
+            branch: "feature", remote: "origin", upstream: "origin/main",
+            remoteBranches: ["origin/main"],
+            expected: "Creates origin/feature and makes it the upstream of feature."
+        ),
+        Case(
             name: "pushing to a second remote creates the branch there",
             branch: "main", remote: "fork", upstream: "origin/main",
             remoteBranches: ["origin/main"],

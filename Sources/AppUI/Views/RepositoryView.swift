@@ -732,6 +732,15 @@ private struct RepositoryActionToolbarView: View {
             return "No commits yet"
         }
         guard let upstream = branch.upstream else { return "Push \(name) and set upstream to origin/\(name)" }
+        // The Push sheet writes the branch under its own name, to the remote it
+        // preselects, so an upstream with another name, such as the origin/main
+        // the branch started from, is replaced rather than pushed to.
+        let upstreamRemote = upstream.split(separator: "/", maxSplits: 1).first.map(String.init)
+        let remote = store.remotes.contains { $0.name == upstreamRemote } ? upstreamRemote : store.remotes.first?.name
+        let target = "\(remote ?? "origin")/\(name)"
+        if upstream != target {
+            return "Push \(name) to \(target) and track it instead of \(upstream)"
+        }
         if branch.ahead > 0 {
             return "Push \(branch.ahead) commit\(branch.ahead == 1 ? "" : "s") from \(name) to \(upstream)"
         }
