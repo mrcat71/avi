@@ -6,6 +6,12 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-10-15
+
+### Fixed
+- A branch created from a remote branch under another name, such as `feature` from `origin/main`, no longer tracks that branch. It showed `origin/main` as its upstream, even after its first push, and the Push button's tooltip said the push went there; now it has no upstream until its first push gives it its own. A new branch named like the remote branch it starts from still tracks it, as checking that branch out does, and `branch.autoSetupMerge` set to `inherit` or `always` no longer sets one up either.
+- A push from the Push sheet sets the remote branch it writes as the upstream whenever the branch tracked anything else, including the same branch on another remote, as the sheet already said. A branch made outside Avi with `git switch -c feature origin/main` tracks `origin/feature` after that push instead of staying on `origin/main`, and until then the Push button's tooltip names `origin/feature`.
+
 ## [0.8.3] - 2026-10-13
 
 ### Added
