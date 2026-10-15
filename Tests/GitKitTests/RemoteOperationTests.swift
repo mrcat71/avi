@@ -121,6 +121,73 @@ struct RemoteOperationTests {
         #expect(remoteHeads.sorted() == ["refs/heads/main", "refs/heads/topic"])
     }
 
+    struct NewBranch: Sendable, CustomTestStringConvertible {
+        let name: String
+        let startPoint: String?
+        let checkout: Bool
+        var repositorySetting: String?
+        let upstream: String?
+
+        var testDescription: String {
+            "\(name) from \(startPoint ?? "HEAD")\(checkout ? "" : " without checkout")"
+                + (repositorySetting.map { " with branch.autoSetupMerge=\($0)" } ?? "")
+        }
+    }
+
+    /// A branch started from origin/main under another name must not track
+    /// main, or it shows, pulls from, and pushes toward main until published.
+    /// Taking the remote branch's own name tracks it, as checking it out does.
+    @Test(arguments: [
+        NewBranch(name: "feature", startPoint: "origin/main", checkout: true, upstream: nil),
+        NewBranch(name: "feature", startPoint: "origin/main", checkout: false, upstream: nil),
+        NewBranch(name: "feature", startPoint: nil, checkout: true, repositorySetting: "inherit", upstream: nil),
+        NewBranch(name: "feature", startPoint: "main", checkout: false, repositorySetting: "always", upstream: nil),
+        NewBranch(name: "topic", startPoint: "origin/topic", checkout: true, upstream: "origin/topic")
+    ])
+    func createBranchTracksOnlyARemoteBranchOfTheSameName(_ newBranch: NewBranch) async throws {
+        let remote = try await makeBareRemote()
+        try await git(["--git-dir", remote.path, "branch", "topic", "main"], in: nil)
+        let fixture = try await makeClone(of: remote)
+        defer { fixture.removeAll() }
+        if let setting = newBranch.repositorySetting {
+            try await fixture.repo.git("config", "branch.autoSetupMerge", setting)
+        }
+        let provider = CLIGitProvider(gitURL: gitURL)
+
+        try await provider.createBranch(named: newBranch.name, startPoint: newBranch.startPoint, checkout: newBranch.checkout, in: fixture.repo.url)
+
+        let created = try await provider.refs(in: fixture.repo.url).localBranches.first { $0.name == newBranch.name }
+        #expect(created != nil)
+        #expect(created?.upstream == newBranch.upstream)
+    }
+
+    /// `git switch -c feature origin/main` leaves feature tracking main. Its
+    /// first push from the Push sheet creates origin/feature and tracks that,
+    /// as the sheet says, and leaves main on the remote alone.
+    @Test func pushingABranchThatTracksAnotherNameTracksThePushedBranch() async throws {
+        let fixture = try await makeClone()
+        defer { fixture.removeAll() }
+        try await fixture.repo.git("config", "user.email", "test@example.com")
+        try await fixture.repo.git("config", "user.name", "Avi Test")
+        try await fixture.repo.git("config", "commit.gpgsign", "false")
+        try await fixture.repo.git("switch", "-q", "--track", "-c", "feature", "origin/main")
+        try fixture.repo.write("feature.txt", "feature\n")
+        try await fixture.repo.git("add", "feature.txt")
+        try await fixture.repo.git("commit", "-q", "-m", "feature work")
+        let remoteMain = try await git(["--git-dir", fixture.remoteURL.path, "rev-parse", "main"], in: nil).stdoutString
+        let provider = CLIGitProvider(gitURL: gitURL)
+
+        _ = try await provider.push(branch: nil, remote: nil, force: false, pushTags: false, in: fixture.repo.url)
+
+        let feature = try await provider.refs(in: fixture.repo.url).localBranches.first { $0.name == "feature" }
+        #expect(feature?.upstream == "origin/feature")
+        #expect(try await provider.status(in: fixture.repo.url).branch.upstream == "origin/feature")
+        let remoteHeads = try await git(["--git-dir", fixture.remoteURL.path, "for-each-ref", "--format=%(refname)", "refs/heads"], in: nil)
+            .stdoutString.split(separator: "\n").map(String.init)
+        #expect(remoteHeads.sorted() == ["refs/heads/feature", "refs/heads/main"])
+        #expect(try await git(["--git-dir", fixture.remoteURL.path, "rev-parse", "main"], in: nil).stdoutString == remoteMain)
+    }
+
     @Test func deleteRemoteBranchRemovesOnlyThatBranch() async throws {
         let remote = try await makeBareRemote()
         try await git(["--git-dir", remote.path, "branch", "topic", "main"], in: nil)

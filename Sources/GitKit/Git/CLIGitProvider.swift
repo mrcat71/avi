@@ -209,7 +209,12 @@ public struct CLIGitProvider: GitProviding {
         }
         try await run(["check-ref-format", "--branch", cleanedName], in: repository)
 
-        var arguments = checkout ? ["switch", "-c", cleanedName] : ["branch", cleanedName]
+        // Git's default tracks any remote-tracking start point, so a branch
+        // started from origin/main would show, pull, and push toward main.
+        // `simple` tracks only a remote branch of the same name, as checking
+        // it out does, and overrides an `inherit` or `always` in your config.
+        var arguments = ["-c", "branch.autoSetupMerge=simple"]
+        arguments += checkout ? ["switch", "-c", cleanedName] : ["branch", cleanedName]
         if let startPoint, !startPoint.isEmpty {
             arguments.append(startPoint)
         }
@@ -335,8 +340,9 @@ public struct CLIGitProvider: GitProviding {
         guard let branchName = (branch ?? currentStatus.branch.name) else {
             throw GitError.invalidInput("Cannot push from detached HEAD.")
         }
-        // The pushed branch's own upstream decides the default remote and -u,
-        // so pushing a branch that is not checked out never borrows HEAD's.
+        // The pushed branch's own upstream decides the default remote and
+        // whether -u is needed, so pushing a branch that is not checked out
+        // never borrows HEAD's.
         let upstream: String?
         if branchName == currentStatus.branch.name {
             upstream = currentStatus.branch.upstream
@@ -369,7 +375,10 @@ public struct CLIGitProvider: GitProviding {
         if force {
             args.append("--force-with-lease")
         }
-        if upstream == nil {
+        // The push writes <remote>/<branch>, so that becomes the upstream. A
+        // branch still tracking the one it started from, such as origin/main,
+        // would otherwise keep pulling from it and comparing itself against it.
+        if upstream != "\(targetRemote)/\(branchName)" {
             args.append("-u")
         }
         args.append(targetRemote)
