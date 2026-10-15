@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.8.3. The config schema, the UI, and the
+Alpha. The current release is v0.8.4. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -114,7 +114,9 @@ around provider authentication, OAuth, and multi-account flows.
   and the command palette copy the repository's path, open it in a terminal
   (Settings > Git > Terminal, or Terminal), or show it in Finder.
 - Push sheet that states whether the push updates, adopts, or creates the remote
-  branch, for the current branch or any other.
+  branch, for the current branch or any other, and makes that remote branch the
+  upstream. A new branch has no upstream until its first push, unless it is
+  named like the remote branch it starts from.
 - AI-assisted commit message generation, one click on **Generate** in the
   commit card, through a configurable command or the OpenAI API (default model
   `gpt-6-luna`). AI work shows how long it has been running, and an IDE-style
