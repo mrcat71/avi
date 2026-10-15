@@ -80,6 +80,8 @@ public protocol GitProviding: Sendable {
     func checkout(_ ref: GitReference, in repository: URL) async throws
 
     /// Create a branch. When `checkout` is true, switch to it immediately.
+    /// The new branch tracks `startPoint` only when that is a remote branch of
+    /// the same name; otherwise it has no upstream until its first push.
     func createBranch(named name: String, startPoint: String?, checkout: Bool, in repository: URL) async throws
 
     /// Rename a local branch. The branch does not need to be the current one.
@@ -139,6 +141,8 @@ public protocol GitProviding: Sendable {
 
     /// Push the current branch with explicit options. `remote` overrides the upstream remote.
     /// `force` uses `--force-with-lease` (safer than `--force`). `pushTags` adds `--tags`.
+    /// The branch is pushed under its own name, which becomes its upstream
+    /// when the upstream was anything else.
     func push(
         branch: String?,
         remote: String?,
