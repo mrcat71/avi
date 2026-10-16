@@ -6,6 +6,14 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-10-16
+
+### Changed
+- Sidebar selection uses a translucent accent tint instead of solid blue, preserving readable text and status colors in light and dark appearances.
+
+### Fixed
+- Double-clicking a local branch moves the sidebar selection to it as well as checking it out. Current branches and branches held by another worktree can still be selected without attempting checkout.
+
 ## [0.8.4] - 2026-10-15
 
 ### Fixed
