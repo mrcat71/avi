@@ -714,7 +714,7 @@ private struct PrimarySidebarRow: View {
             Image(systemName: systemImage)
                 .font(.system(size: 11))
                 .frame(width: 14)
-                .foregroundStyle(isSelected ? Color.white : .secondary)
+                .foregroundStyle(.secondary)
             Text(title)
                 .font(.system(size: 13, weight: .medium))
                 .lineLimit(1)
@@ -725,14 +725,14 @@ private struct PrimarySidebarRow: View {
                     .padding(.horizontal, 5)
                     .frame(minWidth: 18, minHeight: 16)
                     .background(
-                        Capsule().fill(isSelected ? Color.white.opacity(0.25) : Color.primary.opacity(0.10))
+                        Capsule().fill(Color.primary.opacity(0.10))
                     )
-                    .foregroundStyle(isSelected ? Color.white : .secondary)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 8)
         .frame(height: DS.rowHeight(for: density))
-        .foregroundStyle(isSelected ? Color.white : .primary)
+        .foregroundStyle(.primary)
         .background(
             RoundedRectangle(cornerRadius: 6)
                 .fill(rowFill)
@@ -745,7 +745,7 @@ private struct PrimarySidebarRow: View {
 
     private var rowFill: Color {
         if isSelected {
-            return Color.accentColor
+            return DS.Palette.rowSelectedSoftFill
         }
         if isHovering {
             return DS.Color.rowHover
@@ -841,7 +841,7 @@ struct LocalBranchRow: View {
                 Button(action: checkout) {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(isSelected ? Color.white.opacity(0.9) : .secondary)
+                        .foregroundStyle(.secondary)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
                 }
@@ -852,7 +852,7 @@ struct LocalBranchRow: View {
             if ref.isCurrent {
                 Image(systemName: "checkmark")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(isSelected ? Color.white : Color.accentColor)
+                    .foregroundStyle(Color.accentColor)
             }
         }
         .padding(.horizontal, 8)
@@ -864,6 +864,7 @@ struct LocalBranchRow: View {
         .contentShape(Rectangle())
         // Registered before the single-tap gesture so the second click reaches it.
         .onTapGesture(count: 2) {
+            select()
             guard !ref.isCurrent, heldBy == nil else { return }
             checkout()
         }
@@ -885,7 +886,7 @@ struct LocalBranchRow: View {
             let name = heldBy.path.lastPathComponent
             Image(systemName: "square.split.2x1")
                 .font(.system(size: 9))
-                .foregroundStyle(isSelected ? Color.white.opacity(0.8) : Color.secondary)
+                .foregroundStyle(.secondary)
                 .help("Checked out in \(name)")
                 .accessibilityLabel("Checked out in worktree \(name)")
         }
@@ -935,7 +936,7 @@ struct LocalBranchRow: View {
                 RoundedRectangle(cornerRadius: DS.Radius.md - 1, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5)
             )
-            .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
+            .foregroundStyle(.secondary)
             .padding(.leading, 6)
     }
 
@@ -962,13 +963,10 @@ struct LocalBranchRow: View {
                 RoundedRectangle(cornerRadius: 3)
                     .fill(color.opacity(0.16))
             )
-            .foregroundStyle(isSelected ? Color.white : color)
+            .foregroundStyle(color)
     }
 
     private var iconColor: Color {
-        if isSelected {
-            return .white
-        }
         if ref.isUpstreamGone {
             return .red
         }
@@ -977,15 +975,12 @@ struct LocalBranchRow: View {
     }
 
     private var textColor: Color {
-        if isSelected {
-            return .white
-        }
         return ref.isCurrent ? Color.accentColor : .primary
     }
 
     private var rowFill: Color {
         if isSelected {
-            return Color.accentColor
+            return DS.Palette.rowSelectedSoftFill
         }
         if ref.isCurrent {
             return Color.accentColor.opacity(0.10)
@@ -1114,14 +1109,14 @@ private struct RemoteBranchRow: View {
             Image(systemName: "network")
                 .font(.system(size: 10))
                 .frame(width: 12)
-                .foregroundStyle(isSelected ? .white : .purple)
+                .foregroundStyle(.purple)
                 .padding(.leading, 14)
 
             Text(branchName)
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .foregroundStyle(isSelected ? Color.white : .primary)
+                .foregroundStyle(.primary)
 
             Spacer(minLength: 4)
 
@@ -1131,7 +1126,7 @@ private struct RemoteBranchRow: View {
                 Button(action: track) {
                     Image(systemName: "plus.square.on.square")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(isSelected ? Color.white.opacity(0.9) : .secondary)
+                        .foregroundStyle(.secondary)
                         .frame(width: 18, height: 18)
                         .contentShape(Rectangle())
                 }
@@ -1183,13 +1178,13 @@ private struct RemoteBranchRow: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.green.opacity(0.15))
                 )
-                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.green)
+                .foregroundStyle(Color.green)
         }
     }
 
     private var rowFill: Color {
         if isSelected {
-            return Color.accentColor
+            return DS.Palette.rowSelectedSoftFill
         }
         if isHovering {
             return Color.primary.opacity(0.05)
@@ -1446,18 +1441,18 @@ private struct TagRow: View {
             Image(systemName: "tag.fill")
                 .font(.system(size: 10))
                 .frame(width: 12)
-                .foregroundStyle(isSelected ? .white : .orange)
+                .foregroundStyle(.orange)
 
             Text(ref.name)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(isSelected ? Color.white : DS.Palette.textPrimary)
+                .foregroundStyle(DS.Palette.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
             if ref.annotatedMessage != nil {
                 Image(systemName: "text.bubble")
                     .font(.system(size: 9))
-                    .foregroundStyle(isSelected ? Color.white.opacity(0.7) : Color.secondary.opacity(0.6))
+                    .foregroundStyle(Color.secondary.opacity(0.6))
             }
 
             Spacer(minLength: 4)
@@ -1473,7 +1468,7 @@ private struct TagRow: View {
 
     private var rowFill: Color {
         if isSelected {
-            return Color.accentColor
+            return DS.Palette.rowSelectedSoftFill
         }
         if isHovering {
             return Color.primary.opacity(0.05)
@@ -1543,16 +1538,16 @@ private struct StashRow: View {
             Image(systemName: "tray")
                 .font(.system(size: 10))
                 .frame(width: 12)
-                .foregroundStyle(isSelected ? Color.white.opacity(0.9) : .secondary)
+                .foregroundStyle(.secondary)
 
             Text("{\(entry.index)}")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundStyle(isSelected ? Color.white.opacity(0.9) : .secondary)
+                .foregroundStyle(.secondary)
                 .frame(minWidth: 22, alignment: .leading)
 
             Text(displayMessage)
                 .font(.system(size: 12))
-                .foregroundStyle(isSelected ? .white : .primary)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
@@ -1561,7 +1556,7 @@ private struct StashRow: View {
             if let date = entry.date {
                 Text(relative(date))
                     .font(.system(size: 10))
-                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.white.opacity(0.75)) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
         }
@@ -1605,7 +1600,7 @@ private struct StashRow: View {
 
     private var rowFill: Color {
         if isSelected {
-            return Color.accentColor
+            return DS.Palette.rowSelectedSoftFill
         }
         if isHovering {
             return Color.primary.opacity(0.05)
