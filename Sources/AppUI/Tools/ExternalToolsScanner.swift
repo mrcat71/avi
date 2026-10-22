@@ -69,9 +69,9 @@ enum ExternalToolsScanner {
 
     private static func findExecutable(named name: String) -> String? {
         // Try `which` first.
-        if let path = runProcess(executable: "/usr/bin/which", arguments: [name])?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty,
-           FileManager.default.isExecutableFile(atPath: path) {
+        let found = runProcess(executable: "/usr/bin/which", arguments: [name])?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let path = found, !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) {
             return path
         }
 
