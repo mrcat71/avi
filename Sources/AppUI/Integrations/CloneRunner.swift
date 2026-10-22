@@ -222,8 +222,7 @@ public enum CloneRunner {
 
     private static func parseProgress(_ line: String) -> CloneProgress? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return nil }
-        guard let regex = progressRegex else { return nil }
+        guard !trimmed.isEmpty, let regex = progressRegex else { return nil }
         let range = NSRange(trimmed.startIndex..., in: trimmed)
         guard let match = regex.firstMatch(in: trimmed, range: range), match.numberOfRanges == 3,
               let phaseRange = Range(match.range(at: 1), in: trimmed),

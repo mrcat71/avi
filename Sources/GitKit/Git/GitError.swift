@@ -44,7 +44,6 @@ public extension GitError {
     /// Path from git's refusal to check out a branch another worktree holds:
     /// "fatal: 'x' is already used by worktree at '/path'". nil for anything else.
     internal static func worktreeHoldingBranch(_ stderr: String) -> String? {
-        guard stderr.contains("is already used by worktree at") else { return nil }
         guard let start = stderr.range(of: "is already used by worktree at ") else { return nil }
         let tail = stderr[start.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         let unquoted = tail.hasPrefix("'")
