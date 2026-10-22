@@ -249,11 +249,16 @@ public enum ProviderCLISupport {
         return nil
     }
 
-    public static func run(executable: String, arguments: [String], extraEnvironment: [String: String] = [:]) async throws -> ProcessResult {
+    public static func run(
+        executable: String,
+        arguments: [String],
+        extraEnvironment: [String: String] = [:],
+        workingDirectory: URL? = nil
+    ) async throws -> ProcessResult {
         try await ProcessRunner.run(
             executable: URL(fileURLWithPath: executable),
             arguments: arguments,
-            workingDirectory: nil,
+            workingDirectory: workingDirectory,
             environment: environment().merging(extraEnvironment) { _, extra in extra }
         )
     }

@@ -27,21 +27,60 @@ enum GitHubAPIError: Error, CustomStringConvertible, LocalizedError {
 struct GitHubAPI {
     let token: String
 
-    func createPullRequest(owner: String, repo: String, title: String, body: String, head: String, base: String) async throws -> GitHubPullRequest {
+    func createPullRequest(
+        owner: String,
+        repo: String,
+        title: String,
+        body: String,
+        head: String,
+        base: String,
+        draft: Bool = false
+    ) async throws -> GitHubPullRequest {
         let url = URL(string: "https://api.github.com/repos/\(owner)/\(repo)/pulls")!
         struct Body: Encodable {
             let title: String
             let body: String
             let head: String
             let base: String
+            let draft: Bool
         }
-        var request = URLRequest(url: url)
+        var request = authorizedRequest(url)
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(Body(title: title, body: body, head: head, base: base, draft: draft))
+        let data = try await send(request)
+        return try JSONDecoder().decode(GitHubPullRequest.self, from: data)
+    }
+
+    /// The open pull request from `head` in the same repository, if any.
+    func openPullRequest(owner: String, repo: String, head: String) async throws -> PullRequestInfo? {
+        var components = URLComponents(string: "https://api.github.com/repos/\(owner)/\(repo)/pulls")
+        components?.queryItems = [
+            URLQueryItem(name: "head", value: "\(owner):\(head)"),
+            URLQueryItem(name: "state", value: "open"),
+            URLQueryItem(name: "per_page", value: "1")
+        ]
+        guard let url = components?.url else { return nil }
+        let data = try await send(authorizedRequest(url))
+        struct Item: Decodable {
+            let number: Int
+            let html_url: String
+            let title: String
+            let draft: Bool?
+        }
+        guard let item = try JSONDecoder().decode([Item].self, from: data).first,
+              let web = URL(string: item.html_url) else { return nil }
+        return PullRequestInfo(number: item.number, url: web, title: item.title, isDraft: item.draft ?? false)
+    }
+
+    private func authorizedRequest(_ url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(Body(title: title, body: body, head: head, base: base))
+        return request
+    }
 
+    private func send(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw GitHubAPIError.decoding("No response")
@@ -50,7 +89,7 @@ struct GitHubAPI {
             let text = String(data: data, encoding: .utf8) ?? ""
             throw GitHubAPIError.http(http.statusCode, text)
         }
-        return try JSONDecoder().decode(GitHubPullRequest.self, from: data)
+        return data
     }
 
     static func repoWebURL(owner: String, repo: String) -> URL? {
@@ -66,16 +105,19 @@ struct GitHubAPI {
         return URL(string: "https://github.com/\(owner)/\(repo)/tree/\(encoded)")
     }
 
-    /// "New pull request" compare page with pre-filled title.
-    /// Caller passes the branch name as `title` so the form opens ready to submit.
-    static func compareWebURL(owner: String, repo: String, base: String, head: String, title: String) -> URL? {
+    /// "New pull request" compare page, filled in.
+    static func compareWebURL(owner: String, repo: String, base: String, head: String, title: String, body: String = "") -> URL? {
         let baseEncoded = base.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? base
         let headEncoded = head.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? head
         var components = URLComponents(string: "https://github.com/\(owner)/\(repo)/compare/\(baseEncoded)...\(headEncoded)")
-        components?.queryItems = [
+        var items = [
             URLQueryItem(name: "expand", value: "1"),
             URLQueryItem(name: "title", value: title)
         ]
+        if !body.isEmpty {
+            items.append(URLQueryItem(name: "body", value: body))
+        }
+        components?.queryItems = items
         return components?.url
     }
 }

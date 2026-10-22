@@ -68,7 +68,7 @@ struct ResetToCommitSheet: View {
     }
 
     private var target: String {
-        store.branch.flatMap { $0.isDetached ? nil : "'\($0.name)'" } ?? "HEAD"
+        store.branch.flatMap { $0.isDetached ? nil : $0.name }.map { "'\($0)'" } ?? "HEAD"
     }
 
     private var explanation: String {

@@ -68,6 +68,39 @@ struct AgentBridgeTests {
         withExtendedLifetime(h) {}
     }
 
+    @Test func aCommitsTagComesBackInTheResult() async {
+        let h = harness()
+        let response = await h.bridge.handle(propose("/tmp/avi-tagged", [AgentCommit(message: "chore(release): 1.0", files: ["a.swift"], tag: AgentTag(name: "v1.0"))]))
+        #expect(response.ok)
+        #expect(response.result?.tags == ["v1.0"])
+        #expect(response.result?.repo?.commitField?.tags == ["v1.0"])
+        withExtendedLifetime(h) {}
+    }
+
+    @Test func aTagWithoutCommitsWaitsForTheUser() async {
+        let h = harness()
+        h.git.resolvableCommits = ["HEAD": "abc1234def"]
+        let request = AgentRequest(method: .propose, params: AgentParams(repo: "/tmp/avi-tag-only", agent: "Codex", session: "t", tag: AgentTag(name: "v1.0")))
+
+        let response = await h.bridge.handle(request)
+
+        #expect(response.ok)
+        #expect(response.result?.placement == .tag)
+        #expect(response.result?.repo?.tags == [AgentPendingTag(agent: "Codex", session: "t", name: "v1.0", commit: "abc1234def")])
+        withExtendedLifetime(h) {}
+    }
+
+    @Test func tagMistakesCarryTheirOwnCodes() async {
+        let h = harness()
+        let bad = await h.bridge.handle(propose("/tmp/avi-bad-tag", [AgentCommit(message: "x", files: ["a.swift"], tag: AgentTag(name: "no spaces"))]))
+        #expect(bad.error?.code == .invalidTag)
+        let misplaced = await h.bridge.handle(propose("/tmp/avi-bad-tag", [AgentCommit(message: "x", files: ["a.swift"], tag: AgentTag(name: "v1", at: "HEAD"))]))
+        #expect(misplaced.error?.code == .badRequest)
+        let unknown = await h.bridge.handle(AgentRequest(method: .propose, params: AgentParams(repo: "/tmp/avi-bad-tag", tag: AgentTag(name: "v1", at: "nope"))))
+        #expect(unknown.error?.code == .unknownRevision)
+        withExtendedLifetime(h) {}
+    }
+
     @Test func rejectionsCarryCodesAgentsCanActOn() async {
         let h = harness()
         let bridge = h.bridge

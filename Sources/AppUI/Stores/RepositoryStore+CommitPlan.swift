@@ -240,13 +240,17 @@ public extension RepositoryStore {
         let ordered = commitPlan.drafts.filter { chosen.contains($0.id) }.map(\.id)
         guard !ordered.isEmpty else { return }
         let plan = commitPlan.fileCommitPlan(for: ordered)
+        let tagNames = plan.commits.flatMap(\.tags).map(\.name)
         planProgress = PlanProgress(completed: 0, total: ordered.count)
         var failure: String?
         do {
-            try await git.commitFiles(plan, in: root) { [weak self] completed in
+            let tagFailures = try await git.commitFiles(plan, in: root) { [weak self] completed in
                 Task { @MainActor in self?.planProgress?.completed = completed }
             }
             commitPlan.removeDrafts(ids: Set(ordered))
+            if !tagFailures.isEmpty {
+                failure = Self.describeTagFailures(tagFailures.map { "\($0.name): \($0.reason)" })
+            }
         } catch let error as CommitPlanError {
             commitPlan.removeDrafts(ids: Set(ordered.prefix(error.completed)))
             failure = error.localizedDescription
@@ -261,6 +265,8 @@ public extension RepositoryStore {
             planNotice = nil
         }
         await refresh()
+        // Tags that now exist were made by this run, failures or not.
+        publishableTags.formUnion(tagNames.filter { name in refs.tags.contains { $0.name == name } })
         // After the refresh, which clears errors from earlier reads.
         if let failure {
             errorMessage = failure
@@ -535,10 +541,13 @@ public struct AgentProposal: Equatable, Sendable {
     public struct Commit: Equatable, Sendable {
         public let message: String
         public let files: [String]
+        /// Created on this commit once you make it.
+        public let tags: [NewTag]
 
-        public init(message: String, files: [String]) {
+        public init(message: String, files: [String], tags: [NewTag] = []) {
             self.message = message
             self.files = files
+            self.tags = tags
         }
     }
 
@@ -566,6 +575,8 @@ public enum ProposalPlacement: String, Codable, Sendable {
     case commitField
     case previewCard
     case plan
+    /// A tag for a commit that already exists, waiting in a banner.
+    case tag
 }
 
 public struct ProposalOutcome: Equatable, Sendable {
@@ -573,6 +584,8 @@ public struct ProposalOutcome: Equatable, Sendable {
     public let commits: Int
     public let staged: [String]
     public let notes: [String]
+    /// The tags Avi creates once you approve: on their commits, or on their own.
+    public var tags: [String] = []
 }
 
 /// Why a proposal was refused. Nothing in the repository changed.
@@ -586,6 +599,10 @@ public enum ProposalRejection: Error, Equatable, Sendable {
     case fileClaimed([String: String])
     case editedByUser
     case busy
+    case invalidTag(name: String, problem: String)
+    /// A tag of that name exists, or `owner`'s pending proposal creates it.
+    case tagExists(name: String, owner: String?)
+    case unknownRevision(String)
 }
 
 extension ProposalRejection: LocalizedError {
@@ -610,6 +627,15 @@ extension ProposalRejection: LocalizedError {
             return "Your earlier proposal was edited in Avi. Ask the user before replacing it."
         case .busy:
             return "Avi is committing in this repository. Try again shortly."
+        case .invalidTag(let name, let problem):
+            return "\"\(name)\" cannot be a tag: \(problem)"
+        case .tagExists(let name, let owner):
+            if let owner {
+                return "The tag \(name) is already waiting to be created, by \(owner)."
+            }
+            return "The repository already has a tag named \(name)."
+        case .unknownRevision(let revision):
+            return "No commit in this repository is named \"\(revision)\"."
         }
     }
 }
@@ -631,15 +657,20 @@ public extension RepositoryStore {
                 throw ProposalRejection.filesRequired(commit: index + 1)
             }
         }
+        try Self.checkTagNames(proposal.commits.flatMap(\.tags).map(\.name))
 
         await refresh()
         let conflicted = entries.filter { $0.index == .updatedButUnmerged || $0.worktree == .updatedButUnmerged }
         guard conflicted.isEmpty else { throw ProposalRejection.conflicts(conflicted.map(\.path)) }
+        for tag in proposal.commits.flatMap(\.tags) {
+            try checkTagIsFree(tag.name, for: proposal.source)
+        }
 
         let commits = proposal.commits.map { commit in
             AgentProposal.Commit(
                 message: commit.message.trimmingCharacters(in: .whitespacesAndNewlines),
-                files: withRenamePartners(commit.files)
+                files: withRenamePartners(commit.files),
+                tags: commit.tags
             )
         }
         let listed = commits.flatMap(\.files)
@@ -673,6 +704,10 @@ public extension RepositoryStore {
             }
         }
 
+        // A commit carrying the tag supersedes the session's tag proposal of it.
+        let tagNames = Set(commits.flatMap(\.tags).map(\.name))
+        tagProposals.removeAll { $0.source.groupKey == source.groupKey && tagNames.contains($0.tag.name) }
+
         let othersPending = commitPlan.drafts.contains { $0.source.groupKey != source.groupKey }
         let otherField = fieldProposal != nil && ownField == nil
         let ownStaged = Set(ownField?.stagedByAvi ?? [])
@@ -698,7 +733,8 @@ public extension RepositoryStore {
             if revealPlan {
                 reveal()
             }
-            return ProposalOutcome(placement: .previewCard, commits: 1, staged: [], notes: [])
+            let dropped = commit.tags.map { "The tag \($0.name) was not kept: a message without files waits beside other pending work. Send it with its files." }
+            return ProposalOutcome(placement: .previewCard, commits: 1, staged: [], notes: dropped)
         }
 
         var notes: [String] = []
@@ -708,14 +744,14 @@ public extension RepositoryStore {
                 notes.append("Moved \(field.source.displayName)'s proposal from the commit field into the plan.")
             }
         }
-        let drafts = commits.map { CommitDraft(message: $0.message, files: $0.files, source: source) }
+        let drafts = commits.map { CommitDraft(message: $0.message, files: $0.files, source: source, tags: $0.tags) }
         commitPlan.replaceDrafts(from: source, with: drafts)
         hasUnseenProposal = true
         if revealPlan {
             reveal()
             selectedDraftID = drafts.first?.id
         }
-        return ProposalOutcome(placement: .plan, commits: drafts.count, staged: [], notes: notes)
+        return ProposalOutcome(placement: .plan, commits: drafts.count, staged: [], notes: notes, tags: drafts.flatMap(\.tags).map(\.name))
     }
 
     /// Withdraws the agent proposal in the commit field: unstages what Avi
@@ -776,6 +812,9 @@ extension RepositoryStore {
 
         let (subject, body) = splitGeneratedMessage(commit.message)
         let fieldHoldsYourText = previous?.inField != true && !commitMessage.isEmpty
+        // The earlier proposal's tags go; tags you added stay.
+        let earlierTags = Set((previous?.tags ?? []).map(\.name))
+        commitTags.removeAll { earlierTags.contains($0.name) }
         let placement: ProposalPlacement
         if fieldHoldsYourText {
             aiPendingPreview = AIPendingPreview(subject: subject, body: body, result: Self.proposalRun(for: source.displayName), proposedBy: source.displayName)
@@ -784,6 +823,7 @@ extension RepositoryStore {
             commitSummary = subject
             commitBody = body
             amend = false
+            commitTags = CommitPlan.uniqueTags(commitTags + commit.tags)
             placement = .commitField
         }
         fieldProposal = FieldProposal(
@@ -791,11 +831,12 @@ extension RepositoryStore {
             files: commit.files,
             message: commit.message,
             stagedByAvi: stagedByAvi,
-            inField: placement == .commitField
+            inField: placement == .commitField,
+            tags: commit.tags
         )
         hasUnseenProposal = true
         await refresh()
-        return ProposalOutcome(placement: placement, commits: 1, staged: commit.files, notes: [])
+        return ProposalOutcome(placement: placement, commits: 1, staged: commit.files, notes: [], tags: commit.tags.map(\.name))
     }
 
     /// Takes a proposal out of the commit field, optionally keeping it as the
@@ -805,15 +846,18 @@ extension RepositoryStore {
     private func withdrawFieldProposal(_ field: FieldProposal, keepAsDraft: Bool) async -> String? {
         let edited = fieldWasEdited(field)
         let message = field.inField && !commitMessage.isEmpty ? commitMessage : field.message
+        // In the field, the proposal's tags are Commit 1's, perhaps edited by you.
+        let tags = field.inField ? commitTags : field.tags
         if field.inField {
             commitSummary = ""
             commitBody = ""
+            commitTags = []
         } else if aiPendingPreview?.proposedBy != nil {
             aiPendingPreview = nil
         }
         fieldProposal = nil
         if keepAsDraft, !field.files.isEmpty {
-            commitPlan.drafts.insert(CommitDraft(message: message, files: field.files, source: field.source, isEdited: edited), at: 0)
+            commitPlan.drafts.insert(CommitDraft(message: message, files: field.files, source: field.source, isEdited: edited, tags: tags), at: 0)
         }
         guard let root, !field.stagedByAvi.isEmpty else { return nil }
         do {

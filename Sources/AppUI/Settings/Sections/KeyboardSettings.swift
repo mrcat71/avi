@@ -36,7 +36,9 @@ struct KeyboardSettingsView: View {
                 Divider().padding(.vertical, 4)
             }
             SettingsFormRow(action.label) {
-                KeyboardShortcuts.Recorder(for: action.shortcutName)
+                KeyboardShortcuts.Recorder(for: action.shortcutName) { _ in
+                    ShortcutChanges.shared.changed()
+                }
             }
         }
         #else

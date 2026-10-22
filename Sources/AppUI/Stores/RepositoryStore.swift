@@ -63,6 +63,16 @@ public final class RepositoryStore: Identifiable {
     public private(set) var isRefsLoading = false
     public private(set) var isRemoteOperationRunning = false
     public internal(set) var errorMessage: String?
+    /// The last pull request result to show: created, already open, sent to
+    /// the browser, or failed. Also the offer after a branch's first push.
+    var pullRequestNotice: PullRequestNotice?
+    /// Open pull requests by branch name, as far as Avi has looked them up.
+    var openPullRequests: [String: PullRequestInfo] = [:]
+    /// The Push sheet the toolbar shows.
+    var pushSheetRequest: PushSheetRequest?
+    /// Hyphenated names in the repository for pull request titles, with the
+    /// commit they were read at.
+    @ObservationIgnored var titleNames: (head: String, names: Set<String>)?
     /// Set once this tab's folder turns out deleted, such as a worktree an
     /// agent or another app removed. Nothing refreshes it after that.
     public private(set) var isFolderRemoved = false
@@ -138,6 +148,16 @@ public final class RepositoryStore: Identifiable {
     public var hasUnseenProposal = false
     /// The single agent proposal currently staged into the commit field.
     public internal(set) var fieldProposal: FieldProposal?
+    /// Tags Commit 1 creates once it is made: from an agent's proposal in the
+    /// commit field, or added by you.
+    public var commitTags: [NewTag] = []
+    /// Tags agents proposed for commits that already exist, waiting for you.
+    public internal(set) var tagProposals: [TagProposal] = []
+    /// Tags you approved in Avi, with a commit or on their own, that no push
+    /// has sent yet. A push of their branch sends them along.
+    var publishableTags: Set<String> = []
+    /// The sheet that adds or edits a commit's tag, when open.
+    public var tagEditRequest: TagEditRequest?
     /// One-line note about the last plan change, such as dropped AI paths.
     public var planNotice: String?
     /// Drafts the AI is revising right now.
@@ -170,6 +190,7 @@ public final class RepositoryStore: Identifiable {
     /// retried once per interval rather than on every check.
     private var lastAutoFetchAttempt: Date?
     private static let fetchLog = Logger(subsystem: "com.svinarenko.avi", category: "fetch")
+    static let pushLog = Logger(subsystem: "com.svinarenko.avi", category: "push")
     private static let workspaceLog = Logger(subsystem: "com.svinarenko.avi", category: "workspace")
 
     public init(git: GitProviding = CLIGitProvider()) {
@@ -640,11 +661,16 @@ public final class RepositoryStore: Identifiable {
         await perform {
             try await $0.createTag(name: name, targetOID: targetOID, message: message, in: $1)
         }
+        if refs.tags.contains(where: { $0.name == name }) {
+            publishableTags.insert(name)
+        }
     }
 
     public func pushTag(name: String, remote: String? = nil) async {
         await performRemoteOperation {
-            try await $0.pushTag(name: name, remote: remote, in: $1)
+            let result = try await $0.pushTag(name: name, remote: remote, in: $1)
+            publishableTags.remove(name)
+            return result
         }
     }
 
@@ -653,6 +679,7 @@ public final class RepositoryStore: Identifiable {
     /// `remote`, the tag is deleted there first: if the remote refuses, the
     /// local tag is still in the sidebar to retry from.
     public func deleteTag(named name: String, remote: String? = nil) async {
+        publishableTags.remove(name)
         guard let remote else {
             await perform {
                 try await $0.deleteTag(named: name, in: $1)
@@ -801,7 +828,23 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
+    /// Pushes the current branch to its upstream. Tags you approved in Avi on
+    /// the commits it sends go in the same atomic push.
     public func push() async {
+        if let name = branch?.name, let upstream = branch?.upstream,
+           let remote = upstream.split(separator: "/", maxSplits: 1).first.map(String.init),
+           upstream == "\(remote)/\(name)" {
+            do {
+                let tags = try await tagsForPush(branch: name, remote: remote).filter(\.isPreselected).map(\.name)
+                if !tags.isEmpty {
+                    await push(branch: name, remote: remote, force: false, pushTags: false, tags: tags)
+                    return
+                }
+            } catch {
+                // The branch still goes; its tags wait for the next push.
+                Self.pushLog.error("Could not read the tags to push: \(error.localizedDescription, privacy: .public)")
+            }
+        }
         await performRemoteOperation {
             try await $0.push(in: $1)
         }
@@ -813,66 +856,14 @@ public final class RepositoryStore: Identifiable {
         }
     }
 
-    public func push(branch: String?, remote: String?, force: Bool, pushTags: Bool) async {
+    /// `tags` go in one atomic push with the branch: the remote takes them
+    /// together or not at all.
+    public func push(branch: String?, remote: String?, force: Bool, pushTags: Bool, tags: [String] = []) async {
         await performRemoteOperation {
-            try await $0.push(branch: branch, remote: remote, force: force, pushTags: pushTags, in: $1)
+            let result = try await $0.push(branch: branch, remote: remote, force: force, pushTags: pushTags, tags: tags, in: $1)
+            publishableTags.subtract(tags)
+            return result
         }
-    }
-
-    /// Open the provider's new pull request (GitHub) or merge request (GitLab)
-    /// page for `branch`, with its name as the title. With `pushFirst`, the
-    /// branch is pushed to that remote first, setting its upstream when it has none.
-    public func openPullRequestPage(branch: String, pushFirst: Bool) async {
-        guard let root else { return }
-        errorMessage = nil
-
-        guard let remoteName = resolveRemoteName(forBranch: branch) else {
-            errorMessage = "No remote configured for this repository."
-            return
-        }
-        guard let gitRemote = remotes.first(where: { $0.name == remoteName }) else {
-            errorMessage = "Remote '\(remoteName)' not found."
-            return
-        }
-
-        if pushFirst {
-            await push(branch: branch, remote: remoteName, force: false, pushTags: false)
-            // performRemoteOperation surfaces failures via errorMessage; bail if push failed.
-            if errorMessage != nil {
-                return
-            }
-        }
-
-        var hint = RemoteURLParser.hint(from: gitRemote, knownHosts: KnownProviderHosts.shared.hosts)
-        if hint == .unknown {
-            // A self-hosted GitLab `glab` was signed in to after the list loaded.
-            await KnownProviderHosts.shared.refresh()
-            hint = RemoteURLParser.hint(from: gitRemote, knownHosts: KnownProviderHosts.shared.hosts)
-        }
-        let detected = await (try? git.defaultBranch(remote: remoteName, in: root)) ?? nil
-        let base: String
-        if let detected, !detected.isEmpty {
-            base = detected
-        } else {
-            base = "main"
-        }
-
-        let url: URL?
-        switch hint {
-        case .github(let owner, let repo):
-            url = GitHubAPI.compareWebURL(owner: owner, repo: repo, base: base, head: branch, title: branch)
-        case .gitlab(let host, let projectPath):
-            url = GitLabAPI.newMergeRequestWebURL(host: host, projectPath: projectPath, sourceBranch: branch, targetBranch: base, title: branch)
-        case .unknown:
-            errorMessage = "Avi cannot tell whether '\(remoteName)' is GitHub or GitLab. For a self-hosted GitLab, sign in with `glab auth login --hostname <host>` or add a token in Settings > GitLab."
-            return
-        }
-
-        guard let url else {
-            errorMessage = "Failed to build PR page URL."
-            return
-        }
-        NSWorkspace.shared.open(url)
     }
 
     /// Pick the remote name to use when pushing `branch`: prefer the branch's upstream remote,
@@ -1096,6 +1087,7 @@ public final class RepositoryStore: Identifiable {
     public func commit() async -> Bool {
         guard let root, canCommit else { return false }
         let message = commitMessage
+        let tags = commitTags
         do {
             // A staged file a planned commit holds goes with that commit, which
             // takes it from the working tree, so it leaves the index first.
@@ -1112,7 +1104,13 @@ public final class RepositoryStore: Identifiable {
             commitBody = ""
             amend = false
             fieldProposal = nil
+            commitTags = []
+            // Right away, while HEAD is the commit just made.
+            let tagFailures = await createTags(tags, at: "HEAD")
             await refresh()
+            if !tagFailures.isEmpty {
+                errorMessage = Self.describeTagFailures(tagFailures)
+            }
             return true
         } catch {
             let failure = error.localizedDescription
@@ -1126,8 +1124,8 @@ public final class RepositoryStore: Identifiable {
     /// When amend is enabled and no message has been typed, prefill from the last commit message,
     /// splitting summary (first line) from body (everything after the first blank line).
     public func prepareAmendIfNeeded() async {
-        guard amend, commitSummary.isEmpty, commitBody.isEmpty, let root else { return }
-        guard let last = try? await git.lastCommitMessage(in: root), !last.isEmpty else { return }
+        guard amend, commitSummary.isEmpty, commitBody.isEmpty, let root,
+              let last = try? await git.lastCommitMessage(in: root), !last.isEmpty else { return }
 
         let lines = last.split(separator: "\n", omittingEmptySubsequences: false)
         if let firstBlank = lines.firstIndex(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
@@ -1371,10 +1369,11 @@ public final class RepositoryStore: Identifiable {
             commitBody = commitBody.isEmpty ? appended : commitBody + "\n\n" + appended
         }
         aiPendingPreview = nil
-        if preview.proposedBy != nil, fieldProposal?.inField == false {
+        if preview.proposedBy != nil, let proposal = fieldProposal, !proposal.inField {
             // The field now holds the agent's text; later edits count as yours.
             fieldProposal?.inField = true
             fieldProposal?.message = commitMessage
+            commitTags = CommitPlan.uniqueTags(commitTags + proposal.tags)
         }
     }
 
@@ -1694,8 +1693,7 @@ public final class RepositoryStore: Identifiable {
     /// Caller passes the commit OIDs in any order; we validate consecutiveness
     /// and surface a clear error if the selection has gaps.
     public func recomposeCommitsWithAI(oids: Set<String>) {
-        guard let root else { return }
-        guard oids.count >= 2 else { return }
+        guard let root, oids.count >= 2 else { return }
         let config = ConfigStore.shared.config.ai
 
         // Sort selected OIDs by their position in historyRows (newest-first).
@@ -2000,4 +1998,7 @@ public struct FieldProposal: Equatable, Sendable {
     public let stagedByAvi: [String]
     /// False while the message waits in the preview card.
     public var inField: Bool
+    /// Tags the agent asked for on this commit; they join `commitTags` once
+    /// its message is in the field.
+    public var tags: [NewTag] = []
 }

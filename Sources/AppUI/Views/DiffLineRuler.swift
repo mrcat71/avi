@@ -11,9 +11,23 @@ final class DiffLineRuler: NSRulerView {
         didSet { relayout() }
     }
 
+    /// The diff's font size; line numbers are a point smaller.
+    var fontSize: CGFloat = 12 {
+        didSet {
+            if fontSize != oldValue {
+                relayout()
+            }
+        }
+    }
+
+    private var numberFont: NSFont {
+        .monospacedSystemFont(ofSize: max(9, fontSize - 1), weight: .regular)
+    }
+
     private func relayout() {
         let maximum = document?.rows.flatMap { [$0.oldLine, $0.newLine].compactMap { $0 } }.max() ?? 1
-        columnWidth = max(36, CGFloat(String(maximum).count) * 8 + 12)
+        let digit = ("8" as NSString).size(withAttributes: [.font: numberFont]).width
+        columnWidth = max(36, CGFloat(String(maximum).count) * digit + 12)
         ruleThickness = columnWidth * (singleColumn ? 1 : 2) + 8
         needsDisplay = true
     }
@@ -63,8 +77,8 @@ final class DiffLineRuler: NSRulerView {
         let visible = textView.visibleRect.offsetBy(dx: -origin.x, dy: -origin.y)
         let glyphs = layout.glyphRange(forBoundingRect: visible, in: container)
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor.secondaryLabelColor
+            .font: numberFont,
+            .foregroundColor: NSColor.tertiaryLabelColor
         ]
         layout.enumerateLineFragments(forGlyphRange: glyphs) { fragment, _, _, range, _ in
             let start = layout.characterIndexForGlyph(at: range.location)

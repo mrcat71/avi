@@ -45,13 +45,52 @@ struct AgentCLITests {
         #expect(propose.files == ["a.swift", "-odd-name.swift"])
     }
 
+    @Test func parsesTagProposals() throws {
+        let withCommit = try AgentCLI.parse(["propose", "-m", "chore(release): 1.0", "--tag", "v1.0", "--tag-message", "Release 1.0", "--", "CHANGELOG.md"])
+        guard case .propose(let commit) = withCommit.command else {
+            Issue.record("expected propose")
+            return
+        }
+        #expect(commit.tag == "v1.0")
+        #expect(commit.tagMessage == "Release 1.0")
+        #expect(commit.files == ["CHANGELOG.md"])
+
+        let alone = try AgentCLI.parse(["propose", "--tag", "v1.0", "--at", "HEAD~1"])
+        guard case .propose(let tag) = alone.command else {
+            Issue.record("expected propose")
+            return
+        }
+        #expect(tag.messages.isEmpty)
+        #expect(tag.tag == "v1.0")
+        #expect(tag.at == "HEAD~1")
+    }
+
+    @Test func planFilesTakeTagsAsTextOrObjects() throws {
+        let json = #"""
+        {"version": 1, "commits": [
+          {"message": "one", "files": ["a"], "tag": "v1.0"},
+          {"message": "two", "files": ["b"], "tag": {"name": "v2.0", "message": "Release 2"}}
+        ]}
+        """#
+        let plan = try JSONDecoder().decode(AgentCLI.PlanFile.self, from: Data(json.utf8))
+        #expect(plan.commits?.map(\.tag) == [AgentTag(name: "v1.0"), AgentTag(name: "v2.0", message: "Release 2")])
+
+        let alone = try JSONDecoder().decode(AgentCLI.PlanFile.self, from: Data(#"{"version": 1, "tag": {"name": "v1.0", "at": "HEAD"}}"#.utf8))
+        #expect(alone.commits == nil)
+        #expect(alone.tag == AgentTag(name: "v1.0", at: "HEAD"))
+    }
+
     @Test(arguments: [
         (["launch"], AgentCLI.ParseError.unknownCommand("launch")),
         (["status", "--bogus"], .unknownOption("--bogus")),
         (["propose"], .planOrMessage),
         (["propose", "--file", "p.json", "-m", "x"], .planOrMessage),
         (["propose", "--file"], .missingValue("--file")),
-        (["propose", "--file", "p.json", "a.swift"], .unexpected("a.swift"))
+        (["propose", "--file", "p.json", "a.swift"], .unexpected("a.swift")),
+        (["propose", "--file", "p.json", "--tag", "v1"], .tagInPlan),
+        (["propose", "-m", "x", "--tag-message", "m"], .tagOptionWithoutTag("--tag-message")),
+        (["propose", "-m", "x", "--tag", "v1", "--at", "HEAD"], .atWithMessage),
+        (["propose", "--tag", "v1", "a.swift"], .unexpected("a.swift"))
     ] as [([String], AgentCLI.ParseError)])
     func rejectsBadUsage(arguments: [String], expected: AgentCLI.ParseError) {
         #expect(throws: expected) { try AgentCLI.parse(arguments) }
@@ -202,7 +241,7 @@ struct AgentInstallerTests {
     @Test func skillDescribesTheCommandsItNeeds() {
         let skill = AgentSkillContent.skillMarkdown(version: "1.2.3")
         #expect(AgentSkillContent.installedVersion(in: skill) == "1.2.3")
-        for needed in ["avi status --json", "avi propose --file", "file_claimed", "edited_by_user", "unknown_path", "Never"] {
+        for needed in ["avi status --json", "avi propose --file", "file_claimed", "edited_by_user", "unknown_path", "Never", "--tag", "tag_exists"] {
             #expect(skill.contains(needed), "\(needed)")
         }
         let description = skill.split(separator: "\n").first { $0.hasPrefix("description: ") } ?? ""

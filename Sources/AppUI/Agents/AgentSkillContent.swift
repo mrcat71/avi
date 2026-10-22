@@ -37,8 +37,8 @@ enum AgentSkillContent {
     private static let frontMatter = #"""
     ---
     name: avi
-    description: Hand finished work in a git repository to Avi, the macOS git client, instead of committing. Avi stages the files and fills its commit message, or lays out several commits that the user approves with one click. Use when a coding task in a git repository is done and Avi has that repository open, or when the user asks to send changes, a commit, or a commit plan to Avi.
-    when_to_use: Trigger on "avi", "send to avi", "hand off to avi", "propose commits", "commit plan in avi", "fill the commit message in avi", and at the end of a coding task when `avi status --json` shows the repository open in Avi.
+    description: Hand finished work in a git repository to Avi, the macOS git client, instead of committing or tagging. Avi stages the files and fills its commit message, or lays out several commits that the user approves with one click, and can put a release tag on a commit. Use when a coding task in a git repository is done and Avi has that repository open, or when the user asks to send changes, a commit, a commit plan, or a tag to Avi.
+    when_to_use: Trigger on "avi", "send to avi", "hand off to avi", "propose commits", "commit plan in avi", "fill the commit message in avi", "tag in avi", "propose a tag", and at the end of a coding task when `avi status --json` shows the repository open in Avi.
     allowed-tools: Bash(avi *)
     ---
     """#
@@ -118,6 +118,43 @@ enum AgentSkillContent {
     Anywhere else, pass `--agent <name> --session <id>` and keep the same session id
     for the whole conversation.
 
+    ## Tags
+
+    Propose a tag only when the user asks for one, or for a release in a
+    repository that tags its releases. Follow the names the repository already
+    uses (`git tag --list --sort=-v:refname`), and give a release tag a message:
+    that makes it annotated, while a tag without one is lightweight.
+
+    Put the tag on the commit it marks, in that commit's entry in the plan. Avi
+    creates the tag right after the user makes the commit, and Avi's Push sends
+    the commit and the tag in one atomic push, so the tag never reaches the
+    remote before its commit:
+
+    ```json
+    {
+      "message": "chore(release): prepare version 1.2.0",
+      "files": ["CHANGELOG.md"],
+      "tag": {"name": "v1.2.0", "message": "Release 1.2.0"}
+    }
+    ```
+
+    On the command line:
+
+    ```sh
+    avi propose -m "chore(release): prepare version 1.2.0" --tag v1.2.0 --tag-message "Release 1.2.0" -- CHANGELOG.md
+    ```
+
+    For a commit that already exists, send the tag alone:
+    `avi propose --tag v1.2.0 [--tag-message TEXT] [--at REVISION]` (`--at`
+    defaults to `HEAD`). It waits in a banner until the user creates it, and the
+    banner offers to push it once the remote has the commit. Use this when the
+    repository's release process pushes the tag only after CI passes on the
+    pushed commit: propose the release commit without a tag, and send the tag
+    once the user says CI passed.
+
+    `result.tags` lists the tags Avi will create. When it is missing, this Avi
+    predates tags: tell the user to tag the commit after making it.
+
     ## Read the result
 
     - `placement: commitField`: the files are staged and the message is in the
@@ -125,6 +162,7 @@ enum AgentSkillContent {
     - `placement: previewCard`: the user was writing a message; yours waits
       beside it.
     - `placement: plan`: the commits wait as planned commits in Avi's Changes view.
+    - `placement: tag`: a tag for an existing commit waits for the user.
 
     Tell the user in one line what is waiting, for example "3 commits are waiting
     in Avi for your review."
@@ -140,6 +178,11 @@ enum AgentSkillContent {
     - `edited_by_user`: the user edited your earlier proposal in Avi. Ask before
       sending again with `--replace`.
     - `conflicts`: the repository has unresolved merge conflicts. Tell the user.
+    - `invalid_tag`: Git would refuse the tag name, or the plan names it twice.
+      Fix it and send again.
+    - `tag_exists`: the repository has that tag, or another pending proposal
+      creates it. Tell the user; pick another name only if they agree.
+    - `unknown_revision`: `--at` names no commit.
     - `busy`: Avi is committing in this repository. The command already retried;
       try again later.
     - `not_trusted`: the user has not opened this repository in Avi. Avi is asking
@@ -150,6 +193,8 @@ enum AgentSkillContent {
 
     - Run `git commit`, `git add`, `git restore --staged`, or `git reset` to
       prepare a hand-off. Avi stages exactly what the plan names.
+    - Run `git tag`, or push a tag: propose it instead. Avi creates it once the
+      user approves and pushes it with its commit.
     - Push, or ask Avi to commit for you.
     - Pass `--replace` without the user's OK.
 

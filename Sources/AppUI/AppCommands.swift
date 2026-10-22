@@ -10,6 +10,8 @@ public extension Notification.Name {
     static let aviFetchRepository = Notification.Name("avi.fetchRepository")
     static let aviPullRepository = Notification.Name("avi.pullRepository")
     static let aviPushRepository = Notification.Name("avi.pushRepository")
+    /// Opens the Push sheet with "Create pull request" turned on.
+    static let aviPushAndCreatePullRequest = Notification.Name("avi.pushAndCreatePullRequest")
     static let aviCreateBranch = Notification.Name("avi.createBranch")
     static let aviCreateTag = Notification.Name("avi.createTag")
     /// New branch from the selected ref or commit (Shift+Cmd+B).

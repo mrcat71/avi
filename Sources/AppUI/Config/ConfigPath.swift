@@ -6,7 +6,18 @@ enum ConfigPath {
     static let appName = "Avi"
     static let fileName = "config.toml"
 
+    #if DEBUG
+    /// Set by the screenshot harness, so a run never reads or writes your
+    /// config file.
+    nonisolated(unsafe) static var directoryOverride: URL?
+    #endif
+
     static var directoryURL: URL {
+        #if DEBUG
+        if let directoryOverride {
+            return directoryOverride
+        }
+        #endif
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
         return base.appendingPathComponent(appName, isDirectory: true)

@@ -42,13 +42,16 @@ public struct CommitDraft: Identifiable, Equatable, Sendable {
     /// Set once you change the message or move files, so a resend from the
     /// same agent session cannot silently overwrite your edits.
     public var isEdited: Bool
+    /// Created on this commit right after it is made.
+    public var tags: [NewTag]
 
-    public init(id: UUID = UUID(), message: String, files: [String], source: DraftSource, isEdited: Bool = false) {
+    public init(id: UUID = UUID(), message: String, files: [String], source: DraftSource, isEdited: Bool = false, tags: [NewTag] = []) {
         self.id = id
         self.message = message
         self.files = files
         self.source = source
         self.isEdited = isEdited
+        self.tags = tags
     }
 
     public var subject: String {
@@ -114,6 +117,11 @@ public struct CommitPlan: Equatable, Sendable {
 
     public var claimedPaths: Set<String> {
         Set(drafts.flatMap(\.files))
+    }
+
+    /// Tag names the planned commits create.
+    public var plannedTagNames: Set<String> {
+        Set(drafts.flatMap(\.tags).map(\.name))
     }
 
     public func draft(id: UUID) -> CommitDraft? {
@@ -194,6 +202,12 @@ public struct CommitPlan: Equatable, Sendable {
         drafts[index].isEdited = true
     }
 
+    public mutating func setTags(_ tags: [NewTag], for id: UUID) {
+        guard let index = drafts.firstIndex(where: { $0.id == id }), drafts[index].tags != tags else { return }
+        drafts[index].tags = tags
+        drafts[index].isEdited = true
+    }
+
     /// Moves `paths` to `target`, taking them from whichever drafts hold them.
     /// Returns the id of the draft that received them, if any.
     @discardableResult
@@ -232,7 +246,7 @@ public struct CommitPlan: Equatable, Sendable {
 
     /// Folds `id` into its neighbour (`next` or previous): the files join the
     /// neighbour and both messages stay, one after the other, for you to edit.
-    /// Returns the surviving draft's id.
+    /// Both commits' tags go on the merged one. Returns the surviving draft's id.
     @discardableResult
     public mutating func merge(_ id: UUID, withNext next: Bool) -> UUID? {
         guard let index = drafts.firstIndex(where: { $0.id == id }) else { return nil }
@@ -245,6 +259,7 @@ public struct CommitPlan: Equatable, Sendable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         merged.message = messages.joined(separator: "\n\n")
+        merged.tags = Self.uniqueTags(drafts[first].tags + drafts[second].tags)
         merged.isEdited = true
         drafts[first] = merged
         drafts.remove(at: second)
@@ -262,8 +277,9 @@ public struct CommitPlan: Equatable, Sendable {
     }
 
     /// Swaps the drafts in `ids` for revised commits at the place of the first
-    /// one. Only files those drafts held can move. Changes nothing when the
-    /// revision has no usable commit.
+    /// one. Only files those drafts held can move. Their tags go on the last
+    /// revised commit, which ends with all of their changes. Changes nothing
+    /// when the revision has no usable commit.
     @discardableResult
     public mutating func applyRevision(_ groups: [(files: [String], message: String)], replacing ids: [UUID]) -> RevisionOutcome {
         let chosen = Set(ids)
@@ -291,6 +307,7 @@ public struct CommitPlan: Equatable, Sendable {
             revised.append(CommitDraft(message: message, files: files, source: source, isEdited: true))
         }
         guard !revised.isEmpty else { return outcome }
+        revised[revised.count - 1].tags = Self.uniqueTags(replaced.flatMap(\.tags))
         outcome.leftOut = scope.filter { !used.contains($0) }
         outcome.created = revised.map(\.id)
         drafts.removeAll { chosen.contains($0.id) }
@@ -306,7 +323,13 @@ public struct CommitPlan: Equatable, Sendable {
     public func fileCommitPlan(for ids: [UUID]) -> FileCommitPlan {
         let chosen = Set(ids)
         return FileCommitPlan(commits: drafts.filter { chosen.contains($0.id) }.map {
-            FileCommitPlan.Commit(files: $0.files, message: $0.message.trimmingCharacters(in: .whitespacesAndNewlines))
+            FileCommitPlan.Commit(files: $0.files, message: $0.message.trimmingCharacters(in: .whitespacesAndNewlines), tags: $0.tags)
         })
+    }
+
+    /// The first tag of each name, in order.
+    static func uniqueTags(_ tags: [NewTag]) -> [NewTag] {
+        var seen = Set<String>()
+        return tags.filter { seen.insert($0.name).inserted }
     }
 }

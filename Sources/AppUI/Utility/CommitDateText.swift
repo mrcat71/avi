@@ -17,7 +17,7 @@ enum CommitDateText {
         style: Style,
         now: Date = Date(),
         calendar: Calendar = .current,
-        locale: Locale = .current
+        locale: Locale = AviLocale.display
     ) -> String {
         let base = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
         let time = date.formatted(base.hour().minute())

@@ -388,6 +388,7 @@ private struct PickerRepoRow: View {
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
+        formatter.locale = AviLocale.display
         formatter.unitsStyle = .short
         return formatter
     }()
@@ -460,7 +461,6 @@ private struct PickerRepoRow: View {
             .frame(width: 18)
     }
 
-    @ViewBuilder
     private var dirtyDot: some View {
         Circle()
             .fill(Color.orange)
@@ -468,7 +468,6 @@ private struct PickerRepoRow: View {
             .help("Working tree has changes")
     }
 
-    @ViewBuilder
     private var metaColumn: some View {
         VStack(alignment: .trailing, spacing: 2) {
             if let branch = metadata?.branch {
