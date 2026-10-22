@@ -163,6 +163,11 @@ public struct CLIGitProvider: GitProviding {
         return String(value.dropFirst(prefix.count))
     }
 
+    public func trackedPaths(in repository: URL) async throws -> [String] {
+        let result = try await run(["ls-files", "-z"], in: repository)
+        return result.stdoutString.split(separator: "\0", omittingEmptySubsequences: true).map(String.init)
+    }
+
     public func changedFiles(in commitOID: String, in repository: URL) async throws -> [CommitFileChange] {
         let result = try await run([
             "diff-tree",
@@ -243,12 +248,14 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func createTag(name: String, targetOID: String, message: String?, in repository: URL) async throws {
+        if let problem = NewTag.problem(with: name) {
+            throw GitError.invalidInput(problem)
+        }
         var args = ["tag"]
         if let message, !message.isEmpty {
-            args.append(contentsOf: ["-a", name, targetOID, "-m", message])
-        } else {
-            args.append(contentsOf: [name, targetOID])
+            args.append(contentsOf: ["-a", "-m", message])
         }
+        args.append(contentsOf: ["--", name, targetOID])
         try await run(args, in: repository)
     }
 
@@ -265,6 +272,40 @@ public struct CLIGitProvider: GitProviding {
         let target = remote ?? "origin"
         let result = try await run(["push", target, "refs/tags/\(name)"], in: repository)
         return remoteResult(result)
+    }
+
+    public func unpushedTags(branch: String, remote: String, in repository: URL) async throws -> [UnpushedTag] {
+        let outgoing = try await run(["rev-list", "refs/heads/\(branch)", "--not", "--remotes=\(remote)"], in: repository)
+        let commits = Set(outgoing.stdoutString.split(separator: "\n").map(String.init))
+        guard !commits.isEmpty else { return [] }
+        let tags = try await run(
+            ["for-each-ref", "--format=%(refname:strip=2)%00%(objecttype)%00%(objectname)%00%(*objectname)", "refs/tags"],
+            in: repository
+        )
+        return tags.stdoutString.split(separator: "\n").compactMap { line in
+            let fields = line.split(separator: "\0", omittingEmptySubsequences: false).map(String.init)
+            guard fields.count == 4 else { return nil }
+            // An annotated tag names its tag object; the commit is the peeled one.
+            let isAnnotated = fields[1] == "tag"
+            let commit = isAnnotated ? fields[3] : fields[2]
+            return commits.contains(commit) ? UnpushedTag(name: fields[0], isAnnotated: isAnnotated) : nil
+        }
+    }
+
+    public func remoteHasCommit(_ commit: String, remote: String, in repository: URL) async throws -> Bool {
+        let result = try await run(
+            ["for-each-ref", "--count=1", "--format=%(refname)", "--contains", commit, "refs/remotes/\(remote)/"],
+            in: repository
+        )
+        return !result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public func resolveCommit(_ revision: String, in repository: URL) async throws -> String? {
+        // --end-of-options keeps a revision such as "--all" from reading as a flag.
+        let result = try await execute(["rev-parse", "--verify", "--quiet", "--end-of-options", "\(revision)^{commit}"], in: repository)
+        guard result.exitCode == 0 else { return nil }
+        let oid = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+        return oid.isEmpty ? nil : oid
     }
 
     public func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult {
@@ -334,6 +375,7 @@ public struct CLIGitProvider: GitProviding {
         remote: String?,
         force: Bool,
         pushTags: Bool,
+        tags: [String],
         in repository: URL
     ) async throws -> GitRemoteOperationResult {
         let currentStatus = try await status(in: repository)
@@ -369,9 +411,6 @@ public struct CLIGitProvider: GitProviding {
         }
 
         var args = ["push"]
-        if pushTags {
-            args.append("--tags")
-        }
         if force {
             args.append("--force-with-lease")
         }
@@ -383,9 +422,30 @@ public struct CLIGitProvider: GitProviding {
         }
         args.append(targetRemote)
         args.append(branchName)
+        let tagRefs = tags.map { "refs/tags/\($0)" }
 
-        let result = try await run(args, in: repository)
-        return remoteResult(result)
+        var results: [ProcessResult] = []
+        if tagRefs.isEmpty {
+            try await results.append(run(args, in: repository))
+        } else {
+            // One atomic push: a tag never lands on the remote while its
+            // commit is missing from the branch, as when the branch is rejected.
+            // In English, so the refusal below reads the same in every locale.
+            var english = gitEnvironment()
+            english["LC_ALL"] = "C"
+            do {
+                try await results.append(run([args[0], "--atomic"] + args.dropFirst() + tagRefs, in: repository, environment: english))
+            } catch GitError.commandFailed(_, _, let stderr) where stderr.contains("does not support --atomic") {
+                // An older server: the branch first, its tags only once it is in.
+                try await results.append(run(args, in: repository))
+                try await results.append(run(["push", targetRemote] + tagRefs, in: repository))
+            }
+        }
+        if pushTags {
+            // Every other tag goes after the branch, for the same reason.
+            try await results.append(run(["push", "--tags", targetRemote], in: repository))
+        }
+        return remoteResult(results)
     }
 
     public func push(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult {
@@ -570,11 +630,12 @@ public struct CLIGitProvider: GitProviding {
         return output
     }
 
+    @discardableResult
     public func commitFiles(
         _ plan: FileCommitPlan,
         in repository: URL,
         progress: (@Sendable (Int) -> Void)?
-    ) async throws {
+    ) async throws -> [FileCommitPlan.TagFailure] {
         try await GitCommandQueue.shared.run(repository: repository) {
             var scoped = self
             scoped.ownsCommandSlot = true
@@ -583,6 +644,7 @@ public struct CLIGitProvider: GitProviding {
             try await scoped.ensureNoOperationInProgress(in: repository)
             let untracked = Set(status.entries.filter(\.isUntracked).map(\.path))
             var completed = 0
+            var tagFailures: [FileCommitPlan.TagFailure] = []
             do {
                 for commit in commits {
                     // `commit --only` accepts only paths Git already knows about.
@@ -592,12 +654,26 @@ public struct CLIGitProvider: GitProviding {
                     }
                     try await scoped.commitOnly(commit, in: repository)
                     completed += 1
+                    // HEAD is this commit until the next one: nothing else runs in between.
+                    for tag in commit.tags {
+                        do {
+                            try await scoped.createTag(name: tag.name, targetOID: "HEAD", message: tag.message, in: repository)
+                        } catch {
+                            tagFailures.append(FileCommitPlan.TagFailure(name: tag.name, reason: error.localizedDescription))
+                        }
+                    }
                     progress?(completed)
                 }
             } catch {
                 // Never auto-reset or retry: hooks or Git may already have made progress.
-                throw CommitPlanError(completed: completed, total: commits.count, reason: error.localizedDescription)
+                let tagReasons = tagFailures.map { "Tag \($0.name) was not created: \($0.reason)" }
+                throw CommitPlanError(
+                    completed: completed,
+                    total: commits.count,
+                    reason: ([error.localizedDescription] + tagReasons).joined(separator: "\n")
+                )
             }
+            return tagFailures
         }
     }
 
@@ -958,9 +1034,10 @@ public struct CLIGitProvider: GitProviding {
     func run(
         _ arguments: [String],
         in repository: URL,
-        allowedExitCodes: Set<Int32> = [0]
+        allowedExitCodes: Set<Int32> = [0],
+        environment: [String: String]? = nil
     ) async throws -> ProcessResult {
-        let result = try await execute(arguments, in: repository)
+        let result = try await execute(arguments, in: repository, environment: environment)
         guard allowedExitCodes.contains(result.exitCode) else {
             throw GitError.commandFailed(
                 command: (["git"] + arguments).joined(separator: " "),
@@ -1073,7 +1150,12 @@ public struct CLIGitProvider: GitProviding {
     }
 
     func remoteResult(_ result: ProcessResult) -> GitRemoteOperationResult {
-        let output = [result.stdoutString, result.stderrString]
+        remoteResult([result])
+    }
+
+    /// The output of several remote commands run for one operation, in order.
+    func remoteResult(_ results: [ProcessResult]) -> GitRemoteOperationResult {
+        let output = results.flatMap { [$0.stdoutString, $0.stderrString] }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
