@@ -58,11 +58,9 @@ struct AIDebugDrawer: View {
     private func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            if event.keyCode == 53 { // escape
-                if store.aiDebugDrawerVisible {
-                    Task { @MainActor in store.closeAIDebugDrawer() }
-                    return nil
-                }
+            if event.keyCode == 53, store.aiDebugDrawerVisible { // escape
+                Task { @MainActor in store.closeAIDebugDrawer() }
+                return nil
             }
             return event
         }

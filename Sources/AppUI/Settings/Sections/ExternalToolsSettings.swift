@@ -87,7 +87,6 @@ struct ExternalToolsSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private func testResultView(_ result: AICLIValidator.TestResult) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
