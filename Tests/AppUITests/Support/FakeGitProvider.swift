@@ -13,6 +13,12 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public var commitFiles: [String: [CommitFileChange]]
     public var lastCommit: String?
     public var repositoryRootHandler: (@Sendable (URL) async throws -> URL)?
+    /// What `defaultBranch(remote:in:)` reports for every remote.
+    public var defaultBranchName: String?
+    /// What `trackedPaths(in:)` reports.
+    public var trackedPaths: [String] = []
+    /// Makes `trackedPaths(in:)` fail, as a cancelled lookup does.
+    public var trackedPathsError: (any Error)?
 
     /// Recorded calls for batched staging assertions in tests.
     public private(set) var stagePathsCalls: [[String]] = []
@@ -59,6 +65,18 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public private(set) var events: [String] = []
     /// Patches `applyPatch` received, with where they went.
     public private(set) var appliedPatches: [(patch: String, toIndex: Bool, reverse: Bool)] = []
+    /// Tags `createTag` made, as "name@target", in call order.
+    public private(set) var createdTags: [String] = []
+    /// Tags whose creation Git refuses, as when one already exists.
+    public var refusedTags: Set<String> = []
+    /// What `unpushedTags(branch:remote:in:)` reports.
+    public var unpushedTags: [UnpushedTag] = []
+    /// Commits `remoteHasCommit` reports as pushed.
+    public var pushedCommits: Set<String> = []
+    /// Revisions `resolveCommit` knows, mapped to their commit IDs.
+    public var resolvableCommits: [String: String] = [:]
+    /// Tags passed to the explicit push, one list per push.
+    public private(set) var pushedTagLists: [[String]] = []
 
     public init(
         status: WorkingCopyStatus,
@@ -269,18 +287,29 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         return workingTreeDiffText
     }
 
-    public func commitFiles(_ plan: FileCommitPlan, in _: URL, progress: (@Sendable (Int) -> Void)?) async throws {
+    public func commitFiles(_ plan: FileCommitPlan, in _: URL, progress: (@Sendable (Int) -> Void)?) async throws -> [FileCommitPlan.TagFailure] {
         commitPlanCalls.append(plan)
         events.append("plan " + plan.commits.map(\.message).joined(separator: ","))
         let commits = try plan.resolved(against: status)
+        var failures: [FileCommitPlan.TagFailure] = []
         for (index, commit) in commits.enumerated() {
             if let limit = failCommitPlanAfter, index == limit {
                 throw CommitPlanError(completed: index, total: commits.count, reason: "simulated hook failure")
             }
             let done = Set(commit.files)
             status = WorkingCopyStatus(branch: status.branch, entries: status.entries.filter { !done.contains($0.path) })
+            for tag in commit.tags {
+                if refusedTags.contains(tag.name) {
+                    failures.append(FileCommitPlan.TagFailure(name: tag.name, reason: "tag '\(tag.name)' already exists"))
+                } else {
+                    createdTags.append("\(tag.name)@\(commit.message)")
+                    events.append("tag \(tag.name)")
+                    addTagRef(tag.name)
+                }
+            }
             progress?(index + 1)
         }
+        return failures
     }
 
     public func unstageAll(in _: URL) async throws {}
@@ -320,10 +349,44 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     }
 
     public func defaultBranch(remote _: String, in _: URL) async throws -> String? {
-        nil
+        defaultBranchName
     }
 
-    public func createTag(name _: String, targetOID _: String, message _: String?, in _: URL) async throws {}
+    public func trackedPaths(in _: URL) async throws -> [String] {
+        if let trackedPathsError {
+            throw trackedPathsError
+        }
+        return trackedPaths
+    }
+
+    public func createTag(name: String, targetOID: String, message _: String?, in _: URL) async throws {
+        if refusedTags.contains(name) {
+            throw GitError.commandFailed(command: "git tag -- \(name) \(targetOID)", exitCode: 128, stderr: "fatal: tag '\(name)' already exists")
+        }
+        createdTags.append("\(name)@\(targetOID)")
+        events.append("tag \(name)")
+        addTagRef(name)
+    }
+
+    private func addTagRef(_ name: String) {
+        refs = RepositoryRefs(
+            localBranches: refs.localBranches,
+            remoteBranches: refs.remoteBranches,
+            tags: refs.tags + [GitReference(name: name, fullName: "refs/tags/\(name)", oid: "tag-\(name)", kind: .tag)]
+        )
+    }
+
+    public func unpushedTags(branch _: String, remote _: String, in _: URL) async throws -> [UnpushedTag] {
+        unpushedTags
+    }
+
+    public func remoteHasCommit(_ commit: String, remote _: String, in _: URL) async throws -> Bool {
+        pushedCommits.contains(commit)
+    }
+
+    public func resolveCommit(_ revision: String, in _: URL) async throws -> String? {
+        resolvableCommits[revision]
+    }
 
     public func deleteTag(named name: String, in _: URL) async throws {
         deleteTagCalls.append(name)
@@ -379,8 +442,9 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
         false
     }
 
-    public func push(branch: String?, remote: String?, force _: Bool, pushTags _: Bool, in _: URL) async throws -> GitRemoteOperationResult {
-        pushCalls.append("push \(remote ?? "") \(branch ?? "")")
+    public func push(branch: String?, remote: String?, force _: Bool, pushTags _: Bool, tags: [String], in _: URL) async throws -> GitRemoteOperationResult {
+        pushCalls.append("push \(remote ?? "") \(branch ?? "")" + (tags.isEmpty ? "" : " " + tags.joined(separator: " ")))
+        pushedTagLists.append(tags)
         return GitRemoteOperationResult(output: "ok")
     }
 

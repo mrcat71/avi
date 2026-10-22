@@ -194,6 +194,51 @@ struct CommitPlanExecutionTests {
         }
     }
 
+    /// A release commit gets its tag before the next commit is made, so the
+    /// tag marks exactly that commit.
+    @Test func tagsLandOnTheirOwnCommits() async throws {
+        try await withTempRepo { repo in
+            try await seed(repo, ["a.txt", "b.txt", "c.txt"])
+            for file in ["a.txt", "b.txt", "c.txt"] {
+                try repo.write(file, "v2\n")
+            }
+
+            let plan = FileCommitPlan(commits: [
+                .init(files: ["a.txt"], message: "feat: first", tags: [NewTag(name: "first-done")]),
+                .init(files: ["b.txt"], message: "chore(release): prepare 1.0", tags: [NewTag(name: "v1.0", message: "Release 1.0")]),
+                .init(files: ["c.txt"], message: "docs: after the release")
+            ])
+            let failures = try await provider(repo).commitFiles(plan, in: repo.url)
+
+            #expect(failures.isEmpty)
+            #expect(try await repo.git("rev-parse", "first-done").stdoutString == repo.git("rev-parse", "HEAD~2").stdoutString)
+            #expect(try await repo.git("rev-parse", "v1.0^{commit}").stdoutString == repo.git("rev-parse", "HEAD~1").stdoutString)
+            #expect(try await repo.git("cat-file", "-t", "first-done").stdoutString == "commit\n")
+            #expect(try await repo.git("cat-file", "-t", "v1.0").stdoutString == "tag\n")
+            #expect(try await repo.git("tag", "-l", "--format=%(contents:subject)", "v1.0").stdoutString == "Release 1.0\n")
+        }
+    }
+
+    /// A tag Git refuses is reported, and every commit is still made.
+    @Test func aTagThatCannotBeMadeLeavesTheCommitsMade() async throws {
+        try await withTempRepo { repo in
+            try await seed(repo, ["a.txt", "b.txt"])
+            try await repo.git("tag", "v1.0")
+            try repo.write("a.txt", "v2\n")
+            try repo.write("b.txt", "v2\n")
+
+            let plan = FileCommitPlan(commits: [
+                .init(files: ["a.txt"], message: "first", tags: [NewTag(name: "v1.0")]),
+                .init(files: ["b.txt"], message: "second")
+            ])
+            let failures = try await provider(repo).commitFiles(plan, in: repo.url)
+
+            #expect(failures.map(\.name) == ["v1.0"])
+            #expect(try await subjects(repo, count: 2) == ["second", "first"])
+            #expect(try await repo.git("rev-parse", "v1.0").stdoutString == repo.git("rev-parse", "HEAD~2").stdoutString)
+        }
+    }
+
     @Test func invalidPlanNeverMutates() async throws {
         try await withTempRepo { repo in
             try await seed(repo, ["a.txt"])

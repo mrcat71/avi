@@ -27,10 +27,13 @@ public struct HistoryFilter: Sendable, Equatable {
 /// swapped in behind this protocol.
 public protocol GitProviding: Sendable {
     /// Create the plan's commits in order, each from the working-tree content of
-    /// its files, without interleaving other Avi commands. `progress` receives
-    /// the number of commits made so far. Throws `CommitPlanError` when a commit
-    /// fails after others were made.
-    func commitFiles(_ plan: FileCommitPlan, in repository: URL, progress: (@Sendable (Int) -> Void)?) async throws
+    /// its files, without interleaving other Avi commands. A commit's tags are
+    /// created on it right after it is made. `progress` receives the number of
+    /// commits made so far. Throws `CommitPlanError` when a commit fails after
+    /// others were made; returns the tags that could not be created, whose
+    /// commits were made all the same.
+    @discardableResult
+    func commitFiles(_ plan: FileCommitPlan, in repository: URL, progress: (@Sendable (Int) -> Void)?) async throws -> [FileCommitPlan.TagFailure]
 
     /// Top-level directory of the repository containing `url`. Throws if `url` is not in a repo.
     func repositoryRoot(for url: URL) async throws -> URL
@@ -66,6 +69,9 @@ public protocol GitProviding: Sendable {
     /// The default branch advertised by `remote` (resolved from `refs/remotes/<remote>/HEAD`).
     /// Returns `nil` when the remote's HEAD is not set locally (caller decides the fallback).
     func defaultBranch(remote: String, in repository: URL) async throws -> String?
+
+    /// Every path Git tracks in the working tree, relative to its root.
+    func trackedPaths(in repository: URL) async throws -> [String]
 
     /// Files changed by `commitOID`.
     func changedFiles(in commitOID: String, in repository: URL) async throws -> [CommitFileChange]
@@ -108,6 +114,17 @@ public protocol GitProviding: Sendable {
     /// Runs `git push <remote> refs/tags/<name>`.
     func pushTag(name: String, remote: String?, in repository: URL) async throws -> GitRemoteOperationResult
 
+    /// Local tags on commits that a push of `branch` to `remote` sends: the
+    /// commits no remote-tracking branch of `remote` has, as of the last fetch.
+    func unpushedTags(branch: String, remote: String, in repository: URL) async throws -> [UnpushedTag]
+
+    /// Whether a remote-tracking branch of `remote` contains `commit`, so a
+    /// tag on it can be pushed alone without arriving before its commit.
+    func remoteHasCommit(_ commit: String, remote: String, in repository: URL) async throws -> Bool
+
+    /// The full commit ID `revision` names, or nil when it names no commit.
+    func resolveCommit(_ revision: String, in repository: URL) async throws -> String?
+
     /// Delete a tag from the local repository only. A tag already pushed stays
     /// on the remote, because published tags are what releases are built from.
     func deleteTag(named name: String, in repository: URL) async throws
@@ -140,14 +157,19 @@ public protocol GitProviding: Sendable {
     func push(branch: String?, in repository: URL) async throws -> GitRemoteOperationResult
 
     /// Push the current branch with explicit options. `remote` overrides the upstream remote.
-    /// `force` uses `--force-with-lease` (safer than `--force`). `pushTags` adds `--tags`.
+    /// `force` uses `--force-with-lease` (safer than `--force`).
     /// The branch is pushed under its own name, which becomes its upstream
     /// when the upstream was anything else.
+    /// `tags` go in the same `--atomic` push as the branch, so the remote takes
+    /// the branch and those tags together or none of them; a server without
+    /// atomic pushes gets the branch first and the tags after it.
+    /// `pushTags` then pushes every other tag (`--tags`), once the branch is in.
     func push(
         branch: String?,
         remote: String?,
         force: Bool,
         pushTags: Bool,
+        tags: [String],
         in repository: URL
     ) async throws -> GitRemoteOperationResult
 
@@ -497,12 +519,28 @@ public extension GitProviding {
         try await diff(commitOID: commitOID, path: path, oldPath: oldPath, in: repository)
     }
 
-    func commitFiles(_: FileCommitPlan, in _: URL, progress _: (@Sendable (Int) -> Void)?) async throws {
+    func commitFiles(_: FileCommitPlan, in _: URL, progress _: (@Sendable (Int) -> Void)?) async throws -> [FileCommitPlan.TagFailure] {
         throw GitError.invalidInput("This Git provider does not support commit plans.")
     }
 
-    func commitFiles(_ plan: FileCommitPlan, in repository: URL) async throws {
+    @discardableResult
+    func commitFiles(_ plan: FileCommitPlan, in repository: URL) async throws -> [FileCommitPlan.TagFailure] {
         try await commitFiles(plan, in: repository, progress: nil)
+    }
+
+    // A provider that cannot tell what the remote has offers no tags to push
+    // with a branch and treats every commit as not pushed yet.
+
+    func unpushedTags(branch _: String, remote _: String, in _: URL) async throws -> [UnpushedTag] {
+        []
+    }
+
+    func remoteHasCommit(_: String, remote _: String, in _: URL) async throws -> Bool {
+        false
+    }
+
+    func resolveCommit(_: String, in _: URL) async throws -> String? {
+        nil
     }
 
     func workingTreeDiff(paths _: [String], in _: URL) async throws -> String {
@@ -521,9 +559,21 @@ public extension GitProviding {
         remote _: String?,
         force _: Bool,
         pushTags _: Bool,
+        tags _: [String],
         in repository: URL
     ) async throws -> GitRemoteOperationResult {
         try await push(branch: branch, in: repository)
+    }
+
+    /// A push that sends no tags along with the branch.
+    func push(
+        branch: String?,
+        remote: String?,
+        force: Bool,
+        pushTags: Bool,
+        in repository: URL
+    ) async throws -> GitRemoteOperationResult {
+        try await push(branch: branch, remote: remote, force: force, pushTags: pushTags, tags: [], in: repository)
     }
 
     /// Default: stage paths one at a time. The CLI provider overrides this with a

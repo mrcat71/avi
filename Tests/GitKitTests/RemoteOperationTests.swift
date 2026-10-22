@@ -320,6 +320,135 @@ struct RemoteOperationTests {
         #expect(try await provider.status(in: fixture.repo.url).entries.contains { $0.isConflicted && $0.path == "a.txt" })
     }
 
+    /// The release case: a commit and its tag reach the remote in one push.
+    @Test func pushSendsTheBranchAndItsTagsTogether() async throws {
+        let fixture = try await makeClone()
+        defer { fixture.removeAll() }
+        try await commitLocally(fixture.repo, file: "release.txt", message: "chore(release): prepare 1.0")
+        try await fixture.repo.git("tag", "-a", "-m", "1.0", "v1.0")
+        try await fixture.repo.git("tag", "local-label", "HEAD~1")
+        let provider = CLIGitProvider(gitURL: gitURL)
+
+        // Only tags on commits the remote lacks; local-label is on one it has.
+        #expect(try await provider.unpushedTags(branch: "main", remote: "origin", in: fixture.repo.url) == [UnpushedTag(name: "v1.0", isAnnotated: true)])
+        _ = try await provider.push(branch: nil, remote: nil, force: false, pushTags: false, tags: ["v1.0"], in: fixture.repo.url)
+
+        let head = try await fixture.repo.git("rev-parse", "HEAD").stdoutString
+        #expect(try await git(["--git-dir", fixture.remoteURL.path, "rev-parse", "main"], in: nil).stdoutString == head)
+        #expect(try await git(["--git-dir", fixture.remoteURL.path, "rev-parse", "v1.0^{commit}"], in: nil).stdoutString == head)
+        #expect(try await remoteTags(fixture) == ["v1.0"])
+        #expect(try await provider.unpushedTags(branch: "main", remote: "origin", in: fixture.repo.url).isEmpty)
+    }
+
+    /// Git refuses the branch on the client: its tag must not land alone.
+    @Test func aBranchThatCannotFastForwardKeepsItsTagsBack() async throws {
+        let fixture = try await makeDivergedClone()
+        defer { fixture.removeAll() }
+        try await fixture.repo.git("tag", "v1.0")
+
+        await #expect(throws: GitError.self) {
+            _ = try await CLIGitProvider(gitURL: gitURL).push(branch: nil, remote: nil, force: false, pushTags: false, tags: ["v1.0"], in: fixture.repo.url)
+        }
+        #expect(try await remoteTags(fixture).isEmpty)
+    }
+
+    /// The server refuses the branch, as a protected branch does: the tag
+    /// goes nowhere either, where a plain push would have published it.
+    @Test func aBranchTheServerRefusesKeepsItsTagsBack() async throws {
+        let fixture = try await makeClone()
+        defer { fixture.removeAll() }
+        try installUpdateHook(in: fixture.remoteURL, refusing: "refs/heads/main")
+        try await git(["--git-dir", fixture.remoteURL.path, "config", "core.hooksPath", fixture.remoteURL.appendingPathComponent("hooks").path], in: nil)
+        try await commitLocally(fixture.repo, file: "release.txt", message: "release")
+        try await fixture.repo.git("tag", "v1.0")
+
+        await #expect(throws: GitError.self) {
+            _ = try await CLIGitProvider(gitURL: gitURL).push(branch: nil, remote: nil, force: false, pushTags: false, tags: ["v1.0"], in: fixture.repo.url)
+        }
+        #expect(try await remoteTags(fixture).isEmpty)
+    }
+
+    /// A server without atomic pushes gets the branch first and the tag after it.
+    @Test func aServerWithoutAtomicPushesGetsTheBranchBeforeTheTag() async throws {
+        let fixture = try await makeClone()
+        defer { fixture.removeAll() }
+        try await git(["--git-dir", fixture.remoteURL.path, "config", "receive.advertiseAtomic", "false"], in: nil)
+        try await commitLocally(fixture.repo, file: "release.txt", message: "release")
+        try await fixture.repo.git("tag", "v1.0")
+
+        let result = try await CLIGitProvider(gitURL: gitURL).push(branch: nil, remote: nil, force: false, pushTags: false, tags: ["v1.0"], in: fixture.repo.url)
+
+        let head = try await fixture.repo.git("rev-parse", "HEAD").stdoutString
+        #expect(try await git(["--git-dir", fixture.remoteURL.path, "rev-parse", "main"], in: nil).stdoutString == head)
+        #expect(try await remoteTags(fixture) == ["v1.0"])
+        // Two pushes, one per "To <remote>" line: the branch, then the tag.
+        #expect(result.output.split(separator: "\n").filter { $0.hasPrefix("To ") }.count == 2)
+    }
+
+    /// Push all tags sends the other tags once the branch and its own are in.
+    @Test func pushAllTagsSendsTheOtherTagsAfterTheBranch() async throws {
+        let fixture = try await makeClone()
+        defer { fixture.removeAll() }
+        try await fixture.repo.git("tag", "old-label")
+        try await commitLocally(fixture.repo, file: "release.txt", message: "release")
+        try await fixture.repo.git("tag", "v1.0")
+
+        _ = try await CLIGitProvider(gitURL: gitURL).push(branch: nil, remote: nil, force: false, pushTags: true, tags: ["v1.0"], in: fixture.repo.url)
+
+        #expect(try await remoteTags(fixture) == ["old-label", "v1.0"])
+    }
+
+    @Test func remoteHasCommitKnowsWhatWasPushed() async throws {
+        let fixture = try await makeClone()
+        defer { fixture.removeAll() }
+        let provider = CLIGitProvider(gitURL: gitURL)
+        let pushed = try await fixture.repo.git("rev-parse", "HEAD").stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+        try await commitLocally(fixture.repo, file: "local.txt", message: "local")
+        let local = try await fixture.repo.git("rev-parse", "HEAD").stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        #expect(try await provider.remoteHasCommit(pushed, remote: "origin", in: fixture.repo.url))
+        #expect(try await !provider.remoteHasCommit(local, remote: "origin", in: fixture.repo.url))
+        #expect(try await !provider.remoteHasCommit(pushed, remote: "upstream", in: fixture.repo.url))
+    }
+
+    @Test func resolveCommitNamesOnlyCommits() async throws {
+        let fixture = try await makeClone()
+        defer { fixture.removeAll() }
+        try await fixture.repo.git("tag", "-a", "-m", "annotated", "v1.0")
+        let provider = CLIGitProvider(gitURL: gitURL)
+        let head = try await fixture.repo.git("rev-parse", "HEAD").stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        #expect(try await provider.resolveCommit("HEAD", in: fixture.repo.url) == head)
+        #expect(try await provider.resolveCommit("v1.0", in: fixture.repo.url) == head)
+        #expect(try await provider.resolveCommit(String(head.prefix(8)), in: fixture.repo.url) == head)
+        #expect(try await provider.resolveCommit("--all", in: fixture.repo.url) == nil)
+        #expect(try await provider.resolveCommit("no-such-thing", in: fixture.repo.url) == nil)
+    }
+
+    private func commitLocally(_ repo: GitFixture, file: String, message: String) async throws {
+        try await repo.git("config", "user.email", "test@example.com")
+        try await repo.git("config", "user.name", "Avi Test")
+        try await repo.git("config", "commit.gpgsign", "false")
+        try repo.write(file, message + "\n")
+        try await repo.git("add", file)
+        try await repo.git("commit", "-q", "-m", message)
+    }
+
+    private func remoteTags(_ fixture: RemoteRepoFixture) async throws -> [String] {
+        try await git(["--git-dir", fixture.remoteURL.path, "tag", "-l"], in: nil)
+            .stdoutString.split(separator: "\n").map(String.init).sorted()
+    }
+
+    /// An `update` hook decides per ref, the way branch protection does.
+    private func installUpdateHook(in remote: URL, refusing ref: String) throws {
+        let hooks = remote.appendingPathComponent("hooks")
+        try FileManager.default.createDirectory(at: hooks, withIntermediateDirectories: true)
+        let hook = hooks.appendingPathComponent("update")
+        try "#!/bin/sh\nif [ \"$1\" = \"\(ref)\" ]; then echo 'protected' >&2; exit 1; fi\nexit 0\n"
+            .write(to: hook, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook.path)
+    }
+
     /// A clone with a commit of its own while the remote got another one.
     /// With `conflicting`, both commits change the same line of a.txt.
     private func makeDivergedClone(conflicting: Bool = false) async throws -> RemoteRepoFixture {

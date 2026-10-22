@@ -7,10 +7,24 @@ public struct FileCommitPlan: Sendable, Equatable {
     public struct Commit: Sendable, Equatable {
         public let files: [String]
         public let message: String
+        /// Created on this commit right after it is made, before the next one.
+        public let tags: [NewTag]
 
-        public init(files: [String], message: String) {
+        public init(files: [String], message: String, tags: [NewTag] = []) {
             self.files = files
             self.message = message
+            self.tags = tags
+        }
+    }
+
+    /// A tag the plan could not create. Its commit was made all the same.
+    public struct TagFailure: Sendable, Equatable {
+        public let name: String
+        public let reason: String
+
+        public init(name: String, reason: String) {
+            self.name = name
+            self.reason = reason
         }
     }
 
@@ -72,7 +86,7 @@ public struct FileCommitPlan: Sendable, Equatable {
             for path in files where !seen.insert(path).inserted {
                 duplicates.append(path)
             }
-            resolved.append(Commit(files: files, message: commit.message))
+            resolved.append(Commit(files: files, message: commit.message, tags: commit.tags))
         }
         guard unknown.isEmpty else { throw ValidationError.unknownPaths(unknown) }
         guard duplicates.isEmpty else { throw ValidationError.duplicatePaths(duplicates) }
