@@ -100,6 +100,10 @@ new one, everyone has to install the next version by hand from the disk image.
    .build/release/AviApp --self-test
    ```
 
+   `swift test` skips the tests that put a window on screen and click or press
+   keys in it unless `AVI_UI_TESTS=1` is set. CI runs them, so the CI run on
+   the release commit covers them.
+
    The reported version must match the intended tag. `--self-test` runs the
    AI preflight in the release binary, where a miscompiled async sleep aborts
    it (0.4.0 shipped with one). Branch CI runs it with its own toolchain, and

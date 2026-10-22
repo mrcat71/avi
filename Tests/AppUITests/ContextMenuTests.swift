@@ -7,6 +7,10 @@ import XCTest
 /// Drives the real branch and changed-file context menus, so their contents
 /// can be checked against Fork's without launching the app.
 final class ContextMenuTests: XCTestCase {
+    override func setUpWithError() throws {
+        try XCTSkipUnless(OnScreenTests.enabled, OnScreenTests.skipMessage)
+    }
+
     func testBranchMenuMatchesForksLayout() throws {
         try MainActor.assumeIsolated {
             let fixture = try MenuFixture(provider: Self.provider())

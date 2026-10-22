@@ -7,7 +7,8 @@ import Testing
 @MainActor
 @Suite("Workspace restoration")
 struct WorkspaceRestorationTests {
-    @Test func startupViewKeepsRestoringAfterTheFirstTabAppears() async throws {
+    @Test(.enabled(if: OnScreenTests.enabled, Comment(rawValue: OnScreenTests.skipMessage)))
+    func startupViewKeepsRestoringAfterTheFirstTabAppears() async throws {
         let fixture = try Fixture()
         defer { fixture.close() }
         let original = fixture.session()

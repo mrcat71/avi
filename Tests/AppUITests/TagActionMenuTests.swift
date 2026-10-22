@@ -7,6 +7,10 @@ import XCTest
 /// Drives the real ref button's menu, so "the action is missing" is answerable
 /// without launching the app.
 final class TagActionMenuTests: XCTestCase {
+    override func setUpWithError() throws {
+        try XCTSkipUnless(OnScreenTests.enabled, OnScreenTests.skipMessage)
+    }
+
     func testTagMenuOffersPushAndDelete() throws {
         try MainActor.assumeIsolated {
             let fixture = Fixture()

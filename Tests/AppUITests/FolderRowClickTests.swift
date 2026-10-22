@@ -12,6 +12,10 @@ import XCTest
 /// click on the name selects through the row's drag gesture, but on the CI
 /// runner a synthetic click there selects nothing, however it is delivered.
 final class FolderRowClickTests: XCTestCase {
+    override func setUpWithError() throws {
+        try XCTSkipUnless(OnScreenTests.enabled, OnScreenTests.skipMessage)
+    }
+
     func testChevronTogglesAndSelectingTheFolderSelectsItsFiles() throws {
         try MainActor.assumeIsolated {
             guard ConfigStore.shared.config.appearance.fileListMode == "tree" else {

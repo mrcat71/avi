@@ -7,6 +7,10 @@ import XCTest
 /// Presses the arrow keys on the real Changes lists. Each list gives its
 /// files in the same order flat and as a tree, so this holds in either mode.
 final class ChangesArrowKeysTests: XCTestCase {
+    override func setUpWithError() throws {
+        try XCTSkipUnless(OnScreenTests.enabled, OnScreenTests.skipMessage)
+    }
+
     func testArrowsStepThroughUnstagedFilesAndSkipFolders() throws {
         try MainActor.assumeIsolated {
             let fixture = try Fixture()
