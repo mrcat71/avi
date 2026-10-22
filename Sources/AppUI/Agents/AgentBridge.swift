@@ -205,7 +205,19 @@ public final class AgentBridge {
             return .failure(AgentErrorBody(code: .badRequest, message: "`repo` must be an absolute path."))
         }
         guard let commits = params.commits, !commits.isEmpty else {
+            if let tag = params.tag {
+                return await proposeTag(tag, params, repo: repo)
+            }
             return .failure(AgentErrorBody(code: .noCommits, message: "The proposal has no commits."))
+        }
+        if params.tag != nil {
+            return .failure(AgentErrorBody(
+                code: .badRequest,
+                message: "A top-level `tag` is for a commit that already exists, sent without commits. Put a new commit's tag on that commit."
+            ))
+        }
+        if commits.contains(where: { $0.tag?.at != nil }) {
+            return .failure(AgentErrorBody(code: .badRequest, message: "A commit's tag goes on that commit; `at` is only for a tag sent without commits."))
         }
         let root = URL(fileURLWithPath: repo)
         let canonicalRoot = Self.canonicalPath(root)
@@ -214,7 +226,11 @@ public final class AgentBridge {
             session: Self.nonEmpty(params.session) ?? "default",
             title: Self.nonEmpty(params.title),
             commits: commits.map { commit in
-                AgentProposal.Commit(message: commit.message, files: (commit.files ?? []).map { Self.relativePath($0, root: canonicalRoot) })
+                AgentProposal.Commit(
+                    message: commit.message,
+                    files: (commit.files ?? []).map { Self.relativePath($0, root: canonicalRoot) },
+                    tags: commit.tag.map { [$0.newTag] } ?? []
+                )
             },
             replace: params.replace ?? false
         )
@@ -237,6 +253,45 @@ public final class AgentBridge {
                         commits: outcome.commits,
                         staged: outcome.staged,
                         notes: outcome.notes,
+                        tags: outcome.tags,
+                        repo: Self.status(of: store)
+                    ))
+                } catch let rejection as ProposalRejection {
+                    return .failure(AgentErrorBody(rejection))
+                } catch {
+                    return .failure(AgentErrorBody(code: .failed, message: error.localizedDescription))
+                }
+            }
+        }
+    }
+
+    /// A tag for a commit that already exists: it waits in a banner until you
+    /// create or dismiss it.
+    private func proposeTag(_ tag: AgentTag, _ params: AgentParams, repo: String) async -> AgentResponse {
+        let root = URL(fileURLWithPath: repo)
+        let agent = Self.nonEmpty(params.agent) ?? "Agent"
+        let source = DraftSource.agent(name: agent, session: Self.nonEmpty(params.session) ?? "default", title: Self.nonEmpty(params.title))
+        let revision = Self.nonEmpty(tag.at) ?? "HEAD"
+        return await serialized(Self.canonicalPath(root)) { [self] in
+            switch await locateOrOpen(root, requester: agent) {
+            case .failure(let error):
+                return .failure(error)
+            case .success(let (session, store)):
+                do {
+                    let outcome = try await store.receiveTagProposal(tag.newTag, at: revision, source: source)
+                    if params.focus == true {
+                        focus(store, in: session, showPlan: false)
+                    } else if let app = NSApp, !app.isActive {
+                        app.requestUserAttention(.informationalRequest)
+                    }
+                    updateDockBadge()
+                    return .success(AgentResult(
+                        app: appInfo,
+                        placement: outcome.placement,
+                        commits: outcome.commits,
+                        staged: outcome.staged,
+                        notes: outcome.notes,
+                        tags: outcome.tags,
                         repo: Self.status(of: store)
                     ))
                 } catch let rejection as ProposalRejection {
@@ -337,10 +392,25 @@ public final class AgentBridge {
     static func status(of store: RepositoryStore) -> AgentRepoStatus? {
         guard let root = store.root else { return nil }
         let drafts = store.commitPlan.drafts.map { draft in
-            pending(source: draft.source, subject: draft.subject, files: draft.files, edited: draft.isEdited)
+            pending(source: draft.source, subject: draft.subject, files: draft.files, edited: draft.isEdited, tags: draft.tags)
         }
         let field = store.fieldProposal.map { proposal in
-            pending(source: proposal.source, subject: CommitMessageParts.split(proposal.message).summary, files: proposal.files, edited: store.fieldWasEdited(proposal))
+            pending(
+                source: proposal.source,
+                subject: CommitMessageParts.split(proposal.message).summary,
+                files: proposal.files,
+                edited: store.fieldWasEdited(proposal),
+                tags: proposal.inField ? store.commitTags : proposal.tags
+            )
+        }
+        let tags = store.tagProposals.map { proposal in
+            var agent: String?
+            var session: String?
+            if case .agent(let name, let id, _) = proposal.source {
+                agent = name
+                session = id
+            }
+            return AgentPendingTag(agent: agent, session: session, name: proposal.tag.name, commit: proposal.commit)
         }
         return AgentRepoStatus(
             path: canonicalPath(root),
@@ -351,18 +421,20 @@ public final class AgentBridge {
             untracked: store.entries.filter(\.isUntracked).count,
             commitFieldInUse: !store.commitMessage.isEmpty,
             commitField: field,
-            drafts: drafts
+            drafts: drafts,
+            tags: tags.isEmpty ? nil : tags
         )
     }
 
-    private static func pending(source: DraftSource, subject: String, files: [String], edited: Bool) -> AgentPendingDraft {
+    private static func pending(source: DraftSource, subject: String, files: [String], edited: Bool, tags: [NewTag]) -> AgentPendingDraft {
+        let names = tags.isEmpty ? nil : tags.map(\.name)
         switch source {
         case .agent(let name, let session, _):
-            return AgentPendingDraft(source: "agent", agent: name, session: session, subject: subject, files: files, edited: edited)
+            return AgentPendingDraft(source: "agent", agent: name, session: session, subject: subject, files: files, edited: edited, tags: names)
         case .ai:
-            return AgentPendingDraft(source: "ai", subject: subject, files: files, edited: edited)
+            return AgentPendingDraft(source: "ai", subject: subject, files: files, edited: edited, tags: names)
         case .manual:
-            return AgentPendingDraft(source: "manual", subject: subject, files: files, edited: edited)
+            return AgentPendingDraft(source: "manual", subject: subject, files: files, edited: edited, tags: names)
         }
     }
 

@@ -2,11 +2,37 @@ import AppKit
 import GitKit
 import SwiftUI
 
-/// How a diff document is drawn: wrapped or scrolling sideways, and with or
-/// without marks for invisible characters.
+/// How a diff document is drawn: wrapped or scrolling sideways, with or
+/// without marks for invisible characters, in the Diff font, and colored
+/// for the file's language.
 struct DiffDisplay: Equatable {
     var wrapsLines = false
     var showsInvisibles = false
+    /// Settings > Appearance > Diff font; empty is the system monospaced font.
+    var fontFamily = ""
+    var fontSize: CGFloat = 12
+    /// The file's path, which picks the syntax colors.
+    var path = ""
+
+    var font: NSFont {
+        Self.codeFont(family: fontFamily, size: fontSize)
+    }
+
+    /// The Diff font at `size`, or the system monospaced font when the
+    /// family is empty, "SF Mono", or not installed.
+    static func codeFont(family: String, size: CGFloat) -> NSFont {
+        let trimmed = family.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || trimmed.caseInsensitiveCompare("SF Mono") == .orderedSame {
+            return .monospacedSystemFont(ofSize: size, weight: .regular)
+        }
+        return NSFontManager.shared.font(withFamily: trimmed, traits: [], weight: 5, size: size)
+            ?? NSFont(name: trimmed, size: size)
+            ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
+    var lineHeight: CGFloat {
+        (fontSize * 1.6).rounded()
+    }
 }
 
 /// A read-only document rather than independent row labels: selection, copying,
@@ -78,11 +104,19 @@ struct NativeDiffTextView: NSViewRepresentable {
     }
 
     /// Puts `document` in the scroll view, keeping the scroll position unless
-    /// a different file came in.
-    static func show(_ document: DiffDocument, in scroll: DiffScrollView, display: DiffDisplay, resetPosition: Bool) {
+    /// a different file came in. `words` overrides the word highlights, for
+    /// one side of a side-by-side diff.
+    static func show(
+        _ document: DiffDocument,
+        in scroll: DiffScrollView,
+        display: DiffDisplay,
+        resetPosition: Bool,
+        words: [WordHighlight]? = nil
+    ) {
         guard let text = scroll.documentView as? NSTextView else { return }
         let caret = min(text.selectedRange().location, (document.text as NSString).length)
-        text.textStorage?.setAttributedString(attributedText(document, wrapsLines: display.wrapsLines))
+        text.textStorage?.setAttributedString(attributedText(document, display: display, words: words))
+        (scroll.verticalRulerView as? DiffLineRuler)?.fontSize = display.fontSize
         (scroll.verticalRulerView as? DiffLineRuler)?.document = document
         scroll.document = document
         if resetPosition {
@@ -123,15 +157,49 @@ struct NativeDiffTextView: NSViewRepresentable {
     }
 
     static func document(_ diff: FileDiff) -> NSAttributedString {
-        attributedText(DiffDocument(diff), wrapsLines: false)
+        attributedText(DiffDocument(diff), display: DiffDisplay())
     }
 
-    static func attributedText(_ document: DiffDocument, wrapsLines: Bool) -> NSAttributedString {
+    /// A changed run of words inside a removed or added line.
+    struct WordHighlight {
+        let range: NSRange
+        let kind: DiffLine.Kind
+    }
+
+    /// The words each replaced line changed, in document offsets.
+    static func wordHighlights(_ document: DiffDocument) -> [WordHighlight] {
+        var result: [WordHighlight] = []
+        for (removed, added) in document.replacedLinePairs() {
+            guard let changes = WordDiff.changes(old: document.lineText(ofRow: removed), new: document.lineText(ofRow: added)) else { continue }
+            result += changes.old.map { WordHighlight(range: shifted($0, into: document.rows[removed]), kind: .deletion) }
+            result += changes.new.map { WordHighlight(range: shifted($0, into: document.rows[added]), kind: .addition) }
+        }
+        return result
+    }
+
+    /// The words that differ between rows facing each other in a side-by-side diff.
+    static func sideBySideWordHighlights(old: DiffDocument, new: DiffDocument) -> (old: [WordHighlight], new: [WordHighlight]) {
+        var oldWords: [WordHighlight] = []
+        var newWords: [WordHighlight] = []
+        for index in 0 ..< min(old.rows.count, new.rows.count) where old.rows[index].kind == .deletion && new.rows[index].kind == .addition {
+            guard let changes = WordDiff.changes(old: old.lineText(ofRow: index), new: new.lineText(ofRow: index)) else { continue }
+            oldWords += changes.old.map { WordHighlight(range: shifted($0, into: old.rows[index]), kind: .deletion) }
+            newWords += changes.new.map { WordHighlight(range: shifted($0, into: new.rows[index]), kind: .addition) }
+        }
+        return (oldWords, newWords)
+    }
+
+    /// A range in a line's text, moved past the row's "+ " marker.
+    private static func shifted(_ range: NSRange, into row: DiffDocument.Row) -> NSRange {
+        NSRange(location: row.range.location + 2 + range.location, length: range.length)
+    }
+
+    static func attributedText(_ document: DiffDocument, display: DiffDisplay, words: [WordHighlight]? = nil) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
-        paragraph.minimumLineHeight = 19
-        paragraph.lineBreakMode = wrapsLines ? .byCharWrapping : .byClipping
+        paragraph.minimumLineHeight = display.lineHeight
+        paragraph.lineBreakMode = display.wrapsLines ? .byCharWrapping : .byClipping
         let base: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .font: display.font,
             .foregroundColor: NSColor.textColor,
             .paragraphStyle: paragraph
         ]
@@ -140,15 +208,40 @@ struct NativeDiffTextView: NSViewRepresentable {
             var attributes: [NSAttributedString.Key: Any] = [:]
             switch row.kind {
             case .addition:
-                attributes[.backgroundColor] = NSColor.systemGreen.withAlphaComponent(0.14)
+                attributes[.backgroundColor] = NSColor.systemGreen.withAlphaComponent(0.12)
             case .deletion:
-                attributes[.backgroundColor] = NSColor.systemRed.withAlphaComponent(0.14)
+                attributes[.backgroundColor] = NSColor.systemRed.withAlphaComponent(0.12)
             case nil:
                 attributes[.foregroundColor] = NSColor.secondaryLabelColor
                 attributes[.backgroundColor] = NSColor.quaternaryLabelColor.withAlphaComponent(0.08)
             case .context, .noNewline: break
             }
             result.addAttributes(attributes, range: row.range)
+            // The + and - markers carry their line's color.
+            if row.kind == .addition || row.kind == .deletion, row.range.length >= 1 {
+                let color = row.kind == .addition ? NSColor.systemGreen : NSColor.systemRed
+                result.addAttribute(.foregroundColor, value: color, range: NSRange(location: row.range.location, length: 1))
+            }
+        }
+
+        // Syntax colors, skipped for very long diffs.
+        if let highlighter = SyntaxHighlighter.forPath(display.path), document.rows.count <= 20000 {
+            var inBlockComment = false
+            for (index, row) in document.rows.enumerated() {
+                guard let kind = row.kind, kind != .noNewline else {
+                    inBlockComment = false
+                    continue
+                }
+                let line = document.lineText(ofRow: index)
+                for (range, token) in highlighter.highlight(line, inBlockComment: &inBlockComment) {
+                    result.addAttribute(.foregroundColor, value: SyntaxHighlighter.color(for: token), range: shifted(range, into: row))
+                }
+            }
+        }
+
+        for word in words ?? wordHighlights(document) {
+            let color = word.kind == .addition ? NSColor.systemGreen : NSColor.systemRed
+            result.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.32), range: word.range)
         }
         return result
     }
@@ -158,7 +251,7 @@ struct NativeDiffTextView: NSViewRepresentable {
 /// Lines do not wrap here, so the two sides stay level row for row.
 struct SideBySideDiffView: NSViewRepresentable {
     let diff: FileDiff
-    var showsInvisibles = false
+    var display = DiffDisplay()
 
     func makeNSView(context _: Context) -> SideBySideDiffContainer {
         SideBySideDiffContainer()
@@ -166,11 +259,11 @@ struct SideBySideDiffView: NSViewRepresentable {
 
     func updateNSView(_ container: SideBySideDiffContainer, context: Context) {
         let coordinator = context.coordinator
-        guard coordinator.diff != diff || coordinator.showsInvisibles != showsInvisibles else { return }
+        guard coordinator.diff != diff || coordinator.display != display else { return }
         let diffChanged = coordinator.diff != diff
         coordinator.diff = diff
-        coordinator.showsInvisibles = showsInvisibles
-        container.show(diff, showsInvisibles: showsInvisibles, resetPosition: diffChanged)
+        coordinator.display = display
+        container.show(diff, display: display, resetPosition: diffChanged)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -179,7 +272,7 @@ struct SideBySideDiffView: NSViewRepresentable {
 
     final class Coordinator {
         var diff: FileDiff?
-        var showsInvisibles = false
+        var display = DiffDisplay()
     }
 }
 
@@ -208,12 +301,14 @@ final class SideBySideDiffContainer: NSSplitView {
 
     deinit { NotificationCenter.default.removeObserver(self) }
 
-    func show(_ diff: FileDiff, showsInvisibles: Bool, resetPosition: Bool) {
+    func show(_ diff: FileDiff, display: DiffDisplay, resetPosition: Bool) {
         let documents = DiffDocument.sideBySide(diff)
-        let display = DiffDisplay(wrapsLines: false, showsInvisibles: showsInvisibles)
-        for (scroll, document) in [(old, documents.old), (new, documents.new)] {
+        let words = NativeDiffTextView.sideBySideWordHighlights(old: documents.old, new: documents.new)
+        var display = display
+        display.wrapsLines = false
+        for (scroll, document, highlights) in [(old, documents.old, words.old), (new, documents.new, words.new)] {
             NativeDiffTextView.apply(display, to: scroll)
-            NativeDiffTextView.show(document, in: scroll, display: display, resetPosition: resetPosition)
+            NativeDiffTextView.show(document, in: scroll, display: display, resetPosition: resetPosition, words: highlights)
         }
     }
 

@@ -127,6 +127,8 @@ struct LocalBranchMenu: View {
 enum BranchSheet: Identifiable {
     case worktree(GitReference)
     case push(GitReference)
+    /// The Push sheet with "Create pull request" ticked.
+    case pullRequest(GitReference)
     case merge(GitReference)
     case rebase(GitReference)
     case interactiveRebase(GitReference)
@@ -136,6 +138,7 @@ enum BranchSheet: Identifiable {
         switch self {
         case .worktree(let ref): return "worktree:" + ref.fullName
         case .push(let ref): return "push:" + ref.fullName
+        case .pullRequest(let ref): return "pull-request:" + ref.fullName
         case .merge(let ref): return "merge:" + ref.fullName
         case .rebase(let ref): return "rebase:" + ref.fullName
         case .interactiveRebase(let ref): return "interactive:" + ref.fullName

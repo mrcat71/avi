@@ -36,6 +36,9 @@ public struct RootView: View {
         .task {
             await session.restore()
         }
+        .onChange(of: ConfigStore.shared.config.appearance.theme, initial: true) { _, theme in
+            AppAppearance.apply(theme)
+        }
     }
 
     /// The open repository or the picker, with the window's sheets, alerts,
@@ -155,6 +158,9 @@ public struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviPushRepository)) { _ in
             Task { await selectedStore?.push() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aviPushAndCreatePullRequest)) { _ in
+            selectedStore?.pushSheetRequest = PushSheetRequest(branch: nil, pullRequest: true)
         }
     }
 

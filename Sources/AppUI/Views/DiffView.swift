@@ -111,6 +111,19 @@ struct FileDiffView: View {
     var reload: (@MainActor () async -> Void)?
 
     private let preferences = DiffPreferences.shared
+    private let config = ConfigStore.shared
+
+    /// The toolbar's options, the Diff font from Settings > Appearance, and
+    /// the file's path for its syntax colors.
+    private var display: DiffDisplay {
+        DiffDisplay(
+            wrapsLines: preferences.wrapLines,
+            showsInvisibles: preferences.showInvisibles,
+            fontFamily: config.config.appearance.diffFont,
+            fontSize: CGFloat(min(max(config.config.appearance.fontSize, 11), 16) - 1),
+            path: title
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -149,15 +162,11 @@ struct FileDiffView: View {
                     description: preferences.ignoreWhitespace ? Text("Whitespace changes are hidden.") : nil
                 )
             } else if preferences.sideBySide {
-                SideBySideDiffView(diff: diff, showsInvisibles: preferences.showInvisibles)
+                SideBySideDiffView(diff: diff, display: display)
                     .id(title)
             } else {
-                NativeDiffTextView(
-                    diff: diff,
-                    display: DiffDisplay(wrapsLines: preferences.wrapLines, showsInvisibles: preferences.showInvisibles),
-                    lineActions: lineActions
-                )
-                .id(title)
+                NativeDiffTextView(diff: diff, display: display, lineActions: lineActions)
+                    .id(title)
             }
         } else {
             ProgressView()

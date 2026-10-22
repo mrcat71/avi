@@ -13,6 +13,7 @@ public struct AviConfig: Codable, Equatable, Sendable {
     public var advanced: AdvancedConfig
     public var clone: CloneConfig
     public var agents: AgentsConfig
+    public var pullRequests: PullRequestsConfig
 
     public init(
         version: Int = 1,
@@ -24,7 +25,8 @@ public struct AviConfig: Codable, Equatable, Sendable {
         externalTools: ExternalToolsConfig = .init(),
         advanced: AdvancedConfig = .init(),
         clone: CloneConfig = .init(),
-        agents: AgentsConfig = .init()
+        agents: AgentsConfig = .init(),
+        pullRequests: PullRequestsConfig = .init()
     ) {
         self.version = version
         self.general = general
@@ -36,6 +38,7 @@ public struct AviConfig: Codable, Equatable, Sendable {
         self.advanced = advanced
         self.clone = clone
         self.agents = agents
+        self.pullRequests = pullRequests
     }
 
     public init(from decoder: Decoder) throws {
@@ -51,6 +54,51 @@ public struct AviConfig: Codable, Equatable, Sendable {
         advanced = (try? c.decode(AdvancedConfig.self, forKey: .advanced)) ?? defaults.advanced
         clone = (try? c.decode(CloneConfig.self, forKey: .clone)) ?? defaults.clone
         agents = (try? c.decode(AgentsConfig.self, forKey: .agents)) ?? defaults.agents
+        pullRequests = (try? c.decode(PullRequestsConfig.self, forKey: .pullRequests)) ?? defaults.pullRequests
+    }
+}
+
+/// How pull and merge requests are made: their titles come from the branch
+/// name, with ticket keys and known names keeping their hyphens.
+public struct PullRequestsConfig: Codable, Equatable, Sendable {
+    /// Ticket projects matched in any case and written in capitals, so
+    /// `infra-123` becomes `INFRA-123`. Upper-case keys such as `INFRA-123`
+    /// are recognized without being listed.
+    public var ticketPrefixes: [String]
+    /// Names that keep their hyphens: literal names, patterns where `*`
+    /// stands for one word (`k8s-*-*-ams1`), or regular expressions between
+    /// slashes (`/k8s-[a-z0-9-]+/`).
+    public var keepHyphenated: [String]
+    /// Keep hyphenated names that are file or folder names in the repository,
+    /// such as an environment folder `k8s-infra-ah-ams1/`.
+    public var learnNamesFromRepository: Bool
+    /// Capitalize the first word of the title.
+    public var capitalize: Bool
+    /// Create pull requests as drafts by default.
+    public var draft: Bool
+
+    public init(
+        ticketPrefixes: [String] = [],
+        keepHyphenated: [String] = [],
+        learnNamesFromRepository: Bool = true,
+        capitalize: Bool = false,
+        draft: Bool = false
+    ) {
+        self.ticketPrefixes = ticketPrefixes
+        self.keepHyphenated = keepHyphenated
+        self.learnNamesFromRepository = learnNamesFromRepository
+        self.capitalize = capitalize
+        self.draft = draft
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = PullRequestsConfig()
+        ticketPrefixes = (try? c.decode([String].self, forKey: .ticketPrefixes)) ?? defaults.ticketPrefixes
+        keepHyphenated = (try? c.decode([String].self, forKey: .keepHyphenated)) ?? defaults.keepHyphenated
+        learnNamesFromRepository = (try? c.decode(Bool.self, forKey: .learnNamesFromRepository)) ?? defaults.learnNamesFromRepository
+        capitalize = (try? c.decode(Bool.self, forKey: .capitalize)) ?? defaults.capitalize
+        draft = (try? c.decode(Bool.self, forKey: .draft)) ?? defaults.draft
     }
 }
 

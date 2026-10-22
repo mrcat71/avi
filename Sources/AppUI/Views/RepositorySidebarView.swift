@@ -19,7 +19,6 @@ struct RepositorySidebarView: View {
     @State private var trackingOther: GitReference?
     @State private var upstreamValue = ""
     @State private var checkoutPending: GitReference?
-    @State private var pullRequestPending: GitReference?
     @State private var forceDeletePending: GitReference?
     @State private var worktreeBranchTarget: Worktree?
     @State private var worktreeBranchName = ""
@@ -112,23 +111,6 @@ struct RepositorySidebarView: View {
             Text(checkoutMessage)
         }
         .alert(
-            pullRequestPending.map { "Push \($0.name) First?" } ?? "",
-            isPresented: presented($pullRequestPending),
-            presenting: pullRequestPending
-        ) { ref in
-            Button("Push and Create") {
-                Task { await store.openPullRequestPage(branch: ref.name, pushFirst: true) }
-            }
-            if store.branchExistsOnPullRequestRemote(ref) {
-                Button("Create Without Pushing") {
-                    Task { await store.openPullRequestPage(branch: ref.name, pushFirst: false) }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { ref in
-            Text(pullRequestMessage(for: ref))
-        }
-        .alert(
             forceDeletePending.map { "\($0.name) Is Not Fully Merged" } ?? "",
             isPresented: presented($forceDeletePending),
             presenting: forceDeletePending
@@ -214,11 +196,7 @@ struct RepositorySidebarView: View {
         case .push:
             branchSheet = .push(ref)
         case .createPullRequest:
-            if store.pullRequestNeedsPush(ref) {
-                pullRequestPending = ref
-            } else {
-                Task { await store.openPullRequestPage(branch: ref.name, pushFirst: false) }
-            }
+            branchSheet = .pullRequest(ref)
         case .merge:
             branchSheet = .merge(ref)
         case .rebase:
@@ -255,6 +233,8 @@ struct RepositorySidebarView: View {
             WorktreeCheckoutSheet(store: store, branch: ref)
         case .push(let ref):
             PushSheet(store: store, branchName: ref.name, dismiss: { branchSheet = nil })
+        case .pullRequest(let ref):
+            PushSheet(store: store, branchName: ref.name, includesPullRequest: true, dismiss: { branchSheet = nil })
         case .merge(let ref):
             MergeBranchSheet(store: store, branch: ref)
         case .rebase(let ref):
@@ -272,15 +252,6 @@ struct RepositorySidebarView: View {
         return "You have \(files). Bring My Changes Along stashes them, switches, and puts them back; "
             + "if they conflict with the branch they stay in the stash as well. "
             + "Check Out keeps them in place when they do not touch the same files, and stops otherwise."
-    }
-
-    private func pullRequestMessage(for ref: GitReference) -> String {
-        let remote = store.pushRemoteName(for: ref.name) ?? "the remote"
-        guard store.branchExistsOnPullRequestRemote(ref), let ahead = ref.ahead, ahead > 0 else {
-            return "The pull request is opened for the branch on '\(remote)', which does not have \(ref.name) yet."
-        }
-        return "'\(remote)' does not have \(ahead == 1 ? "1 commit" : "\(ahead) commits") of \(ref.name) yet, "
-            + "so the pull request would not include \(ahead == 1 ? "it" : "them")."
     }
 
     private func presented(_ value: Binding<(some Any)?>) -> Binding<Bool> {
@@ -1486,7 +1457,7 @@ struct TagPopover: View {
             row("Name", ref.name)
             row("Commit", String(ref.targetOID.prefix(12)))
             if let date = ref.taggerDate {
-                row("Date", date.formatted(.dateTime.year().month().day().hour().minute()))
+                row("Date", date.formatted(.dateTime.year().month().day().hour().minute().locale(AviLocale.display)))
             }
             if let message = ref.annotatedMessage {
                 Divider()
@@ -1508,7 +1479,6 @@ struct TagPopover: View {
         .frame(width: 280, alignment: .leading)
     }
 
-    @ViewBuilder
     private func row(_ key: String, _ value: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Text(key)
@@ -1622,8 +1592,6 @@ private struct StashRow: View {
     }
 
     private func relative(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        AviLocale.relative(date)
     }
 }

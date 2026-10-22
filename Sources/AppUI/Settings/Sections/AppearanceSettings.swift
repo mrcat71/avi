@@ -28,23 +28,23 @@ struct AppearanceSettingsView: View {
                     .labelsHidden()
                     .frame(maxWidth: 260)
                 }
-                Divider().padding(.vertical, 4)
-                SettingsFormRow("Font size") {
-                    HStack {
-                        Slider(value: fontSizeBinding, in: 11 ... 16, step: 1)
-                            .frame(maxWidth: 220)
-                        Text("\(store.config.appearance.fontSize) pt")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
             }
 
             SettingsGroup("Diff & Graph") {
-                SettingsFormRow("Diff font") {
-                    TextField("", text: diffFontBinding)
+                SettingsFormRow("Diff font", description: "A monospaced font family, such as Menlo or JetBrains Mono. Empty or SF Mono uses the system font.") {
+                    TextField("", text: diffFontBinding, prompt: Text("SF Mono"))
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 260)
+                }
+                Divider().padding(.vertical, 4)
+                SettingsFormRow("Diff text size", description: "Diffs and their line numbers.") {
+                    HStack {
+                        Slider(value: fontSizeBinding, in: 11 ... 16, step: 1)
+                            .frame(maxWidth: 220)
+                        Text("\(store.config.appearance.fontSize - 1) pt")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Divider().padding(.vertical, 4)
                 SettingsFormRow("Graph lane width") {

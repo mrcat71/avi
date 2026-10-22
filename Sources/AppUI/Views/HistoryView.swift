@@ -83,7 +83,7 @@ struct HistoryListView: View {
     }
 
     private var headName: String {
-        store.branch.flatMap { $0.isDetached ? nil : "'\($0.name)'" } ?? "HEAD"
+        store.branch.flatMap { $0.isDetached ? nil : $0.name }.map { "'\($0)'" } ?? "HEAD"
     }
 
     private var searchState: HistorySearchState {
@@ -701,7 +701,7 @@ private struct HistoryRowView: View {
     private var commitMenu: some View {
         let commit = row.commit
         let busy = store.operationState != nil || store.isAIWorking || store.rebaseInProgress
-        let head = store.branch.flatMap { $0.isDetached ? nil : "'\($0.name)'" } ?? "HEAD"
+        let head = store.branch.flatMap { $0.isDetached ? nil : $0.name }.map { "'\($0)'" } ?? "HEAD"
         Button("New Branch…") { menu(.newBranch, commit) }
             .keyboardShortcut("b", modifiers: [.command, .shift])
         Button("New Tag…") { menu(.newTag, commit) }
@@ -862,7 +862,7 @@ private struct BadgePopover: View {
                 row("Behind", "\(behind)")
             }
             if badge.ref.kind == .tag, let date = badge.ref.taggerDate {
-                row("Date", date.formatted(.dateTime.year().month().day().hour().minute()))
+                row("Date", date.formatted(.dateTime.year().month().day().hour().minute().locale(AviLocale.display)))
             }
             if let message = badge.ref.annotatedMessage {
                 Divider()
@@ -884,7 +884,6 @@ private struct BadgePopover: View {
         .frame(width: 280, alignment: .leading)
     }
 
-    @ViewBuilder
     private func row(_ key: String, _ value: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Text(key)

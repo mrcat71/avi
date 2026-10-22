@@ -77,6 +77,12 @@ struct RepositoryView: View {
                     // A rebase detaches HEAD too; its own banner covers that.
                     DetachedHeadBanner(store: store, head: head)
                 }
+                if let notice = store.pullRequestNotice {
+                    PullRequestBanner(store: store, notice: notice)
+                }
+                ForEach(store.tagProposals) { proposal in
+                    TagProposalBanner(store: store, proposal: proposal)
+                }
                 if store.isAIWorking {
                     aiWorkBanner
                 }
@@ -326,8 +332,7 @@ struct RepositoryView: View {
     private func applyInitialSelectionIfNeeded() {
         guard !hasAppliedInitialSelection else { return }
         guard selection == nil else { hasAppliedInitialSelection = true; return }
-        guard !store.isLoading else { return }
-        guard store.root != nil else { return }
+        guard !store.isLoading, store.root != nil else { return }
 
         hasAppliedInitialSelection = true
 
@@ -362,6 +367,197 @@ struct RepositoryView: View {
                 }
             }
         )
+    }
+}
+
+/// A tag an agent proposed for a commit that already exists. It goes on its
+/// own to the remote only once the remote has the commit; until then, Push
+/// sends the commit and the tag together.
+struct TagProposalBanner: View {
+    let store: RepositoryStore
+    let proposal: TagProposal
+
+    @State private var remoteHasCommit = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "tag")
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(proposal.source.displayName) proposes the tag \(proposal.tag.name)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .textSelection(.enabled)
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer()
+            Button("Create Tag") {
+                Task { await store.acceptTagProposal(proposal.id) }
+            }
+            if remoteHasCommit, let remote {
+                Button("Create and Push to \(remote)") {
+                    Task { await store.acceptTagProposal(proposal.id, pushingTo: remote) }
+                }
+            }
+            Button {
+                store.dismissTagProposal(proposal.id)
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss")
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Glass.edgeStroke).frame(height: 0.6)
+        }
+        .task(id: RemoteCheck(commit: proposal.commit, remote: remote, tips: store.refs.remoteBranches.map(\.targetOID))) {
+            guard let remote else {
+                remoteHasCommit = false
+                return
+            }
+            remoteHasCommit = await store.remoteHasCommit(proposal.commit, remote: remote)
+        }
+    }
+
+    private var remote: String? {
+        store.defaultRemoteName
+    }
+
+    private var detail: String {
+        var parts = ["On \(proposal.commit.prefix(7)) \(proposal.subject)"]
+        if let message = proposal.tag.message {
+            parts.append("annotated: \(message)")
+        }
+        if let remote, !remoteHasCommit {
+            parts.append("\(remote) does not have this commit yet, so Push sends it and the tag together")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Checks again whenever a fetch or push moves the remote's branches.
+    private struct RemoteCheck: Hashable {
+        let commit: String
+        let remote: String?
+        let tips: [String]
+    }
+}
+
+/// What the last push or pull request did: the request it created with a
+/// link, one already open, the form opened in the browser, a failure with
+/// the browser as a way out, or the offer after a branch's first push.
+private struct PullRequestBanner: View {
+    let store: RepositoryStore
+    let notice: PullRequestNotice
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .textSelection(.enabled)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer()
+            actions
+            Button {
+                store.pullRequestNotice = nil
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss")
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Glass.edgeStroke).frame(height: 0.6)
+        }
+    }
+
+    private var noun: String {
+        notice.forge.requestNoun.lowercased()
+    }
+
+    private var title: String {
+        switch notice.kind {
+        case .created(let info): return "Created \(noun) \(notice.forge.reference(info.number))"
+        case .existing(let info): return "\(notice.forge.requestNoun) \(notice.forge.reference(info.number)) is already open"
+        case .openedInBrowser: return "The \(noun) form is open in your browser"
+        case .failed: return "Could not create the \(noun)"
+        case .pushedNewBranch(let branch, let remote): return "Pushed \(branch) to \(remote)"
+        }
+    }
+
+    private var detail: String? {
+        switch notice.kind {
+        case .created(let info), .existing(let info): return info.title
+        case .openedInBrowser: return "Sign in to gh or glab, or add a token in Settings, and Avi creates it for you."
+        case .failed(let message, _): return message
+        case .pushedNewBranch: return nil
+        }
+    }
+
+    private var symbol: String {
+        switch notice.kind {
+        case .created, .pushedNewBranch: return "checkmark.circle"
+        case .existing, .openedInBrowser: return "arrow.triangle.pull"
+        case .failed: return "exclamationmark.triangle"
+        }
+    }
+
+    private var tint: Color {
+        switch notice.kind {
+        case .created, .pushedNewBranch: return .green
+        case .existing, .openedInBrowser: return .secondary
+        case .failed: return .orange
+        }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        switch notice.kind {
+        case .created(let info):
+            Button("Copy Link") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(info.url.absoluteString, forType: .string)
+            }
+            Button("Open") { NSWorkspace.shared.open(info.url) }
+        case .existing(let info):
+            Button("Open") { NSWorkspace.shared.open(info.url) }
+        case .openedInBrowser:
+            EmptyView()
+        case .failed(_, let fallback):
+            if let fallback {
+                Button("Open in Browser") {
+                    NSWorkspace.shared.open(fallback)
+                    store.pullRequestNotice = nil
+                }
+            }
+        case .pushedNewBranch(let branch, _):
+            Button("Create \(notice.forge.requestNoun)…") {
+                store.pullRequestNotice = nil
+                store.pushSheetRequest = PushSheetRequest(branch: branch, pullRequest: true)
+            }
+        }
     }
 }
 
@@ -600,8 +796,6 @@ private struct RepositoryActionToolbarView: View {
     let store: RepositoryStore
     let openRepositoryPicker: () -> Void
 
-    @State private var showingPushSheet = false
-
     var body: some View {
         HStack(spacing: 2) {
             ToolbarPillButton(title: "Open", systemImage: "folder", action: openRepositoryPicker)
@@ -635,7 +829,7 @@ private struct RepositoryActionToolbarView: View {
                 badgeTint: .green,
                 helpText: pushHelp
             ) {
-                showingPushSheet = true
+                store.pushSheetRequest = PushSheetRequest(branch: nil, pullRequest: false)
             }
             .disabled(!canPullPush)
 
@@ -661,8 +855,13 @@ private struct RepositoryActionToolbarView: View {
                 .fill(Glass.edgeStroke)
                 .frame(height: 0.6)
         }
-        .sheet(isPresented: $showingPushSheet) {
-            PushSheet(store: store, dismiss: { showingPushSheet = false })
+        .sheet(item: Binding(get: { store.pushSheetRequest }, set: { store.pushSheetRequest = $0 })) { request in
+            PushSheet(
+                store: store,
+                branchName: request.branch,
+                includesPullRequest: request.pullRequest,
+                dismiss: { store.pushSheetRequest = nil }
+            )
         }
         // A remote on an unrecognized host may be a self-hosted GitLab that
         // `glab` knows; its button and merge requests appear once it loads.
@@ -947,6 +1146,9 @@ struct LocalChangesWorkspaceView: View {
         .sheet(item: Binding(get: { store.revisionRequest }, set: { store.revisionRequest = $0 })) { request in
             PlanRevisionSheet(store: store, request: request)
         }
+        .sheet(item: Binding(get: { store.tagEditRequest }, set: { store.tagEditRequest = $0 })) { request in
+            CommitTagSheet(store: store, request: request)
+        }
         .sheet(item: Binding(get: { store.fileStashRequest }, set: { store.fileStashRequest = $0 })) { request in
             StashFilesSheet(store: store, request: request)
         }
@@ -1086,16 +1288,17 @@ private struct LocalChangesStatusBar: View {
             return "fetched \(Int(elapsed / 86400)) d ago"
         }
         let formatter = DateFormatter()
+        formatter.locale = AviLocale.display
         formatter.dateStyle = .medium
         return "fetched \(formatter.string(from: last))"
     }
 
     private var fetchedTooltip: String {
-        let last = store.lastFetched?.formatted(.dateTime.year().month().day().hour().minute().second())
+        let last = store.lastFetched?.formatted(.dateTime.year().month().day().hour().minute().second().locale(AviLocale.display))
         guard let failure = store.autoFetchFailure else {
             return last ?? "No fetch has been recorded for this repository."
         }
-        let when = failure.date.formatted(date: .omitted, time: .shortened)
+        let when = failure.date.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(AviLocale.display))
         return "The automatic fetch at \(when) failed:\n\(failure.message)\n\nLast fetch: \(last ?? "none recorded")"
     }
 }
@@ -1361,6 +1564,9 @@ struct CreateTagSheet: View {
     @State private var name = ""
     @State private var message = ""
     @State private var pushTag = true
+    /// Whether the remote has the commit; nil until checked. The tag goes
+    /// along with a push only after its commit is there.
+    @State private var remoteHasCommit: Bool?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1391,8 +1597,18 @@ struct CreateTagSheet: View {
                     .foregroundStyle(.tertiary)
             }
 
-            Toggle("Push tag to origin after creating", isOn: $pushTag)
-                .controlSize(.small)
+            if let remote = store.defaultRemoteName {
+                if remoteHasCommit == false {
+                    Text("\(remote) does not have this commit yet, so the tag stays here for now. Push sends the commit and the tag together.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Toggle("Push tag to \(remote) after creating", isOn: $pushTag)
+                        .controlSize(.small)
+                        .disabled(remoteHasCommit == nil)
+                }
+            }
 
             HStack {
                 Spacer()
@@ -1404,21 +1620,25 @@ struct CreateTagSheet: View {
         }
         .padding(18)
         .frame(width: 380)
+        .task {
+            guard let remote = store.defaultRemoteName else { return }
+            remoteHasCommit = await store.remoteHasCommit(targetOID, remote: remote)
+        }
     }
 
     private func create() {
         let cleanedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedName.isEmpty else { return }
         let cleanedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        let shouldPush = pushTag
+        let pushRemote = pushTag && remoteHasCommit == true ? store.defaultRemoteName : nil
         Task {
             await store.createTag(
                 name: cleanedName,
                 targetOID: targetOID,
                 message: cleanedMessage.isEmpty ? nil : cleanedMessage
             )
-            if shouldPush {
-                await store.pushTag(name: cleanedName)
+            if let pushRemote, store.refs.tags.contains(where: { $0.name == cleanedName }) {
+                await store.pushTag(name: cleanedName, remote: pushRemote)
             }
             dismiss()
         }

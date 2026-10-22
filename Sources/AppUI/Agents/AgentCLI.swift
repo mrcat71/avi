@@ -56,6 +56,9 @@ public enum AgentCLI {
         var messages: [String] = []
         var files: [String] = []
         var replace = false
+        var tag: String?
+        var tagMessage: String?
+        var at: String?
     }
 
     enum ParseError: Error, Equatable, LocalizedError {
@@ -64,6 +67,9 @@ public enum AgentCLI {
         case missingValue(String)
         case unexpected(String)
         case planOrMessage
+        case tagInPlan
+        case tagOptionWithoutTag(String)
+        case atWithMessage
 
         var errorDescription: String? {
             switch self {
@@ -71,7 +77,10 @@ public enum AgentCLI {
             case .unknownOption(let name): return "unknown option `\(name)`"
             case .missingValue(let name): return "`\(name)` needs a value"
             case .unexpected(let value): return "unexpected argument `\(value)`"
-            case .planOrMessage: return "`propose` needs either `--file PLAN.json` or `-m MESSAGE`, not both"
+            case .planOrMessage: return "`propose` needs `--file PLAN.json`, `-m MESSAGE`, or `--tag NAME`; `--file` and `-m` do not go together"
+            case .tagInPlan: return "with `--file`, put the tag in the plan file"
+            case .tagOptionWithoutTag(let option): return "`\(option)` needs `--tag NAME`"
+            case .atWithMessage: return "`--at` tags a commit that already exists; leave out `-m`, or drop `--at` to tag the new commit"
             }
         }
     }
@@ -134,6 +143,9 @@ public enum AgentCLI {
             case "--title": propose.title = try value(for: arg, from: &args)
             case "--file", "-F": propose.planFile = try value(for: arg, from: &args)
             case "-m", "--message": try propose.messages.append(value(for: arg, from: &args))
+            case "--tag": propose.tag = try value(for: arg, from: &args)
+            case "--tag-message": propose.tagMessage = try value(for: arg, from: &args)
+            case "--at": propose.at = try value(for: arg, from: &args)
             case "--replace": propose.replace = true
             case "--focus": invocation.focus = true
             case "--json": invocation.json = true
@@ -143,8 +155,20 @@ public enum AgentCLI {
                 propose.files.append(arg)
             }
         }
-        guard (propose.planFile == nil) != propose.messages.isEmpty else { throw ParseError.planOrMessage }
-        if propose.planFile != nil, !propose.files.isEmpty {
+        let hasPlan = propose.planFile != nil
+        let hasMessage = !propose.messages.isEmpty
+        guard !(hasPlan && hasMessage), hasPlan || hasMessage || propose.tag != nil else { throw ParseError.planOrMessage }
+        if hasPlan, propose.tag != nil || propose.tagMessage != nil || propose.at != nil {
+            throw ParseError.tagInPlan
+        }
+        if propose.tag == nil, let option = propose.tagMessage != nil ? "--tag-message" : propose.at != nil ? "--at" : nil {
+            throw ParseError.tagOptionWithoutTag(option)
+        }
+        if hasMessage, propose.at != nil {
+            throw ParseError.atWithMessage
+        }
+        // Files go with a commit: a plan file names its own, and a tag alone has none.
+        if !hasMessage, !propose.files.isEmpty {
             throw ParseError.unexpected(propose.files[0])
         }
         invocation.command = .propose(propose)
@@ -223,13 +247,15 @@ public enum AgentCLI {
         return physical.hasPrefix(prefix) ? String(physical.dropFirst(prefix.count)) : path
     }
 
-    /// Plan file as agents write it.
+    /// Plan file as agents write it. `tag` alone, without commits, proposes
+    /// a tag for a commit that already exists.
     struct PlanFile: Decodable {
         var version: Int?
         var agent: String?
         var session: String?
         var title: String?
-        var commits: [AgentCommit]
+        var commits: [AgentCommit]?
+        var tag: AgentTag?
     }
 
     static let helpText = """
@@ -240,16 +266,23 @@ public enum AgentCLI {
       avi open [PATH] [--focus] [--json]
       avi propose --file PLAN.json|- [--repo PATH] [--agent NAME] [--session ID]
                   [--title TEXT] [--replace] [--focus] [--json]
-      avi propose -m SUBJECT [-m BODY]... [--agent NAME] [--session ID] [--] [FILE...]
+      avi propose -m SUBJECT [-m BODY]... [--tag NAME [--tag-message TEXT]]
+                  [--agent NAME] [--session ID] [--] [FILE...]
+      avi propose --tag NAME [--tag-message TEXT] [--at REVISION]
       avi skill status | install | remove [--claude] [--codex] [--opencode] [--command] [--force]
       avi version
 
-    A plan file lists commits with paths relative to the repository root:
-      {"version": 1, "title": "...", "commits": [{"message": "...", "files": ["a", "b"]}]}
+    A plan file lists commits with paths relative to the repository root, and
+    optionally a tag for each commit:
+      {"version": 1, "title": "...", "commits": [{"message": "...", "files": ["a", "b"],
+       "tag": {"name": "v1.2.0", "message": "Release 1.2.0"}}]}
 
     One commit fills Avi's commit field and stages its files; several become
-    planned commits in Avi's Changes view. Nothing is committed until you
-    approve it in Avi.
+    planned commits in Avi's Changes view. A commit's tag is created on it once
+    you commit; a tag with a message is annotated. `--tag` without `-m` proposes
+    a tag for a commit that already exists (`--at`, default HEAD). Nothing is
+    committed, tagged, or pushed until you approve it in Avi, and Avi pushes a
+    tag together with its commit.
 
     Exit codes: 0 ok, 1 rejected by Avi, 2 usage error, 3 Avi not reachable.
     See https://github.com/mrcat71/avi/blob/main/docs/AGENT-INTEGRATION.md
@@ -263,10 +296,18 @@ public enum AgentCLI {
 // MARK: - Running
 
 extension AgentCLI {
-    struct Runner {
+    final class Runner {
         let invocation: Invocation
         let environment: [String: String]
         let workingDirectory: URL
+        /// Tags the proposal asked for, to tell whether this Avi knows tags.
+        private var sentTags: [String] = []
+
+        init(invocation: Invocation, environment: [String: String], workingDirectory: URL) {
+            self.invocation = invocation
+            self.environment = environment
+            self.workingDirectory = workingDirectory
+        }
 
         private var socketPath: String {
             AgentProtocol.socketPath(environment: environment)
@@ -320,16 +361,23 @@ extension AgentCLI {
                     return ExitCode.usage
                 }
                 params.commits = plan.commits
+                params.tag = plan.tag
                 params.agent = propose.agent ?? plan.agent ?? detected?.name
                 params.session = propose.session ?? plan.session ?? detected?.session
                 params.title = propose.title ?? plan.title
             } else {
-                let files = propose.files.map { AgentCLI.repositoryRelative($0, cwd: workingDirectory, root: root) }
-                params.commits = [AgentCommit(message: propose.messages.joined(separator: "\n\n"), files: files)]
+                let tag = propose.tag.map { AgentTag(name: $0, message: propose.tagMessage, at: propose.at) }
+                if propose.messages.isEmpty {
+                    params.tag = tag
+                } else {
+                    let files = propose.files.map { AgentCLI.repositoryRelative($0, cwd: workingDirectory, root: root) }
+                    params.commits = [AgentCommit(message: propose.messages.joined(separator: "\n\n"), files: files, tag: tag)]
+                }
                 params.agent = propose.agent ?? detected?.name
                 params.session = propose.session ?? detected?.session
                 params.title = propose.title
             }
+            sentTags = (params.commits ?? []).compactMap(\.tag?.name) + [params.tag?.name].compactMap(\.self)
             return send(AgentRequest(method: .propose, params: params), launch: true)
         }
 
@@ -437,9 +485,16 @@ extension AgentCLI {
                         : "Staged \(staged.count) file\(staged.count == 1 ? "" : "s") and filled Avi's commit message.")
                 case .previewCard:
                     lines.append("Your message is waiting beside the one already in Avi's commit field.")
+                case .tag:
+                    lines.append("The tag \(result.tags?.first ?? "") is waiting in Avi for the user to create it.")
                 case .plan, .none:
                     let count = result.commits ?? 0
                     lines.append("\(count) commit\(count == 1 ? " is" : "s are") waiting in Avi's Plan.")
+                }
+                if let tags = result.tags, !tags.isEmpty, result.placement != .tag {
+                    lines.append("Avi creates \(tags.joined(separator: ", ")) on \(tags.count == 1 ? "its commit" : "their commits") when the user commits.")
+                } else if result.tags == nil, !sentTags.isEmpty {
+                    lines.append("This Avi ignores tags; update it, or ask the user to create \(sentTags.joined(separator: ", ")).")
                 }
                 lines += result.notes ?? []
             case .open:

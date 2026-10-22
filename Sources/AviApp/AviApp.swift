@@ -22,6 +22,11 @@ enum AviAppMain {
             runSelfTest()
             exit(0)
         }
+        #if DEBUG
+        MainActor.assumeIsolated {
+            ScreenshotHarness.configure(arguments: args)
+        }
+        #endif
         AviApp.main()
     }
 
@@ -65,9 +70,24 @@ enum AviAppMain {
 struct AviApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
+    /// The workspace, unless a debug build renders screenshots, which opens
+    /// none of your repositories.
+    @ViewBuilder
+    private var mainWindow: some View {
+        #if DEBUG
+        if ScreenshotHarness.isActive {
+            Color.clear.frame(width: 1, height: 1)
+        } else {
+            RootView()
+        }
+        #else
+        RootView()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
-            RootView()
+            mainWindow
         }
 
         // Opened from a changed file's History… or Blame/Timeline…, never empty
@@ -110,14 +130,14 @@ struct AviApp: App {
                 Button("Open Repository...") {
                     NotificationCenter.default.post(name: .aviOpenRepository, object: nil)
                 }
-                .keyboardShortcut("o", modifiers: [.command])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .openRepository))
 
                 Divider()
 
                 Button("Refresh") {
                     NotificationCenter.default.post(name: .aviRefreshRepository, object: nil)
                 }
-                .keyboardShortcut("r", modifiers: [.command])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .refresh))
 
                 Divider()
 
@@ -129,22 +149,22 @@ struct AviApp: App {
                 Button("Stage All") {
                     NotificationCenter.default.post(name: .aviStageAll, object: nil)
                 }
-                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .stageAll))
 
                 Button("Unstage All") {
                     NotificationCenter.default.post(name: .aviUnstageAll, object: nil)
                 }
-                .keyboardShortcut("u", modifiers: [.command, .shift])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .unstageAll))
 
                 Button("Discard Selected Changes...") {
                     NotificationCenter.default.post(name: .aviDiscardSelection, object: nil)
                 }
-                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .discardSelection))
 
                 Button("Commit") {
                     NotificationCenter.default.post(name: .aviCommit, object: nil)
                 }
-                .keyboardShortcut(.return, modifiers: [.command])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .commit))
 
                 Divider()
 
@@ -175,23 +195,29 @@ struct AviApp: App {
                 Button("Fetch") {
                     NotificationCenter.default.post(name: .aviFetchRepository, object: nil)
                 }
+                .keyboardShortcut(AviShortcuts.shortcut(for: .fetch))
 
                 Button("Pull") {
                     NotificationCenter.default.post(name: .aviPullRepository, object: nil)
                 }
-                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .pull))
 
                 Button("Push") {
                     NotificationCenter.default.post(name: .aviPushRepository, object: nil)
                 }
-                .keyboardShortcut("p", modifiers: [.command, .option])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .push))
+
+                Button("Push and Create Pull Request...") {
+                    NotificationCenter.default.post(name: .aviPushAndCreatePullRequest, object: nil)
+                }
+                .keyboardShortcut(AviShortcuts.shortcut(for: .pushAndCreatePullRequest))
             }
 
             CommandMenu("View") {
                 Button("Command Palette") {
                     NotificationCenter.default.post(name: .aviOpenCommandPalette, object: nil)
                 }
-                .keyboardShortcut("k", modifiers: [.command])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .commandPalette))
 
                 Button("Command Palette (alt)") {
                     NotificationCenter.default.post(name: .aviOpenCommandPalette, object: nil)
@@ -203,19 +229,19 @@ struct AviApp: App {
                 Button("Go to Local Changes") {
                     NotificationCenter.default.post(name: .aviGoToLocalChanges, object: nil)
                 }
-                .keyboardShortcut("1", modifiers: [.command])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .goToLocalChanges))
 
                 Button("Go to All Commits") {
                     NotificationCenter.default.post(name: .aviGoToAllCommits, object: nil)
                 }
-                .keyboardShortcut("2", modifiers: [.command])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .goToAllCommits))
 
                 Divider()
 
                 Button("Toggle History Scope") {
                     NotificationCenter.default.post(name: .aviToggleHistoryScope, object: nil)
                 }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .keyboardShortcut(AviShortcuts.shortcut(for: .toggleHistoryScope))
             }
 
             CommandMenu("Agents") {
@@ -229,6 +255,15 @@ struct AviApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_: Notification) {
+        #if DEBUG
+        // Screenshots run in the background, never as the Avi you use: no
+        // agent socket, no update checks, no tips.
+        if ScreenshotHarness.isActive {
+            NSApp.setActivationPolicy(.accessory)
+            ScreenshotHarness.run()
+            return
+        }
+        #endif
         // A process started with `swift run` is an accessory by default; promote
         // it to a normal foreground app so the window appears and takes focus.
         // A real bundle is activated by Launch Services, which also honors
@@ -238,9 +273,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
         }
 
-        // Register customisable keyboard shortcuts. No-op when the
-        // KeyboardShortcuts library isn't linked (bare-CLI build).
-        AviShortcuts.registerAll()
+        // Customizable shortcuts are menu key equivalents; this only drops
+        // a default that clashed with other apps.
+        AviShortcuts.prepare()
 
         // Listen for agents (the `avi` command) when Settings allows it.
         AgentBridge.shared.start()

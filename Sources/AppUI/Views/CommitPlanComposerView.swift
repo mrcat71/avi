@@ -13,6 +13,7 @@ struct CommitPlanComposerView: View {
             VStack(alignment: .leading, spacing: 6) {
                 header
                 if let draft = store.composerDraft {
+                    CommitTagsRow(store: store, target: .draft(draft.id))
                     CommitMessageEditor(summary: summaryBinding(draft.id), messageBody: bodyBinding(draft.id))
                     issueLine(for: draft)
                     actionBar(for: draft)

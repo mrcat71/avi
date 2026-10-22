@@ -31,6 +31,8 @@ struct CommitPanelView: View {
                         FieldProposalBanner(proposal: proposal, store: store)
                     }
 
+                    CommitTagsRow(store: store, target: .stagedCommit)
+
                     CommitMessageEditor(summary: summaryBinding, messageBody: bodyBinding) {
                         actionRow
                     }
@@ -65,7 +67,6 @@ struct CommitPanelView: View {
         !store.amend && store.entries.isEmpty && store.operationState != .merge
     }
 
-    @ViewBuilder
     private var cleanOverlay: some View {
         VStack(spacing: 4) {
             Image(systemName: "checkmark.seal")

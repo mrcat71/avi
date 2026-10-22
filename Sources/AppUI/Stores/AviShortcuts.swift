@@ -1,19 +1,20 @@
 import AppKit
 import Foundation
+import Observation
+import SwiftUI
 
 #if canImport(KeyboardShortcuts)
 import KeyboardShortcuts
 #endif
 
-/// Centralised registry of user-customisable global keyboard shortcuts.
-/// Each `Name` maps to one of the existing `.avi…` notifications that views
-/// already listen for, so the customisable shortcut path and the menu-driven
-/// shortcut path stay in sync.
+/// The keyboard shortcuts you can change in Settings > Keyboard. Each one is
+/// the key equivalent of its menu item, which posts the `.avi…` notification
+/// the views listen for, so it works while Avi is in front and never reaches
+/// into other apps: registering them as global hot keys made Avi swallow
+/// Cmd-R, Cmd-O or Cmd-Return everywhere while it was running.
 ///
 /// When the `KeyboardShortcuts` library isn't linked (the bare-CLI
-/// `./build.sh` fallback path), the module compiles but `register()` is a
-/// no-op - the existing `CommandMenu` shortcuts in `AviApp.swift` still work
-/// as the only key bindings.
+/// `./build.sh` fallback path), the menus use the defaults.
 public enum AviShortcuts {
     /// Logical action handled by a customisable shortcut.
     public enum Action: String, CaseIterable, Identifiable, Sendable {
@@ -26,6 +27,7 @@ public enum AviShortcuts {
         case fetch
         case pull
         case push
+        case pushAndCreatePullRequest
         case commandPalette
         case goToLocalChanges
         case goToAllCommits
@@ -46,6 +48,7 @@ public enum AviShortcuts {
             case .fetch: return "Fetch"
             case .pull: return "Pull"
             case .push: return "Push"
+            case .pushAndCreatePullRequest: return "Push and Create Pull Request"
             case .commandPalette: return "Command Palette"
             case .goToLocalChanges: return "Go to Local Changes"
             case .goToAllCommits: return "Go to All Commits"
@@ -64,10 +67,31 @@ public enum AviShortcuts {
             case .fetch: return .aviFetchRepository
             case .pull: return .aviPullRepository
             case .push: return .aviPushRepository
+            case .pushAndCreatePullRequest: return .aviPushAndCreatePullRequest
             case .commandPalette: return .aviOpenCommandPalette
             case .goToLocalChanges: return .aviGoToLocalChanges
             case .goToAllCommits: return .aviGoToAllCommits
             case .toggleHistoryScope: return .aviToggleHistoryScope
+            }
+        }
+
+        /// The shortcut a fresh install has.
+        var defaultShortcut: KeyboardShortcut? {
+            switch self {
+            case .openRepository: return KeyboardShortcut("o", modifiers: .command)
+            case .refresh: return KeyboardShortcut("r", modifiers: .command)
+            case .stageAll: return KeyboardShortcut("s", modifiers: [.command, .shift])
+            case .unstageAll: return KeyboardShortcut("u", modifiers: [.command, .shift])
+            case .discardSelection: return KeyboardShortcut("d", modifiers: [.command, .shift])
+            case .commit: return KeyboardShortcut(.return, modifiers: .command)
+            case .fetch: return nil
+            case .pull: return KeyboardShortcut("l", modifiers: [.command, .shift])
+            case .push: return KeyboardShortcut("p", modifiers: [.command, .option])
+            case .pushAndCreatePullRequest: return nil
+            case .commandPalette: return KeyboardShortcut("k", modifiers: .command)
+            case .goToLocalChanges: return KeyboardShortcut("1", modifiers: .command)
+            case .goToAllCommits: return KeyboardShortcut("2", modifiers: .command)
+            case .toggleHistoryScope: return KeyboardShortcut("k", modifiers: [.command, .shift])
             }
         }
     }
@@ -81,19 +105,23 @@ public enum AviShortcuts {
         #endif
     }
 
-    /// Register notification-dispatch handlers for every named shortcut.
-    /// Idempotent - safe to call from `applicationDidFinishLaunching` or
-    /// `RootView.onAppear`. No-op when the library isn't linked.
+    /// The shortcut `action`'s menu item uses: yours, else the default.
     @MainActor
-    public static func registerAll() {
+    public static func shortcut(for action: Action) -> KeyboardShortcut? {
+        // Read so the menus update when Settings changes a shortcut.
+        _ = ShortcutChanges.shared.version
+        #if canImport(KeyboardShortcuts)
+        return KeyboardShortcuts.getShortcut(for: action.shortcutName)?.toSwiftUI
+        #else
+        return action.defaultShortcut
+        #endif
+    }
+
+    /// Sets up the shortcuts at launch. Idempotent.
+    @MainActor
+    public static func prepare() {
         #if canImport(KeyboardShortcuts)
         removeLegacyFetchShortcut()
-        for action in Action.allCases {
-            let name = action.shortcutName
-            KeyboardShortcuts.onKeyUp(for: name) {
-                NotificationCenter.default.post(name: action.notificationName, object: nil)
-            }
-        }
         #endif
     }
 
@@ -109,21 +137,34 @@ public enum AviShortcuts {
     #endif
 }
 
+/// Bumped when you record a shortcut in Settings, so the menus pick it up.
+@MainActor
+@Observable
+final class ShortcutChanges {
+    static let shared = ShortcutChanges()
+    private(set) var version = 0
+
+    func changed() {
+        version += 1
+    }
+}
+
 #if canImport(KeyboardShortcuts)
 extension KeyboardShortcuts.Name {
-    static let openRepository = Self("avi.openRepository", default: .init(.o, modifiers: [.command]))
-    static let refresh = Self("avi.refresh", default: .init(.r, modifiers: [.command]))
-    static let stageAll = Self("avi.stageAll", default: .init(.s, modifiers: [.command, .shift]))
-    static let unstageAll = Self("avi.unstageAll", default: .init(.u, modifiers: [.command, .shift]))
-    static let discardSelection = Self("avi.discardSelection", default: .init(.d, modifiers: [.command, .shift]))
-    static let commit = Self("avi.commit", default: .init(.return, modifiers: [.command]))
+    static let openRepository = Self("avi.openRepository", initial: .init(.o, modifiers: [.command]))
+    static let refresh = Self("avi.refresh", initial: .init(.r, modifiers: [.command]))
+    static let stageAll = Self("avi.stageAll", initial: .init(.s, modifiers: [.command, .shift]))
+    static let unstageAll = Self("avi.unstageAll", initial: .init(.u, modifiers: [.command, .shift]))
+    static let discardSelection = Self("avi.discardSelection", initial: .init(.d, modifiers: [.command, .shift]))
+    static let commit = Self("avi.commit", initial: .init(.return, modifiers: [.command]))
     static let fetch = Self("avi.fetch")
-    static let pull = Self("avi.pull", default: .init(.l, modifiers: [.command, .shift]))
-    static let push = Self("avi.push", default: .init(.p, modifiers: [.command, .option]))
-    static let commandPalette = Self("avi.commandPalette", default: .init(.k, modifiers: [.command]))
-    static let goToLocalChanges = Self("avi.goToLocalChanges", default: .init(.one, modifiers: [.command]))
-    static let goToAllCommits = Self("avi.goToAllCommits", default: .init(.two, modifiers: [.command]))
-    static let toggleHistoryScope = Self("avi.toggleHistoryScope", default: .init(.k, modifiers: [.command, .shift]))
+    static let pull = Self("avi.pull", initial: .init(.l, modifiers: [.command, .shift]))
+    static let push = Self("avi.push", initial: .init(.p, modifiers: [.command, .option]))
+    static let pushAndCreatePullRequest = Self("aviPushAndCreatePullRequest")
+    static let commandPalette = Self("avi.commandPalette", initial: .init(.k, modifiers: [.command]))
+    static let goToLocalChanges = Self("avi.goToLocalChanges", initial: .init(.one, modifiers: [.command]))
+    static let goToAllCommits = Self("avi.goToAllCommits", initial: .init(.two, modifiers: [.command]))
+    static let toggleHistoryScope = Self("avi.toggleHistoryScope", initial: .init(.k, modifiers: [.command, .shift]))
 }
 
 extension AviShortcuts.Action {
@@ -138,6 +179,7 @@ extension AviShortcuts.Action {
         case .fetch: return .fetch
         case .pull: return .pull
         case .push: return .push
+        case .pushAndCreatePullRequest: return .pushAndCreatePullRequest
         case .commandPalette: return .commandPalette
         case .goToLocalChanges: return .goToLocalChanges
         case .goToAllCommits: return .goToAllCommits

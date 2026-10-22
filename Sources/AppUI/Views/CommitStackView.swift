@@ -626,6 +626,7 @@ private struct StagedCommitHeaderRow: View {
             }
             .layoutPriority(1)
             Spacer(minLength: 4)
+            CommitTagBadge(tags: store.commitTags)
             Text("\(count)")
                 .font(.system(size: 10, weight: .medium))
                 .padding(.horizontal, 5)
@@ -693,6 +694,10 @@ private struct StagedCommitMenu: View {
             Text("Turn on AI in Settings > AI Commit Messages")
         }
         Divider()
+        Button("Add Tag…") {
+            store.requestTagEdit(for: .stagedCommit)
+        }
+        Divider()
         Button("Unstage All") {
             Task { await store.move(store.stagedCommitEntries.map(\.path), to: .unstaged) }
         }
@@ -719,6 +724,9 @@ struct DraftActionsMenu: View {
             Task { await store.commitDraft(draftID) }
         }
         .disabled(!ready || store.isApplyingPlan)
+        Button("Add Tag…") {
+            store.requestTagEdit(for: .draft(draftID))
+        }
         Divider()
         Button("Write Message with AI") {
             store.improveMessage(forDraft: draftID)
@@ -939,6 +947,7 @@ struct DraftHeaderRow: View {
             }
             .layoutPriority(1)
             Spacer(minLength: 4)
+            CommitTagBadge(tags: draft.tags)
             if isRevising {
                 ProgressView()
                     .controlSize(.mini)

@@ -49,6 +49,8 @@ struct GitSettingsView: View {
                 }
             }
 
+            PullRequestSettingsGroup(store: store)
+
             SettingsGroup("External Apps") {
                 SettingsFormRow("Editor", description: "Path to the editor used for 'Open in Editor'.") {
                     TextField("/usr/local/bin/code", text: bind(\.git.externalEditor))

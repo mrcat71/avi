@@ -34,6 +34,7 @@ public struct AgentGuideView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         prompt("Hand this to Avi as one commit.")
                         prompt("Send this to Avi split into logical commits.")
+                        prompt("Send the release commit to Avi with its version tag.")
                     }
                 }
 
@@ -42,6 +43,7 @@ public struct AgentGuideView: View {
                         .font(.system(size: 13, weight: .semibold))
                     bullet("One commit: its files are staged as Commit 1 and its message fills the commit field.")
                     bullet("Several commits: they wait as planned commits under Commit 1.")
+                    bullet("A tag rides on its commit: Avi creates it once you commit, and Push sends the commit and the tag together.")
                     bullet("Nothing is committed until you press Commit or Commit All.")
                 }
 
