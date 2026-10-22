@@ -5,6 +5,10 @@ import SwiftUI
 import XCTest
 
 final class LocalBranchRowInteractionTests: XCTestCase {
+    override func setUpWithError() throws {
+        try XCTSkipUnless(OnScreenTests.enabled, OnScreenTests.skipMessage)
+    }
+
     func testDoubleClickSelectsBeforeCheckout() {
         MainActor.assumeIsolated {
             let fixture = Fixture()

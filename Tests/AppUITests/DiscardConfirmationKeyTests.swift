@@ -7,6 +7,10 @@ import XCTest
 /// Opens the real discard confirmation the way Cmd+Shift+D does and answers it
 /// from the keyboard, so Return keeps confirming and Escape keeps cancelling.
 final class DiscardConfirmationKeyTests: XCTestCase {
+    override func setUpWithError() throws {
+        try XCTSkipUnless(OnScreenTests.enabled, OnScreenTests.skipMessage)
+    }
+
     func testReturnConfirmsTheDiscard() throws {
         try MainActor.assumeIsolated {
             let fixture = try Fixture()

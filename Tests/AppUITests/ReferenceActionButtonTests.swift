@@ -6,6 +6,10 @@ import XCTest
 
 /// Drives the real native component with callbacks, never a repository or Git process.
 final class ReferenceActionButtonTests: XCTestCase {
+    override func setUpWithError() throws {
+        try XCTSkipUnless(OnScreenTests.enabled, OnScreenTests.skipMessage)
+    }
+
     func testPrimaryClickOnlyInspectsEveryRefKind() {
         MainActor.assumeIsolated {
             for kind in [GitReferenceKind.tag, .localBranch, .remoteBranch] {

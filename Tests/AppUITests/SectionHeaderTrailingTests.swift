@@ -6,6 +6,10 @@ import XCTest
 /// The section header is itself a button, so a trailing control has to win the
 /// click instead of collapsing the section underneath it.
 final class SectionHeaderTrailingTests: XCTestCase {
+    override func setUpWithError() throws {
+        try XCTSkipUnless(OnScreenTests.enabled, OnScreenTests.skipMessage)
+    }
+
     func testTrailingButtonClickDoesNotToggleTheSection() {
         MainActor.assumeIsolated {
             let fixture = Fixture()
