@@ -167,8 +167,8 @@ around provider authentication, OAuth, and multi-account flows.
 
 - macOS 14 (Sonoma) or later, Apple Silicon.
 - Swift 6.0 toolchain or newer. The package declares
-  `swift-tools-version: 6.0`; CI builds with the Swift 6.2 toolchain that ships
-  with Xcode 26 on `macos-26` runners.
+  `swift-tools-version: 6.0`; CI builds with the default toolchain of the
+  `macos-26` runners, Swift 6.3 as of 0.9.0.
 - Optional CLI tools used by some features: `git` (required), `gh`, `glab`,
   `codex`, `claude`. Configure paths in **Settings → External Tools**.
 
