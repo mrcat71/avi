@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.8.5. The config schema, the UI, and the
+Alpha. The current release is v0.9.0. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -37,7 +37,8 @@ around provider authentication, OAuth, and multi-account flows.
   failed automatic fetch shows in the status bar, not as an alert.
 - Fetch has no default keyboard shortcut, so Shift+Cmd+F stays available to
   other apps. Use the toolbar or Repository > Fetch; a different shortcut can
-  be assigned in Settings > Keyboard.
+  be assigned in Settings > Keyboard. Shortcuts set there are menu shortcuts:
+  they work while Avi is in front and never reach into other apps.
 - Staged / unstaged file lists with selection-preserving stage and unstage
   operations and arrow keys that step from file to file, past folders.
 - Stage, unstage, or discard single lines: select lines in a file's diff and
@@ -52,12 +53,21 @@ around provider authentication, OAuth, and multi-account flows.
   the reason shows next to it.
 - Agent hand-off: the `avi` command lets Claude Code, Codex, and other local
   agents stage files and fill the commit message, or propose a whole commit
-  plan, from several sessions at once. Nothing is committed until you approve
-  it. Agents > Install Agent Skills… installs the command and the agent skill.
+  plan, from several sessions at once, and put a tag such as `v1.2.0` on a
+  commit or propose one for a commit that already exists. Nothing is committed
+  or tagged until you approve it. Agents > Install Agent Skills… installs the
+  command and the agent skill.
+- Tag a commit before you make it: an agent's tag, or **Add Tag…** from a
+  commit's menu, shows above its message, and Avi creates the tag right after
+  the commit.
 - Native selectable diff text with Find support, horizontal scrolling, and
   separate old / new line-number gutters. A toolbar ignores whitespace, shows
   invisible characters, wraps lines, sets the lines of context or shows the
-  entire file, and switches to a side-by-side view.
+  entire file, and switches to a side-by-side view. Changed words are
+  highlighted within their lines, and code is colored for Swift, Go, Python,
+  JavaScript and TypeScript, JSON, YAML, TOML, Terraform, shell, Dockerfiles,
+  Markdown, Rust, C-family languages, Ruby, SQL, XML and HTML, CSS, and
+  INI-style files. Settings > Appearance sets the diff's font and text size.
 - Commit graph view with per-commit file diffs, scoped to the current branch or
   to all branches. Search finds commits by message, author, or the start of a
   SHA: matches are highlighted, the rest dims, and Return and Shift+Return step
@@ -117,6 +127,25 @@ around provider authentication, OAuth, and multi-account flows.
   branch, for the current branch or any other, and makes that remote branch the
   upstream. A new branch has no upstream until its first push, unless it is
   named like the remote branch it starts from.
+- Tags go out with their commits: the Push sheet lists the tags on the commits
+  it sends and pushes the ticked ones in the same atomic push as the branch, so
+  the remote takes both or neither and no release tag lands before its commit.
+  Tags you made in Avi and annotated tags are ticked; Repository > Push sends
+  the same ones. **Push all tags** sends every other tag after the branch.
+- Push and create a pull or merge request in one step: tick **Create pull
+  request** in the Push sheet, or use Repository > Push and Create Pull
+  Request… or a branch's Create Pull Request. Avi fills in the title from the
+  branch name, the base from the remote's default branch, and the description
+  from the repository's template or the branch's commits, and can make it a
+  draft. It creates the request with `gh` or `glab` when you are signed in,
+  else with the token from Settings, else opens the filled-in form in your
+  browser; a branch that already has one links to it, and pushing a new branch
+  offers to create one.
+- Pull request titles keep the hyphens that matter: ticket keys such as
+  `INFRA-12345`, hyphenated file and folder names of the repository such as
+  `k8s-infra-ah-ams1`, and the names and patterns in Settings > Git > Pull
+  Requests. `feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress` becomes
+  `INFRA-12345 upgrade k8s-infra-ah-ams1 ingress`.
 - AI-assisted commit message generation, one click on **Generate** in the
   commit card, through a configurable command or the OpenAI API (default model
   `gpt-6-luna`). AI work shows how long it has been running, and an IDE-style
@@ -126,7 +155,7 @@ around provider authentication, OAuth, and multi-account flows.
   `gh` or `glab` account, or from a URL over HTTPS with the account you pick or
   over SSH with your keys. Dropping folders on the window opens them, each in
   its own tab.
-- Pull and merge requests open on GitHub, gitlab.com, and self-hosted GitLab:
+- Pull and merge requests work with GitHub, gitlab.com, and self-hosted GitLab:
   an instance whose name does not say "gitlab" is recognized when `glab` is
   signed in to it or Settings > GitLab has a token for it.
 - GitHub / GitLab account management with Personal Access Tokens and `gh` /
@@ -154,6 +183,18 @@ swift test
 
 # Launch the app in development:
 swift run AviApp
+```
+
+`swift test` skips the tests that put a window on screen and click or press
+keys in it, so it can run while you work. CI runs them, and
+`AVI_UI_TESTS=1 swift test` runs them on your Mac too.
+
+A debug build can also render the Push sheet, the commit composer with a tag,
+a tag proposal, a diff, and Settings panes against demo repositories and quit,
+without touching your workspace or config:
+
+```sh
+swift run AviApp --render-screens /tmp/avi-screens
 ```
 
 If your installed Command Line Tools cannot link the SwiftPM manifest (a known

@@ -11,8 +11,8 @@ version = 1
 [appearance]
 theme = "system"           # system | light | dark
 density = "comfortable"    # comfortable | compact
-fontSize = 13
-diffFont = "SF Mono"
+fontSize = 13              # 11 to 16; diffs use one point less
+diffFont = "SF Mono"       # any installed monospaced family
 fileListMode = "tree"      # tree | flat
 graphLaneWidth = 16        # 12 | 16 | 20
 authorPictures = true      # ask GitHub/GitLab who wrote each commit, then Gravatar
@@ -65,6 +65,17 @@ mergeToolCommand = ""
 [advanced]
 historyLimit = 200
 verboseLogging = false
+
+# Pull and merge request titles made from branch names. Every "-" and "_"
+# becomes a space except in ticket keys (INFRA-12345), hyphenated file and
+# folder names of the repository, and the names below. See
+# docs/CONFIGURATION.md#pull-request-titles.
+[pullRequests]
+ticketPrefixes = []              # e.g. ["INFRA", "OPS"]: infra-123 -> INFRA-123
+keepHyphenated = []              # names, "k8s-*-*-ams1" (* is one word), or '/regex/'
+learnNamesFromRepository = true
+capitalize = false
+draft = false                    # start new requests as drafts
 
 # Claude Code, Codex, and other local agents send commit proposals through the
 # `avi` command and Avi's control socket. See docs/AGENT-INTEGRATION.md.

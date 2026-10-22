@@ -33,11 +33,12 @@ A complete example with every section is in
 
 | Section          | Purpose                                                                 |
 | ---------------- | ----------------------------------------------------------------------- |
-| `appearance`     | Theme, density, font sizes, file-list mode (tree / flat), graph lane width, and `authorPictures`: show author pictures beside their names in History, from the GitHub or GitLab account that wrote each commit (asked with a token from Settings or your `gh` or `glab` sign-in), else looked up by address there and on Gravatar (default `true`; `false` shows the names alone and contacts no server). |
+| `appearance`     | Theme (`system`, `light`, `dark`), row density, the diff's font (`diffFont`, any installed monospaced family; `SF Mono` is the system one) and text size (`fontSize`, 11 to 16; diffs use one point less), file-list mode (tree / flat), graph lane width, and `authorPictures`: show author pictures beside their names in History, from the GitHub or GitLab account that wrote each commit (asked with a token from Settings or your `gh` or `glab` sign-in), else looked up by address there and on Gravatar (default `true`; `false` shows the names alone and contacts no server). |
 | `git`            | Default author identity, fetch interval, auto-refresh, terminal/editor. `terminalApp` is the app **Open in Terminal** opens a repository or worktree folder in; empty uses Terminal. |
 | `clone`          | Default clone directory, and whether a clone starts on HTTPS or SSH.    |
 | `ai`             | AI commit-message backend (command / openai), model (default `gpt-6-luna`), prompts, limits, timeout. |
 | `agents`         | `enabled`: accept proposals from local agents through the `avi` command. See [`AGENT-INTEGRATION.md`](AGENT-INTEGRATION.md). |
+| `pullRequests`   | How pull request titles are made from branch names, and whether new requests start as drafts. See [Pull request titles](#pull-request-titles). |
 | `externalTools`  | Override paths to `git`, `gh`, `glab`, `codex`, `claude`, editors. `diffToolPath` is the tool **External Diff** opens; empty uses Git's `diff.tool`. Merge-tool selection is described below. |
 | `advanced`       | History limit, verbose logging.                                         |
 | `integrations`   | Provider accounts (PAT + CLI). Tokens themselves are in the Keychain.   |
@@ -62,6 +63,45 @@ Git marks the file resolved if the output changed. Closing without merging
 leaves the conflict unresolved. During a rebase, Current is the upstream and
 Incoming is the commit being replayed, not the reverse. Git's temporary copies
 stay outside the working tree, and no `.orig` backups are left beside the file.
+
+## Pull request titles
+
+The Push sheet makes a pull or merge request's title from the branch name,
+and you can edit it there before creating the request. Folders such as
+`feature/` or a user name are dropped, unless the folder is itself a ticket
+key or a kept name; then it leads the title. Every `-` and `_` becomes a
+space, except inside:
+
+- Ticket keys: an upper-case project, a hyphen, and a number (`INFRA-12345`,
+  `OPS2-7`). Projects listed in `ticketPrefixes` match in any case and are
+  written in capitals, so `infra-123` becomes `INFRA-123`.
+- Hyphenated file and folder names of the repository, while
+  `learnNamesFromRepository` is on, such as `environments/k8s-infra-ah-ams1/`.
+  Extensions are ignored, and the repository's own name counts too. The
+  longest name wins.
+- `keepHyphenated` entries, matched in any case and only on whole words: a
+  name, a pattern where `*` stands for one word of letters, digits, and dots,
+  or a regular expression between slashes.
+
+```toml
+[pullRequests]
+ticketPrefixes = ["INFRA", "OPS"]
+keepHyphenated = ["k8s-*-*-ams1", '/[a-z0-9]+-[a-z]{3}[0-9]+/']
+learnNamesFromRepository = true
+capitalize = false   # capitalize the first word that is not a ticket key or kept name
+draft = false        # start new requests as drafts
+```
+
+With these rules `feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress`
+becomes `INFRA-12345 upgrade k8s-infra-ah-ams1 ingress`, and `fix-login-timeout`
+becomes `fix login timeout`. Write regular expressions in single-quoted TOML
+strings, which keep backslashes as they are. **Settings > Git > Pull
+Requests** edits the same keys and shows the title for a branch name you
+type; names learned from a repository apply only in the Push sheet.
+
+Avi creates the request with `gh` or `glab` when you are signed in to that
+host, else with the token from Settings > GitHub or GitLab, else it opens the
+filled-in form in your browser.
 
 ## Update settings
 

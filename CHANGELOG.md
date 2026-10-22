@@ -6,6 +6,27 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-22
+
+### Added
+- Push and create a pull or merge request in one step. The Push sheet's **Create pull request** fills in the title from the branch name, the base from the remote's default branch, and the description from the repository's template or the branch's commits, and can make it a draft. Avi creates the request with `gh` or `glab` when you are signed in, else with the token from Settings, else opens the filled-in form in the browser. A branch that already has an open request links to it, and pushing a new branch offers to create one. It opens from the Push sheet, Repository > Push and Create Pull Request…, and a branch's Create Pull Request.
+- Pull request titles keep the hyphens that matter: ticket keys such as `INFRA-12345`, hyphenated file and folder names of the repository such as `k8s-infra-ah-ams1`, and the names, patterns, and regular expressions under `[pullRequests]` in `config.toml`, which **Settings > Git > Pull Requests** edits with a preview. `feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress` becomes `INFRA-12345 upgrade k8s-infra-ah-ams1 ingress`.
+- Diffs highlight the words that changed within a line and color code in Swift, Go, Python, JavaScript and TypeScript, JSON, YAML, TOML, Terraform, shell, Dockerfiles, Markdown, and more.
+- Agents can propose tags. A commit in a proposal can carry one (`"tag": {"name": "v1.2.0", "message": "Release 1.2.0"}` in the plan, or `avi propose -m ... --tag v1.2.0`), which Avi creates right after you make that commit. `avi propose --tag v1.2.0 [--at REVISION]` proposes one for a commit that already exists; it waits in a banner with **Create Tag**, and **Create and Push** once the remote has the commit. Results list the tags in `tags`; new error codes are `invalid_tag`, `tag_exists`, and `unknown_revision`. The `avi` skill tells agents when to propose a tag, and to send a release tag only after CI passes where the release process asks for that; Settings > Agents offers to update installed copies.
+- **Add Tag…** in a commit's menu in Changes tags Commit 1 or a planned commit when it is made. The tag shows above the message, where you can rename or remove it.
+- The Push sheet lists the tags on the commits it sends and pushes the ticked ones with the branch in one atomic push, so the remote takes both or neither. Tags made in Avi and annotated tags come ticked, and Repository > Push sends the same ones. On a server without atomic pushes the branch goes first and the tags after it.
+
+### Changed
+- **Push all tags** in the Push sheet is off by default and pushes the other tags after the branch, not in the same push, so a rejected branch never leaves its tags on the remote.
+- **Create Tag** pushes a new tag right away only when the remote already has its commit. Otherwise the tag waits for the next push of its branch.
+- A branch's Create Pull Request opens the Push sheet with the request filled in, instead of asking whether to push and then opening the browser.
+- Settings > Appearance applies the theme, and the Diff font and the text size, now under Diff & Graph, apply to diffs.
+
+### Fixed
+- Keyboard shortcuts set in Settings > Keyboard no longer act in other apps: they were registered system-wide, so Cmd+R, Cmd+O, or Cmd+Return reached Avi while you worked elsewhere. They are menu shortcuts now.
+- The Reset sheet and History's confirmations name the current branch as `'main'` instead of `'Optional("main")'`.
+- Dates are in English, in your region's format, instead of in your system's language next to English labels, such as "hace 2 m".
+
 ## [0.8.5] - 2026-10-16
 
 ### Changed

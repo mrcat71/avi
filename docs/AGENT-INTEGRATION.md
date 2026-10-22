@@ -57,6 +57,7 @@ commit to Avi with the avi skill" to your global agent instructions.
 | One commit while the field holds your own text | Your text stays. The proposal waits in a preview card: **Replace**, **Append as body**, or **Discard**. |
 | Several commits, another session's proposal pending, or other files staged | The commits become planned commits in Changes. Nothing is staged. A proposal already in the commit field becomes a planned commit as well. |
 | One commit without files | Fills the message only, for whatever is already staged. |
+| A tag without commits | Waits in a banner above the repository: **Create Tag**, or **Create and Push to origin** once origin has the commit. |
 
 Several agent sessions can work at once:
 
@@ -123,6 +124,46 @@ Working with the stack:
 Planned commits live in memory: quitting Avi drops them, while files Avi
 staged stay staged.
 
+## Tags
+
+A commit in a proposal can carry a tag, such as a release's `v1.2.0`. The tag
+shows above the commit's message as "Tag after committing", where you can
+rename it, change its message, or remove it; **Add Tag…** in a commit's menu
+tags one yourself. Avi creates the tag right after it makes that commit, before
+the next one, so the tag marks exactly that commit. A tag with a message is
+annotated, one without is lightweight. When Git refuses a tag, the commits are
+still made and the error names the tag. Regrouping commits keeps their tags:
+merged commits keep both, and the AI's revision puts them on the last new
+commit, which ends with all of their changes.
+
+The order matters when the tag is pushed: a tag that reaches the remote before
+its commit is on the branch can start a release from a commit the branch never
+gets, for example when the remote refuses the branch. So Avi never pushes such
+a tag on its own:
+
+- The Push sheet lists the tags on the commits it sends, the ones the remote
+  lacks going by its remote-tracking branches. Tags made in Avi and annotated
+  tags come ticked. The ticked ones go in the same `git push --atomic` as the
+  branch: the remote takes the branch and the tags together, or nothing.
+  Repository > Push sends the same tags.
+- A server that does not support atomic pushes gets the branch first and the
+  tags in a second push, only once the branch is in.
+- **Push all tags** sends every other tag after the branch.
+- **Create Tag** pushes the new tag right away only when the remote already has
+  its commit; otherwise the tag waits for the next push of its branch.
+
+A tag sent without commits is for a commit that already exists. Avi resolves
+`at` (default `HEAD`) when the proposal arrives, so the tag goes where the
+agent meant even after you commit again, and shows it in a banner until you
+create or dismiss it. A session's new tag proposal replaces its earlier one.
+
+This suits a release process that pushes the tag only after CI passes on the
+pushed commit, such as Avi's own in [RELEASE.md](RELEASE.md): the agent hands
+off the release commit without a tag and sends the tag once CI is green. The
+banner's **Create and Push** then sends the tag alone, which is safe because
+the remote already has its commit. The installed skill tells agents to work
+this way.
+
 ## The `avi` command
 
 ```
@@ -130,7 +171,9 @@ avi status [--repo PATH] [--json]
 avi open [PATH] [--focus] [--json]
 avi propose --file PLAN.json|- [--repo PATH] [--agent NAME] [--session ID]
             [--title TEXT] [--replace] [--focus] [--json]
-avi propose -m SUBJECT [-m BODY]... [--agent NAME] [--session ID] [--] [FILE...]
+avi propose -m SUBJECT [-m BODY]... [--tag NAME [--tag-message TEXT]]
+            [--agent NAME] [--session ID] [--] [FILE...]
+avi propose --tag NAME [--tag-message TEXT] [--at REVISION]
 avi skill status | install | remove [--claude] [--codex] [--opencode] [--command] [--force]
 avi version
 ```
@@ -150,6 +193,17 @@ avi version
 
   `./path` and absolute paths inside the repository are accepted too. List
   both sides of a rename; for a staged rename either side brings the other.
+- A commit's `tag` is a name or an object; `message` makes it annotated:
+
+  ```json
+  {"message": "chore(release): prepare version 1.2.0", "files": ["CHANGELOG.md"],
+   "tag": {"name": "v1.2.0", "message": "Release 1.2.0"}}
+  ```
+
+  A plan file with a top-level `tag` and no `commits` proposes a tag for an
+  existing commit: `{"version": 1, "tag": {"name": "v1.2.0", "at": "HEAD"}}`.
+- `--tag` and `--tag-message` give the `-m` commit its tag. Without `-m`,
+  `--tag` proposes a tag for the commit `--at` names, `HEAD` by default.
 - `-m` joins its values with blank lines, like `git commit -m`. Files after it
   are relative to the current directory.
 - The agent and session come from `--agent`/`--session`, then the plan file,
@@ -169,12 +223,15 @@ one JSON request on one line and reads one JSON line back:
 
 ```text
 {"v":1,"method":"propose","params":{"repo":"/abs/worktree","agent":"Codex","session":"t1","commits":[{"message":"...","files":["a.swift"]}]}}
-{"v":1,"ok":true,"result":{"app":{"version":"0.8.5"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
+{"v":1,"ok":true,"result":{"app":{"version":"0.9.0"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
 ```
 
-Methods are `status`, `open`, and `propose`. `status` lists open repositories,
-their counts, the commit-field proposal, and pending drafts with their agent
-and session. Failures carry `error.code`:
+Methods are `status`, `open`, and `propose`. `propose` takes `commits`, each
+with an optional `tag`, or a top-level `tag` without commits. Its result lists
+the tags Avi will create in `tags`; an Avi from before tags leaves `tags` out
+and ignores them. `status` lists open repositories, their counts, the
+commit-field proposal, pending drafts with their agent, session, and tags, and
+the tags waiting in banners. Failures carry `error.code`:
 
 | Code | Meaning |
 | ---- | ------- |
@@ -183,6 +240,9 @@ and session. Failures carry `error.code`:
 | `file_claimed` | Another session's proposal holds the files; `error.owners` names it. |
 | `edited_by_user` | You edited this session's earlier proposal. |
 | `conflicts` | The repository has unresolved conflicts. |
+| `invalid_tag` | Git would refuse the tag name, or the proposal names it twice. |
+| `tag_exists` | The repository has the tag, or another pending proposal or commit creates it. |
+| `unknown_revision` | `at` names no commit. |
 | `not_trusted` | You have not opened this repository in Avi; Avi is asking you. |
 | `busy` | Avi is committing in this repository. |
 | `no_window` | Avi is starting and has no window yet. |
@@ -196,8 +256,10 @@ socket) and `blocked` (a sandbox or permissions refused the connection).
 - The socket is mode `0600`, and Avi checks each peer's user ID, so only your
   own processes can connect.
 - A proposal can open a repository you already trust, stage the files it
-  names, fill a commit message, and create drafts. It cannot commit, push, or
-  run a command. Paths reach Git as literal pathspecs.
+  names, fill a commit message, and create drafts. It cannot commit, tag,
+  push, or run a command: a proposed tag is created only when you commit or
+  click Create Tag. Paths reach Git as literal pathspecs, and tag names must
+  pass Git's rules before anything happens.
 - Turn it off in **Settings > Agents > Accept proposals**, or with
   `[agents] enabled = false` in the config file.
 
