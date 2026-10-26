@@ -68,6 +68,10 @@ around provider authentication, OAuth, and multi-account flows.
   JavaScript and TypeScript, JSON, YAML, TOML, Terraform, shell, Dockerfiles,
   Markdown, Rust, C-family languages, Ruby, SQL, XML and HTML, CSS, and
   INI-style files. Settings > Appearance sets the diff's font and text size.
+  Large diffs keep all text, line colors, selection, and Find available, but
+  word-level highlighting has a shared work budget. Syntax coloring is skipped
+  above 20,000 rows or 1,000,000 UTF-16 units; lines longer than 4,096 UTF-16
+  units skip syntax and word-level highlighting.
 - Commit graph view with per-commit file diffs, scoped to the current branch or
   to all branches. Search finds commits by message, author, or the start of a
   SHA: matches are highlighted, the rest dims, and Return and Shift+Return step
