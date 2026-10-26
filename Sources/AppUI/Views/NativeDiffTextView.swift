@@ -169,8 +169,12 @@ struct NativeDiffTextView: NSViewRepresentable {
     /// The words each replaced line changed, in document offsets.
     static func wordHighlights(_ document: DiffDocument) -> [WordHighlight] {
         var result: [WordHighlight] = []
+        var remainingWork = WordDiff.documentComparisonWork
         for (removed, added) in document.replacedLinePairs() {
-            guard let changes = WordDiff.changes(old: document.lineText(ofRow: removed), new: document.lineText(ofRow: added)) else { continue }
+            guard remainingWork > 0 else { break }
+            guard let changes = WordDiff.changes(
+                old: document.lineText(ofRow: removed), new: document.lineText(ofRow: added), remainingWork: &remainingWork
+            ) else { continue }
             result += changes.old.map { WordHighlight(range: shifted($0, into: document.rows[removed]), kind: .deletion) }
             result += changes.new.map { WordHighlight(range: shifted($0, into: document.rows[added]), kind: .addition) }
         }
@@ -181,8 +185,12 @@ struct NativeDiffTextView: NSViewRepresentable {
     static func sideBySideWordHighlights(old: DiffDocument, new: DiffDocument) -> (old: [WordHighlight], new: [WordHighlight]) {
         var oldWords: [WordHighlight] = []
         var newWords: [WordHighlight] = []
+        var remainingWork = WordDiff.documentComparisonWork
         for index in 0 ..< min(old.rows.count, new.rows.count) where old.rows[index].kind == .deletion && new.rows[index].kind == .addition {
-            guard let changes = WordDiff.changes(old: old.lineText(ofRow: index), new: new.lineText(ofRow: index)) else { continue }
+            guard remainingWork > 0 else { break }
+            guard let changes = WordDiff.changes(
+                old: old.lineText(ofRow: index), new: new.lineText(ofRow: index), remainingWork: &remainingWork
+            ) else { continue }
             oldWords += changes.old.map { WordHighlight(range: shifted($0, into: old.rows[index]), kind: .deletion) }
             newWords += changes.new.map { WordHighlight(range: shifted($0, into: new.rows[index]), kind: .addition) }
         }
@@ -225,7 +233,8 @@ struct NativeDiffTextView: NSViewRepresentable {
         }
 
         // Syntax colors, skipped for very long diffs.
-        if let highlighter = SyntaxHighlighter.forPath(display.path), document.rows.count <= 20000 {
+        if let highlighter = SyntaxHighlighter.forPath(display.path), document.rows.count <= 20000,
+           document.text.utf16.count <= SyntaxHighlighter.maximumDocumentLength {
             var inBlockComment = false
             for (index, row) in document.rows.enumerated() {
                 guard let kind = row.kind, kind != .noNewline else {

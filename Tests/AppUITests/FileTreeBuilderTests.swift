@@ -3,6 +3,27 @@ import GitKit
 import Testing
 
 struct FileTreeBuilderTests {
+    @Test(arguments: [false, true]) func buildsLargeTree(separateFolders: Bool) {
+        let entries = (0 ..< 8000).map { index in
+            FileStatus(
+                path: "Sources/\(separateFolders ? "Folder\(index)/" : "")File\(index).swift",
+                index: index.isMultiple(of: 2) ? .added : .unmodified, worktree: .modified
+            )
+        }
+        let start = ContinuousClock.now
+        let tree = FileTreeBuilder.build(entries: entries)
+        print("Large file tree (separate folders: \(separateFolders)): \(start.duration(to: .now))")
+        #expect(tree.reduce(0) { $0 + $1.changedCount } == entries.count)
+        #expect(tree.reduce(0) { $0 + $1.stagedCount } == entries.count / 2)
+        let expanded = FileTreeBuilder.allFolderIds(for: entries)
+        let files = FileTreeBuilder.flatten(tree, expanded: expanded).compactMap { node -> String? in
+            guard case .file(let file) = node.payload else { return nil }
+            return file.path
+        }
+        #expect(Set(files) == Set(entries.map(\.path)))
+        #expect(files.count == entries.count)
+    }
+
     @Test func emptyEntriesProduceEmptyTree() {
         let tree = FileTreeBuilder.build(entries: [])
         #expect(tree.isEmpty)

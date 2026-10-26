@@ -46,6 +46,38 @@ struct WordDiffTests {
         #expect(words.new.map { (new as NSString).substring(with: $0) } == ["🎉"])
     }
 
+    @Test func comparisonBudgetIsSharedAcrossLines() {
+        let old = "let before = value"
+        let new = "let after = value"
+        let work = WordDiff.tokens(old).count * WordDiff.tokens(new).count
+        var remaining = work
+        #expect(WordDiff.changes(old: old, new: new, remainingWork: &remaining) != nil)
+        #expect(remaining == 0)
+        #expect(WordDiff.changes(old: old, new: new, remainingWork: &remaining) == nil)
+    }
+
+    @Test func identicalLinesNeedNoComparisonBudget() throws {
+        var remaining = 0
+        let changes = try #require(WordDiff.changes(old: "same line", new: "same line", remainingWork: &remaining))
+        #expect(changes.old.isEmpty && changes.new.isEmpty)
+        #expect(remaining == 0)
+    }
+
+    @Test func oversizedLinesStayUncomparedWithoutSpendingBudget() {
+        let long = String(repeating: "x", count: WordDiff.maximumLineLength)
+        var remaining = WordDiff.documentComparisonWork
+        #expect(WordDiff.changes(old: long, new: long + "y", remainingWork: &remaining) == nil)
+        #expect(WordDiff.changes(old: long + "y", new: long, remainingWork: &remaining) == nil)
+        #expect(remaining == WordDiff.documentComparisonWork)
+    }
+
+    @Test func perLineComparisonLimitStillApplies() {
+        var remaining = WordDiff.documentComparisonWork
+        let line = String(repeating: "a + ", count: 110)
+        #expect(WordDiff.changes(old: line + "before", new: line + "after", remainingWork: &remaining) == nil)
+        #expect(remaining == WordDiff.documentComparisonWork)
+    }
+
     /// Rows: 0 header, 1 context, 2 -a, 3 -b, 4 +A, 5 context, 6 +only,
     /// 7 -c, 8 +C, 9 +D.
     @Test func removedLinesPairWithTheAddedLinesAfterThem() {
@@ -72,6 +104,15 @@ struct WordDiffTests {
 }
 
 struct SyntaxHighlighterTests {
+    @Test func oversizedLinesSkipRegexHighlightingAndResetCommentState() throws {
+        let highlighter = try #require(SyntaxHighlighter.forPath("a.swift"))
+        var inBlockComment = true
+        let pieces = highlighter.highlight(String(repeating: "/", count: SyntaxHighlighter.maximumLineLength + 1), inBlockComment: &inBlockComment)
+        #expect(pieces.isEmpty)
+        #expect(!inBlockComment)
+        #expect(highlighter.highlight("let value = 1", inBlockComment: &inBlockComment).contains { $0.kind == .keyword })
+    }
+
     @Test(arguments: [
         ("Sources/App.swift", "Swift"),
         ("cmd/main.go", "Go"),

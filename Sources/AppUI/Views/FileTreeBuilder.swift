@@ -124,9 +124,12 @@ enum FileTreeBuilder {
         }
         let component = parts[fileIndex]
         let newPath = accumulated.isEmpty ? component : "\(accumulated)/\(component)"
-        var child = folder.folders[component] ?? RawFolder(name: component, path: newPath)
-        insertParts(parts, fileIndex: fileIndex + 1, entry: entry, into: &child, accumulated: newPath)
-        folder.folders[component] = child
+        // Mutate the stored child in place. Copying it out first copies its
+        // growing file array or folder dictionary on every insertion.
+        insertParts(
+            parts, fileIndex: fileIndex + 1, entry: entry,
+            into: &folder.folders[component, default: RawFolder(name: component, path: newPath)], accumulated: newPath
+        )
     }
 
     private struct ConvertResult {

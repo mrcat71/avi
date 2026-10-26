@@ -6,13 +6,31 @@ import GitKit
 /// lines that replace them, in order, and each pair's words are compared,
 /// so a renamed variable stands out from the rest of its line.
 enum WordDiff {
+    static let maximumLineLength = 4096
+    static let maximumComparisonWork = 160_000
+    /// Shared by all line pairs, not renewed for every line in a large diff.
+    static let documentComparisonWork = 1_000_000
+
     /// Ranges, in UTF-16 offsets of each string, of the words only `old`
-    /// has and of the words only `new` has. Nil when the lines have too
-    /// little in common for a word comparison to mean anything.
+    /// has and of the words only `new` has. Nil when comparison exceeds its
+    /// budget or the lines have too little in common to compare meaningfully.
     static func changes(old: String, new: String) -> (old: [NSRange], new: [NSRange])? {
+        var remainingWork = maximumComparisonWork
+        return changes(old: old, new: new, remainingWork: &remainingWork)
+    }
+
+    static func changes(old: String, new: String, remainingWork: inout Int) -> (old: [NSRange], new: [NSRange])? {
+        guard !old.isEmpty, !new.isEmpty,
+              old.utf16.count <= maximumLineLength, new.utf16.count <= maximumLineLength else { return nil }
+        if old == new {
+            return ([], [])
+        }
+        guard remainingWork > 0 else { return nil }
         let a = tokens(old)
         let b = tokens(new)
-        guard !a.isEmpty, !b.isEmpty, a.count * b.count <= 160_000 else { return nil }
+        let work = a.count * b.count
+        guard !a.isEmpty, !b.isEmpty, work <= maximumComparisonWork, work <= remainingWork else { return nil }
+        remainingWork -= work
 
         // Longest common subsequence of tokens, by length table.
         var table = [[Int]](repeating: [Int](repeating: 0, count: b.count + 1), count: a.count + 1)
@@ -155,6 +173,9 @@ extension DiffDocument {
 /// works line by line, so it needs no grammar files, and it keeps track of
 /// block comments across the lines of a hunk.
 struct SyntaxHighlighter: Sendable {
+    static let maximumLineLength = 4096
+    static let maximumDocumentLength = 1_000_000
+
     enum Kind: Sendable {
         case keyword
         case string
@@ -217,6 +238,11 @@ struct SyntaxHighlighter: Sendable {
     /// Colored ranges, in UTF-16 offsets of `line`. `inBlockComment` carries
     /// an open block comment from one line to the next.
     func highlight(_ line: String, inBlockComment: inout Bool) -> [(range: NSRange, kind: Kind)] {
+        // Minified/generated lines can make repeated regex searches expensive.
+        guard line.utf16.count <= Self.maximumLineLength else {
+            inBlockComment = false
+            return []
+        }
         let ns = line as NSString
         var result: [(NSRange, Kind)] = []
         var covered = IndexSet()
