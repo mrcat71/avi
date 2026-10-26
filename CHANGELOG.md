@@ -6,6 +6,12 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-26
+
+### Fixed
+- Large replacement diffs no longer spend seconds comparing changed words on the UI thread. Word-level highlighting shares a work budget across the diff, and oversized files and long generated lines skip expensive syntax coloring while keeping all text, line colors, selection, and Find available.
+- Changed-file trees with thousands of files build in place instead of repeatedly copying growing collections, reducing pauses when loading or refreshing large change sets.
+
 ## [0.9.0] - 2026-10-22
 
 ### Added
