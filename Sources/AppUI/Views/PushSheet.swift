@@ -348,6 +348,8 @@ struct PushSheet: View {
     private func routeNote(_ context: PullRequestContext) -> String {
         let noun = context.forge.requestNoun.lowercased()
         switch context.route {
+        case nil:
+            return "On submit, Avi checks for an existing \(noun) and uses gh or glab, your token from Settings, or the browser."
         case .cli(let executable):
             return "Avi creates the \(noun) with \(URL(fileURLWithPath: executable).lastPathComponent), signed in as you."
         case .token:
@@ -363,8 +365,14 @@ struct PushSheet: View {
     }
 
     private func loadContext(branch: String) async {
+        let previous = context
+        context = nil
         isLoadingContext = true
-        defer { isLoadingContext = false }
+        defer {
+            if !Task.isCancelled {
+                isLoadingContext = false
+            }
+        }
         let loaded = await store.loadPullRequestContext(branch: branch, remote: selectedRemote.isEmpty ? nil : selectedRemote)
         // A newer load replaced this one.
         guard !Task.isCancelled else { return }
@@ -373,13 +381,13 @@ struct PushSheet: View {
             return
         }
         // Keep what you already typed when only the remote changed.
-        if title.isEmpty || title == context?.title {
+        if title.isEmpty || title == previous?.title {
             title = loaded.title
         }
         if base.isEmpty || !loaded.bases.contains(base) {
             base = loaded.defaultBase
         }
-        if description.isEmpty || description == context?.body {
+        if description.isEmpty || description == previous?.body {
             description = loaded.body
         }
         context = loaded
@@ -413,7 +421,9 @@ struct PushSheet: View {
 
     private var canPerform: Bool {
         guard currentBranchName != nil, !availableRemotes.isEmpty else { return false }
-        guard createsPullRequest, let context, context.existing == nil else { return true }
+        guard createsPullRequest else { return true }
+        guard !isLoadingContext, let context else { return false }
+        guard context.existing == nil else { return true }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return !trimmed.isEmpty && !base.isEmpty && base != context.branch
     }

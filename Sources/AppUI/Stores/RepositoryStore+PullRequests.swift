@@ -46,7 +46,8 @@ struct PullRequestContext: Equatable {
     let titleAlternatives: [String]
     /// The repository's template, else what the branch's commits say.
     let body: String
-    let route: PullRequestRoute
+    /// Nil defers authentication until the user submits, keeping the form local-only.
+    let route: PullRequestRoute?
     /// An open request from this branch, which makes creating one pointless.
     let existing: PullRequestInfo?
 }
@@ -66,18 +67,13 @@ extension RepositoryStore {
 
     /// Reads what the Push sheet offers for a pull request of `branch` to
     /// `remote`: forge, bases, suggested title and description, how it would
-    /// be created, and whether one is open already.
-    /// `route` skips asking gh, glab and Settings, for tests.
+    /// be created, and any already-known open request. Network checks run
+    /// only when the user submits. `route` overrides automatic authentication.
     func loadPullRequestContext(branch: String, remote preferredRemote: String? = nil, route knownRoute: PullRequestRoute? = nil) async -> PullRequestContext? {
         guard let root,
               let remoteName = preferredRemote ?? pushRemoteName(for: branch),
               let gitRemote = remotes.first(where: { $0.name == remoteName }) else { return nil }
-        var hint = RemoteURLParser.hint(from: gitRemote, knownHosts: KnownProviderHosts.shared.hosts)
-        if hint == .unknown {
-            // A self-hosted GitLab `glab` was signed in to after the list loaded.
-            await KnownProviderHosts.shared.refresh()
-            hint = RemoteURLParser.hint(from: gitRemote, knownHosts: KnownProviderHosts.shared.hosts)
-        }
+        let hint = RemoteURLParser.hint(from: gitRemote, knownHosts: KnownProviderHosts.shared.hosts)
         guard let forge = Forge(hint) else { return nil }
 
         let prefix = remoteName + "/"
@@ -111,20 +107,13 @@ extension RepositoryStore {
             body = await pullRequestCommitSummary(branch: branch, base: "\(remoteName)/\(defaultBase)")
         }
 
-        var route = knownRoute
-        if route == nil {
-            route = await PullRequestService.route(for: forge)
-        }
-        let resolvedRoute = route ?? .browser
-        var existing: PullRequestInfo?
-        if let ref = refs.localBranches.first(where: { $0.name == branch }), branchExistsOnPullRequestRemote(ref) || refs.remoteBranches.contains(where: { $0.name == prefix + branch }) {
-            existing = await PullRequestService.existing(head: branch, on: forge, via: resolvedRoute, in: root)
-        }
         guard !Task.isCancelled else { return nil }
-        if let existing {
-            openPullRequests[branch] = existing
-        } else {
-            openPullRequests[branch] = nil
+        // A branch can be pushed to several projects; a cached request from
+        // another remote must not turn this remote's Create action into Push.
+        let existing = openPullRequests[branch].flatMap { info -> PullRequestInfo? in
+            guard let projectURL = forge.webURL,
+                  info.url.absoluteString.hasPrefix(projectURL.absoluteString + "/") else { return nil }
+            return info
         }
 
         return PullRequestContext(
@@ -136,7 +125,7 @@ extension RepositoryStore {
             title: title,
             titleAlternatives: alternatives,
             body: body,
-            route: resolvedRoute,
+            route: knownRoute,
             existing: existing
         )
     }
@@ -171,13 +160,27 @@ extension RepositoryStore {
         }
     }
 
-    /// Creates the request the way `context.route` says, or opens the
-    /// forge's form when Avi cannot create it itself.
+    /// Resolves authentication and checks for an existing request only after
+    /// submission, then creates it or opens the forge's form in the browser.
     func createPullRequest(_ request: PullRequestRequest, context: PullRequestContext) async {
         guard let root else { return }
         let forge = context.forge
         let fallback = PullRequestService.browserURL(for: request, on: forge)
-        guard context.route.createsInApp else {
+        let route: PullRequestRoute
+        if let override = context.route {
+            route = override
+        } else {
+            route = await PullRequestService.route(for: forge)
+        }
+        guard !Task.isCancelled, self.root == root else { return }
+        let existing = await PullRequestService.existing(head: request.head, on: forge, via: route, in: root)
+        guard !Task.isCancelled, self.root == root else { return }
+        if let existing {
+            openPullRequests[request.head] = existing
+            pullRequestNotice = PullRequestNotice(kind: .existing(existing), forge: forge)
+            return
+        }
+        guard route.createsInApp else {
             if let fallback {
                 NSWorkspace.shared.open(fallback)
             }
@@ -185,7 +188,7 @@ extension RepositoryStore {
             return
         }
         do {
-            let created = try await PullRequestService.create(request, on: forge, via: context.route, in: root)
+            let created = try await PullRequestService.create(request, on: forge, via: route, in: root)
             openPullRequests[request.head] = created
             pullRequestNotice = PullRequestNotice(kind: .created(created), forge: forge)
         } catch {

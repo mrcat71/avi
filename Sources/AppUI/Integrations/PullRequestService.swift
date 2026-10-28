@@ -140,13 +140,13 @@ enum PullRequestService {
         switch forge {
         case .github:
             if let path = GhCLI.executablePath(),
-               let accounts = await GhCLI.accounts(),
+               let accounts = await GhCLI.accounts(host: forge.host),
                accounts.contains(where: { $0.isUsable && $0.host.caseInsensitiveCompare(forge.host) == .orderedSame }) {
                 return .cli(executable: path)
             }
         case .gitlab:
             if let path = GlabCLI.executablePath(),
-               let accounts = await GlabCLI.accounts(),
+               let accounts = await GlabCLI.accounts(host: forge.host),
                accounts.contains(where: { $0.isUsable && $0.host.caseInsensitiveCompare(forge.host) == .orderedSame }) {
                 return .cli(executable: path)
             }

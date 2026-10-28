@@ -67,9 +67,10 @@ public enum GhCLI {
     /// status` fails as a whole when any one account is broken, so its JSON
     /// is read per account instead.
     @MainActor
-    public static func accounts() async -> [CloneAccount]? {
+    public static func accounts(host: String? = nil) async -> [CloneAccount]? {
         guard let path = executablePath() else { return nil }
-        guard let result = try? await ProviderCLISupport.run(executable: path, arguments: ["auth", "status", "--json", "hosts"]) else {
+        let arguments = ["auth", "status", "--json", "hosts"] + (host.map { ["--hostname", $0] } ?? [])
+        guard let result = try? await ProviderCLISupport.run(executable: path, arguments: arguments) else {
             return []
         }
         return CloneAccounts.ghAccounts(fromJSON: result.stdout)
@@ -154,9 +155,10 @@ public enum GlabCLI {
     /// `glab` is not installed. One unreachable instance makes `glab auth
     /// status` fail as a whole, so each host is read on its own.
     @MainActor
-    public static func accounts() async -> [CloneAccount]? {
+    public static func accounts(host: String? = nil) async -> [CloneAccount]? {
         guard let path = executablePath() else { return nil }
-        guard let result = try? await ProviderCLISupport.run(executable: path, arguments: ["auth", "status", "--all"]) else {
+        let arguments = ["auth", "status"] + (host.map { ["--hostname", $0] } ?? ["--all"])
+        guard let result = try? await ProviderCLISupport.run(executable: path, arguments: arguments) else {
             return []
         }
         return CloneAccounts.glabAccounts(fromStatus: result.stdoutString + "\n" + result.stderrString)
