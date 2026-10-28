@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.9.1. The config schema, the UI, and the
+Alpha. The current release is v0.9.2. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -144,7 +144,10 @@ around provider authentication, OAuth, and multi-account flows.
   draft. It creates the request with `gh` or `glab` when you are signed in,
   else with the token from Settings, else opens the filled-in form in your
   browser; a branch that already has one links to it, and pushing a new branch
-  offers to create one.
+  offers to create one. The form loads from local Git data without waiting for
+  GitHub or GitLab. Authentication checks only the selected host and runs on
+  submit. When authenticated, Avi checks for an existing request before
+  creating one to avoid duplicates.
 - Pull request titles keep the hyphens that matter: ticket keys such as
   `INFRA-12345`, hyphenated file and folder names of the repository such as
   `k8s-infra-ah-ams1`, and the names and patterns in Settings > Git > Pull
