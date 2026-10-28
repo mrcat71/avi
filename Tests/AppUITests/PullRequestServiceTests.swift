@@ -111,6 +111,61 @@ struct PullRequestServiceTests {
 @Suite("Pull request context")
 @MainActor
 struct PullRequestContextTests {
+    @Test(arguments: ["git@github.com:mrcat71/infra.git", "git@gitlab.com:ops/infra.git"])
+    func openingTheFormDoesNotResolveAuthentication(url: String) async throws {
+        let store = try await openStore(provider(branch: "fix-login", url: url))
+        let context = try #require(await store.loadPullRequestContext(branch: "fix-login"))
+
+        #expect(context.route == nil)
+        #expect(context.defaultBase == "main")
+        #expect(context.title == "fix login")
+    }
+
+    @Test func openingTheFormUsesCachedRequestsWithoutCallingTheCLI() async throws {
+        let fake = provider(branch: "fix-login")
+        let pushedBranch = GitReference(
+            name: "origin/fix-login", fullName: "refs/remotes/origin/fix-login",
+            oid: String(repeating: "a", count: 40), kind: .remoteBranch
+        )
+        fake.refs = RepositoryRefs(localBranches: fake.refs.localBranches, remoteBranches: fake.refs.remoteBranches + [pushedBranch], tags: [])
+        let store = try await openStore(fake)
+        let root = try #require(store.root)
+        let route = try cliRoute(in: root, hasExistingRequest: true)
+        let existing = try PullRequestInfo(number: 5, url: #require(URL(string: "https://github.com/mrcat71/infra/pull/5")), title: "Fix login")
+        store.openPullRequests["fix-login"] = existing
+
+        let context = try #require(await store.loadPullRequestContext(branch: "fix-login", route: route))
+
+        #expect(context.existing == existing)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("cli-calls").path))
+
+        store.openPullRequests["fix-login"] = try PullRequestInfo(
+            number: 7, url: #require(URL(string: "https://github.com/another/infra/pull/7")), title: "Fix login"
+        )
+        let otherProject = try #require(await store.loadPullRequestContext(branch: "fix-login", route: route))
+        #expect(otherProject.existing == nil)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("cli-calls").path))
+    }
+
+    @Test(arguments: [true, false], [true, false])
+    func submissionChecksForDuplicatesBeforeCreating(hasExistingRequest: Bool, isGitLab: Bool) async throws {
+        let fake = provider(branch: "fix-login", url: isGitLab ? "git@gitlab.com:ops/infra.git" : "git@github.com:mrcat71/infra.git")
+        let store = try await openStore(fake)
+        let root = try #require(store.root)
+        let route = try cliRoute(in: root, hasExistingRequest: hasExistingRequest, isGitLab: isGitLab)
+        let context = try #require(await store.loadPullRequestContext(branch: "fix-login", route: route))
+        let request = PullRequestRequest(title: context.title, body: "", head: "fix-login", base: "main", isDraft: false)
+
+        await store.publish(branch: "fix-login", remote: "origin", force: false, pushTags: false, pullRequest: (request, context))
+
+        let calls = try String(contentsOf: root.appendingPathComponent("cli-calls"), encoding: .utf8)
+        #expect(calls == (hasExistingRequest ? "list\n" : "list\ncreate\n"))
+        let info = try #require(store.openPullRequests["fix-login"])
+        #expect(info.number == (hasExistingRequest ? 5 : 6))
+        #expect(store.pullRequestNotice?.kind == (hasExistingRequest ? .existing(info) : .created(info)))
+        #expect(fake.pushCalls.count == 1)
+    }
+
     @Test func theTitleKeepsTicketsAndNamesFromTheRepository() async throws {
         let fake = provider(branch: "feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress")
         fake.trackedPaths = ["environments/k8s-infra-ah-ams1/main.tf", "README.md"]
@@ -184,6 +239,29 @@ struct PullRequestContextTests {
             commits: [],
             remotes: [GitRemote(name: "origin", fetchURL: url, pushURL: url)]
         )
+    }
+
+    /// A local stand-in for gh. It records calls and never reaches a forge.
+    private func cliRoute(in root: URL, hasExistingRequest: Bool, isGitLab: Bool = false) throws -> PullRequestRoute {
+        let script = root.appendingPathComponent("fake-gh")
+        let existing = isGitLab
+            ? #"[{"iid":5,"web_url":"https://gitlab.com/ops/infra/-/merge_requests/5","title":"Fix login","state":"opened"}]"#
+            : #"[{"number":5,"url":"https://github.com/mrcat71/infra/pull/5","title":"Fix login"}]"#
+        let listing = hasExistingRequest
+            ? existing
+            : "[]"
+        let createdURL = isGitLab ? "https://gitlab.com/ops/infra/-/merge_requests/6" : "https://github.com/mrcat71/infra/pull/6"
+        try """
+        #!/bin/sh
+        printf '%s\\n' "$2" >> cli-calls
+        case "$2" in
+          list) printf '%s\\n' '\(listing)' ;;
+          create) printf '%s\\n' '\(createdURL)' ;;
+          *) exit 1 ;;
+        esac
+        """.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        return .cli(executable: script.path)
     }
 
     private func openStore(_ fake: FakeGitProvider) async throws -> RepositoryStore {
