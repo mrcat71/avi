@@ -6,6 +6,12 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-28
+
+### Fixed
+- The Push sheet fills pull and merge request fields from local Git data without waiting for GitHub or GitLab authentication. Authentication checks only the selected host and runs on submission, followed by a check for an existing request before creating one.
+- Submitting while request fields are loading no longer silently pushes the branch without creating its pull or merge request.
+
 ## [0.9.1] - 2026-10-26
 
 ### Fixed
