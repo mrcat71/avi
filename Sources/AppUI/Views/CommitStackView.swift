@@ -11,14 +11,14 @@ import SwiftUI
 struct CommitStackView: View {
     let store: RepositoryStore
     @Binding var selection: Set<String>
-    /// Called when you use this list, so Cmd+A knows where to act.
+    /// Keyboard focus for the list, so the arrow keys and Cmd+A reach it.
+    var isFocused: FocusState<Bool>.Binding
+    /// Called when you use this list, so Unstaged knows you work here.
     let onActivate: () -> Void
 
     @Bindable private var config = ConfigStore.shared
     @State private var pendingGroupDiscard: DraftSource?
     @State private var confirmingPlanDiscard = false
-    /// Keyboard focus for the list, so the arrow keys reach it.
-    @FocusState private var isFocused: Bool
     @Environment(\.aviDensity) private var density
 
     var body: some View {
@@ -264,7 +264,7 @@ struct CommitStackView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .disabled(store.isApplyingPlan)
-        .focused($isFocused)
+        .focused(isFocused)
         .onCopyCommand {
             let paths = selectedPaths
             return paths.isEmpty ? [] : [NSItemProvider(object: paths.joined(separator: "\n") as NSString)]
@@ -512,7 +512,7 @@ struct CommitStackView: View {
                 onActivate()
                 // Dragging rows select without focusing the list; see ChangeListView.
                 if !newValue.isEmpty {
-                    isFocused = true
+                    isFocused.wrappedValue = true
                 }
                 guard newValue.count == 1, let tag = newValue.first else { return }
                 if tag == PlanRowTag.stagedCommit {

@@ -11,12 +11,16 @@ struct ChangeListView: View {
     @Bindable private var config = ConfigStore.shared
     @State private var multiSelection: Set<String> = []
     @State private var stackSelection: Set<String> = []
-    /// Cmd+A acts on the list you touched last.
+    /// You used the commit stack last, so Unstaged losing its highlight
+    /// leaves the diff alone.
     @State private var stackIsActive = false
     @State private var pendingDiscard: [FileStatus] = []
     @State private var confirmingDiscard = false
     /// Keyboard focus for the Unstaged list, so the arrow keys reach it.
     @FocusState private var unstagedFocused: Bool
+    /// Keyboard focus for the commit stack's list. Cmd+A selects the files of
+    /// whichever list has focus.
+    @FocusState private var stackFocused: Bool
     @AppStorage("avi.commitStackHeight") private var commitStackHeight: Double = 240
 
     var body: some View {
@@ -68,18 +72,20 @@ struct ChangeListView: View {
         }
     }
 
-    /// Hidden button that registers Cmd+A as "select all files" in the list you
-    /// used last. Lives behind the view so the shortcut is in the responder chain
-    /// while a list has focus, without taking visible space.
+    /// Hidden button that makes Cmd+A "select all files" in the list that has
+    /// keyboard focus. A button's shortcut works anywhere in its window and
+    /// comes before the Edit menu, so it is off unless a list has focus: Cmd+A
+    /// in the commit message, the diff, or any other text selects that text.
     private var selectAllShortcut: some View {
         Button("Select All Files") {
-            if stackIsActive {
+            if stackFocused {
                 stackSelection = Set(stackFilePaths.map(PlanRowTag.file))
             } else {
                 multiSelection = Set(unstagedEntries.map(\.path))
             }
         }
         .keyboardShortcut("a", modifiers: .command)
+        .disabled(!unstagedFocused && !stackFocused)
         .opacity(0)
         .frame(width: 0, height: 0)
         .accessibilityHidden(true)
@@ -193,7 +199,7 @@ struct ChangeListView: View {
             StableVSplit(bottomHeight: $commitStackHeight, minTopHeight: 34, minBottomHeight: 120) {
                 unstagedPane
             } bottom: {
-                CommitStackView(store: store, selection: $stackSelection) {
+                CommitStackView(store: store, selection: $stackSelection, isFocused: $stackFocused) {
                     stackIsActive = true
                 }
             }
