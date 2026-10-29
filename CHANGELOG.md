@@ -6,6 +6,11 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-10-29
+
+### Fixed
+- In Local Changes, Cmd+A in the commit message, the diff, and the sidebar filter selects their text again instead of every changed file. Cmd+A selects all files only while the Unstaged list or the commit stack has keyboard focus.
+
 ## [0.9.2] - 2026-10-28
 
 ### Fixed
