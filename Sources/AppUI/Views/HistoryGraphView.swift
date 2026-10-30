@@ -42,8 +42,9 @@ struct HistoryGraphView: View {
                 segments.append(Segment(path: path, color: color(for: lane), isEmphasized: false))
             }
 
-            // 2. Incoming segment for the commit's lane (from top to the dot).
-            do {
+            // 2. Connect from above only when a child occupies this lane.
+            // Unmerged branch tips start at the dot, without a dangling stub.
+            if row.hasIncomingLine {
                 let x = xPosition(for: dotLane)
                 var path = Path()
                 path.move(to: CGPoint(x: x, y: 0))

@@ -12,6 +12,29 @@ struct CommitGraphTests {
 
         #expect(rows.map(\.lane) == [0, 0, 0])
         #expect(rows.map(\.laneCount) == [1, 1, 1])
+        #expect(rows.map(\.hasIncomingLine) == [false, true, true])
+    }
+
+    @Test func unmergedBranchTipStartsAtDotWhileOtherLanesContinue() {
+        let rows = CommitGraph.assignRows(for: [
+            commit("main", parents: ["base"]),
+            commit("feature", parents: ["base"]),
+            commit("base")
+        ])
+
+        #expect(rows.map(\.hasIncomingLine) == [false, false, true])
+        #expect(rows[1].lane == 1)
+        #expect(rows[1].throughLanes == [0])
+        #expect(rows[1].parentLanes == [1])
+        #expect(rows[2].mergeInLanes == [1])
+    }
+
+    @Test func reusedLaneDoesNotConnectUnrelatedBranchTips() {
+        let rows = CommitGraph.assignRows(for: [commit("first"), commit("second")])
+
+        #expect(rows.map(\.lane) == [0, 0])
+        #expect(rows.map(\.hasIncomingLine) == [false, false])
+        #expect(rows.allSatisfy { $0.parentLanes.isEmpty })
     }
 
     @Test func mergeCommitCreatesAdditionalLane() {
@@ -26,6 +49,7 @@ struct CommitGraphTests {
         #expect(rows[0].parentLanes == [0, 1])
         #expect(rows[0].laneCount == 2)
         #expect(rows[2].lane == 1)
+        #expect(rows.map(\.hasIncomingLine) == [false, true, true, true])
     }
 
     @Test func longBranchHoldsSameLane() {
