@@ -223,7 +223,7 @@ one JSON request on one line and reads one JSON line back:
 
 ```text
 {"v":1,"method":"propose","params":{"repo":"/abs/worktree","agent":"Codex","session":"t1","commits":[{"message":"...","files":["a.swift"]}]}}
-{"v":1,"ok":true,"result":{"app":{"version":"0.9.3"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
+{"v":1,"ok":true,"result":{"app":{"version":"0.9.4"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
 ```
 
 Methods are `status`, `open`, and `propose`. `propose` takes `commits`, each

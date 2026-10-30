@@ -6,6 +6,11 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-10-30
+
+### Fixed
+- Unmerged branch tips in the history graph end at the commit dot instead of extending a short line above it. Lines connecting merged branches remain intact.
+
 ## [0.9.3] - 2026-10-29
 
 ### Fixed

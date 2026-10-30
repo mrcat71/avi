@@ -8,6 +8,8 @@ public struct CommitGraphRow: Sendable, Equatable, Identifiable {
 
     public let commit: CommitSummary
     public let lane: Int
+    /// Whether a child commit above this row connects to the dot's lane.
+    public let hasIncomingLine: Bool
     public let parentLanes: [Int]
     public let laneCount: Int
     /// Slots that pass through this row (vertical lines on the gutter).
@@ -26,12 +28,14 @@ public struct CommitGraphRow: Sendable, Equatable, Identifiable {
         lane: Int,
         parentLanes: [Int],
         laneCount: Int,
+        hasIncomingLine: Bool = true,
         throughLanes: [Int] = [],
         mergeInLanes: [Int] = [],
         laneIdentities: [Int: String] = [:]
     ) {
         self.commit = commit
         self.lane = lane
+        self.hasIncomingLine = hasIncomingLine
         self.parentLanes = parentLanes
         self.laneCount = laneCount
         self.throughLanes = throughLanes
@@ -156,6 +160,7 @@ public enum CommitGraph {
                 lane: lane,
                 parentLanes: parentLanes,
                 laneCount: laneCount,
+                hasIncomingLine: !matching.isEmpty,
                 throughLanes: throughLanes,
                 mergeInLanes: mergeInLanes,
                 laneIdentities: identities
