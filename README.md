@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.9.4. The config schema, the UI, and the
+Alpha. The current release is v0.10.0. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -35,6 +35,9 @@ around provider authentication, OAuth, and multi-account flows.
   interval (5 minutes by default), the open repository fetches when you come
   back to Avi or switch to its tab, and again while Avi stays in front. A
   failed automatic fetch shows in the status bar, not as an alert.
+- Errors float as a notice under the toolbar instead of an alert that blocks
+  the window: the notice names what failed, folds long Git output behind
+  **Show Full Message**, and copies it with **Copy**.
 - Fetch has no default keyboard shortcut, so Shift+Cmd+F stays available to
   other apps. Use the toolbar or Repository > Fetch; a different shortcut can
   be assigned in Settings > Keyboard. Shortcuts set there are menu shortcuts:
@@ -167,8 +170,9 @@ around provider authentication, OAuth, and multi-account flows.
   signed in to it or Settings > GitLab has a token for it.
 - GitHub / GitLab account management with Personal Access Tokens and `gh` /
   `glab` CLI integration.
-- Updates itself through Sparkle, verifying each update with Avi's signing
-  key, and installs from a drag-to-Applications disk image.
+- Updates itself through Sparkle, in a notice at the top of the window that
+  shows what is new, the download, and the relaunch, verifying each update
+  with Avi's signing key; installs from a drag-to-Applications disk image.
 
 ## Requirements
 
@@ -197,8 +201,10 @@ keys in it, so it can run while you work. CI runs them, and
 `AVI_UI_TESTS=1 swift test` runs them on your Mac too.
 
 A debug build can also render the Push sheet, the commit composer with a tag,
-a tag proposal, a diff, and Settings panes against demo repositories and quit,
-without touching your workspace or config:
+a tag proposal, a diff, Settings panes, the update and error notices
+(`notices`, `notice-release-notes`), and the sheets presented as sheets
+(`popup-*`) against demo repositories and quit, without touching your
+workspace or config. `--only` takes a comma-separated list of panel names:
 
 ```sh
 swift run AviApp --render-screens /tmp/avi-screens
@@ -287,9 +293,11 @@ normally.
 
 From 0.7.1 on, Avi updates itself through
 [Sparkle](https://sparkle-project.org). It checks once a day, and
-**Avi > Check for Updates…** checks right away. Settings > General > Updates
-turns the daily check off, or has Avi download updates in the background and
-install them when you quit. Avi installs an update only when the feed and the
+**Avi > Check for Updates…** checks right away. Each step shows as a notice at
+the top of the window: the new version with what is new in it, the download,
+and **Relaunch to Update**; **Later** installs a downloaded update when you
+quit. Settings > General > Updates turns the daily check off, or has Avi
+download updates in the background and install them when you quit. Avi installs an update only when the feed and the
 download carry valid signatures from Avi's EdDSA key, whose public half is
 built into the app, and an updated Avi opens without the Gatekeeper warning.
 Versions up to 0.7.0 have no updater: install 0.7.1 or later from the disk
