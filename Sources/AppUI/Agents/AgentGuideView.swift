@@ -71,6 +71,7 @@ public struct AgentGuideView: View {
             .padding(24)
             .frame(maxWidth: 560, alignment: .leading)
         }
+        .aviNotices()
         .frame(minWidth: 520, minHeight: 520)
     }
 

@@ -1,4 +1,5 @@
 import Foundation
+import GitKit
 import Observation
 import os
 import SwiftUI
@@ -8,9 +9,10 @@ import Sparkle
 
 /// In-app updates through Sparkle. The packaged app reads the appcast each
 /// GitHub release publishes, verifies the update against the EdDSA key in its
-/// Info.plist, and installs it in place. Sparkle keeps the automatic-check and
-/// automatic-install choices in Avi's user defaults; this mirrors them for
-/// Settings.
+/// Info.plist, and installs it in place. Each step shows as the update notice
+/// at the top of the window (`UpdateNoticeDriver`), not in Sparkle's windows.
+/// Sparkle keeps the automatic-check and automatic-install choices in Avi's
+/// user defaults; this mirrors them for Settings.
 @MainActor
 @Observable
 public final class AppUpdater {
@@ -48,12 +50,9 @@ public final class AppUpdater {
     }
 
     #if canImport(Sparkle)
-    @ObservationIgnored private var controller: SPUStandardUpdaterController?
+    @ObservationIgnored private var updater: SPUUpdater?
+    @ObservationIgnored private var driver: UpdateNoticeDriver?
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
-
-    private var updater: SPUUpdater? {
-        controller?.updater
-    }
     #endif
 
     @ObservationIgnored private let log = Logger(subsystem: "com.svinarenko.avi", category: "updates")
@@ -69,19 +68,22 @@ public final class AppUpdater {
             return
         }
         #if canImport(Sparkle)
-        let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)
+        let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? GitKit.version
+        let driver = UpdateNoticeDriver(currentVersion: version)
+        let updater = SPUUpdater(hostBundle: bundle, applicationBundle: bundle, userDriver: driver, delegate: nil)
         do {
-            // Starting the updater directly, not through the controller, so a
-            // configuration error lands in Settings instead of an alert at launch.
-            try controller.updater.start()
+            // A configuration error lands in Settings instead of an alert at launch.
+            try updater.start()
         } catch {
             log.error("Sparkle did not start: \(error.localizedDescription, privacy: .public)")
             state = .unavailable("Sparkle did not start: \(error.localizedDescription)")
             return
         }
-        self.controller = controller
+        driver.checkAgain = { [weak self] in self?.checkForUpdates() }
+        self.updater = updater
+        self.driver = driver
         state = .running
-        observe(controller.updater)
+        observe(updater)
         #else
         state = .unavailable("This build of Avi was made without Sparkle.")
         #endif
@@ -89,13 +91,13 @@ public final class AppUpdater {
 
     public func checkForUpdates() {
         #if canImport(Sparkle)
-        controller?.checkForUpdates(nil)
+        updater?.checkForUpdates()
         #endif
     }
 
     #if canImport(Sparkle)
-    /// Sparkle changes these on the main thread, also when you answer its own
-    /// update alert, so Settings follows them.
+    /// Sparkle changes these on the main thread, also when you answer the
+    /// update notice, so Settings follows them.
     private func observe(_ updater: SPUUpdater) {
         observations = [
             updater.observe(\.canCheckForUpdates, options: [.initial]) { [weak self] updater, _ in

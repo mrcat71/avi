@@ -91,6 +91,7 @@ public struct SettingsRoot: View {
             }
             .navigationTitle(selection.title)
             .navigationSubtitle(ConfigPath.fileURL.path)
+            .aviNotices()
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 820, minHeight: 560)

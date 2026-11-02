@@ -152,6 +152,7 @@ public struct FileHistoryWindow: View {
             detail
                 .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
         }
+        .aviNotices()
         .frame(minWidth: 820, minHeight: 480)
         .navigationTitle(title)
         .navigationSubtitle(model.path)
