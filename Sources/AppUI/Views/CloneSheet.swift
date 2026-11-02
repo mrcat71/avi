@@ -23,7 +23,6 @@ public struct CloneSheet: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(16)
-            Divider()
             footer
         }
         .frame(minWidth: 560, minHeight: 460)
@@ -31,13 +30,11 @@ public struct CloneSheet: View {
     }
 
     private var header: some View {
-        HStack {
-            Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 14, weight: .light))
-                .foregroundStyle(DS.Palette.accent)
-            Text("Clone repository")
-                .font(.system(size: 14, weight: .semibold))
-            Spacer()
+        AviPopupHeader(
+            symbol: "square.and.arrow.down",
+            title: "Clone Repository",
+            subtitle: "From GitHub, GitLab, or any Git URL"
+        ) {
             Button {
                 onDismiss()
             } label: {
@@ -50,10 +47,9 @@ public struct CloneSheet: View {
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
             .disabled(controller.isCloning)
+            .help("Close")
             .accessibilityLabel("Close")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
     }
 
     @ViewBuilder
@@ -82,20 +78,19 @@ public struct CloneSheet: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
+        AviPopupFooter {
             backButton
             Spacer()
             statusLabel
             primaryButton
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
     }
 
     @ViewBuilder
     private var backButton: some View {
         if controller.canGoBack {
             Button("Back") { controller.goBack() }
+                .buttonStyle(.aviSecondary)
                 .disabled(controller.isCloning)
         }
     }
@@ -115,7 +110,7 @@ public struct CloneSheet: View {
             Button(title) {
                 Task { await controller.primaryAction() }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.aviProminent)
             .disabled(!controller.primaryEnabled)
         }
     }
@@ -580,8 +575,7 @@ private struct FinishedStep: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Button("Open repository") { onOpen() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
+                .buttonStyle(.aviProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -615,6 +609,7 @@ private struct FailedStep: View {
             }
             .frame(maxHeight: 160)
             Button("Try again") { onRetry() }
+                .buttonStyle(.aviSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

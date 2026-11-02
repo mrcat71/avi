@@ -27,44 +27,36 @@ struct ResetToCommitSheet: View {
     @State private var mode: GitResetMode = .mixed
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Reset \(target) to \(commit.shortOID)")
-                    .font(.system(size: 14, weight: .semibold))
-                Text(commit.subject.isEmpty ? "(no subject)" : commit.subject)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Picker("Mode", selection: $mode) {
-                Text("Soft").tag(GitResetMode.soft)
-                Text("Mixed").tag(GitResetMode.mixed)
-                Text("Hard").tag(GitResetMode.hard)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            Label(explanation, systemImage: mode == .hard ? "exclamationmark.triangle.fill" : "info.circle")
-                .font(.system(size: 12))
-                .foregroundStyle(mode == .hard ? Color.red : DS.Palette.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button(mode == .hard ? "Reset and Discard Changes" : "Reset", role: mode == .hard ? .destructive : nil) {
-                    let mode = mode
-                    dismiss()
-                    Task { await store.reset(to: commit, mode: mode) }
+        AviPopup(
+            symbol: "arrow.uturn.backward",
+            tint: mode == .hard ? DS.Palette.danger : DS.Palette.accent,
+            title: "Reset \(target) to \(commit.shortOID)",
+            subtitle: commit.subject.isEmpty ? "(no subject)" : commit.subject,
+            width: 460
+        ) {
+            AviPopupField("Mode") {
+                Picker("Mode", selection: $mode) {
+                    Text("Soft").tag(GitResetMode.soft)
+                    Text("Mixed").tag(GitResetMode.mixed)
+                    Text("Hard").tag(GitResetMode.hard)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(mode == .hard ? .red : nil)
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
+            AviPopupCallout(explanation, tone: mode == .hard ? .danger : .info)
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            Button(mode == .hard ? "Reset and Discard Changes" : "Reset", role: mode == .hard ? .destructive : nil) {
+                let mode = mode
+                dismiss()
+                Task { await store.reset(to: commit, mode: mode) }
+            }
+            .buttonStyle(.aviProminent)
         }
-        .padding(18)
-        .frame(width: 440)
+        .animation(Glass.Motion.snappy, value: mode)
     }
 
     private var target: String {
@@ -99,20 +91,15 @@ struct CompareWithWorkingTreeSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(commit.shortOID) compared to local changes")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text(commit.subject.isEmpty ? "(no subject)" : commit.subject)
-                        .font(.system(size: 11))
-                        .foregroundStyle(DS.Palette.textSecondary)
-                        .lineLimit(1)
-                }
-                Spacer()
+            AviPopupHeader(
+                symbol: "arrow.left.arrow.right",
+                title: "\(commit.shortOID) compared to local changes",
+                subtitle: commit.subject.isEmpty ? "(no subject)" : commit.subject
+            ) {
                 Button("Done") { dismiss() }
+                    .buttonStyle(.aviSecondary)
                     .keyboardShortcut(.cancelAction)
             }
-            .padding(14)
             Divider()
             content
         }

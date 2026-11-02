@@ -45,65 +45,66 @@ struct GitHubDeviceFlowSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Sign in to GitHub")
-                .font(.system(size: 14, weight: .semibold))
-
+        AviPopup(
+            symbol: "person.badge.key.fill",
+            tint: DS.Palette.infoIndigo,
+            title: "Sign in to GitHub",
+            subtitle: "In your browser, with a short code",
+            width: 440
+        ) {
             if GitHubDeviceFlowConfig.clientID.isEmpty {
-                Text("Device flow is not configured in this build. Use the Personal Access Token option in Settings instead.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
+                AviPopupCallout(
+                    "Device flow is not configured in this build. Use the Personal Access Token option in Settings instead.",
+                    tone: .warning
+                )
             } else {
                 switch phase {
                 case .initial:
                     Text("Start a browser-based sign-in. You'll be shown a short code to enter on GitHub.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(DS.Palette.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 case .waitingForCode, .userVerifying:
-                    Text("Enter this code on the GitHub page that opens:")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Text(code)
-                        .font(.system(size: 22, weight: .semibold, design: .monospaced))
-                        .padding(.vertical, 6)
-                        .textSelection(.enabled)
-                    Text(verificationURL)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.blue)
-                        .onTapGesture {
-                            if let url = URL(string: verificationURL) {
-                                NSWorkspace.shared.open(url)
+                    AviPopupField("Enter this code on the GitHub page that opens") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(code)
+                                .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                                .textSelection(.enabled)
+                            Button(verificationURL) {
+                                if let url = URL(string: verificationURL) {
+                                    NSWorkspace.shared.open(url)
+                                }
                             }
+                            .buttonStyle(.link)
+                            .font(.system(size: 11, design: .monospaced))
                         }
+                    }
                 case .polling:
-                    HStack {
+                    HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Waiting for authorization...")
-                            .font(.system(size: 11))
+                        Text("Waiting for authorization…")
+                            .font(.system(size: 12))
+                            .foregroundStyle(DS.Palette.textSecondary)
                     }
                 case .done:
-                    Text("Signed in.")
-                        .foregroundStyle(.green)
+                    AviPopupCallout("Signed in.")
                 }
             }
 
             if let errorMessage {
-                Text(errorMessage)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
+                AviPopupNote(errorMessage, tone: .danger)
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                if GitHubDeviceFlowConfig.clientID.isEmpty == false, phase == .initial {
-                    Button("Start") { Task { await start() } }
-                        .buttonStyle(.borderedProminent)
-                }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            if GitHubDeviceFlowConfig.clientID.isEmpty == false, phase == .initial {
+                Button("Start") { Task { await start() } }
+                    .buttonStyle(.aviProminent)
+                    .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
-        .frame(width: 420)
     }
 
     private func start() async {

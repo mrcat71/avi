@@ -147,10 +147,13 @@ enum BranchSheet: Identifiable {
     }
 }
 
-/// Shared frame for the branch sheets: a title, an explanation, the
-/// options, then Cancel and the action.
+/// Shared frame for the branch sheets: the popup header with the branch, an
+/// explanation, the options, then Cancel and the action.
 private struct BranchSheetLayout<Content: View>: View {
+    let symbol: String
+    var tint: Color = DS.Palette.accent
     let title: String
+    let subtitle: String
     let summary: String
     let actionTitle: String
     var actionRole: ButtonRole?
@@ -161,23 +164,19 @@ private struct BranchSheetLayout<Content: View>: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title)
-                .font(.system(size: 14, weight: .semibold))
+        AviPopup(symbol: symbol, tint: tint, title: title, subtitle: subtitle, width: 460) {
             Text(summary)
                 .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DS.Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             content()
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                actionButton
-            }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            actionButton
         }
-        .padding(18)
-        .frame(width: 460)
     }
 
     @ViewBuilder
@@ -186,27 +185,15 @@ private struct BranchSheetLayout<Content: View>: View {
             dismiss()
             action()
         }
+        .buttonStyle(.aviProminent)
         .disabled(!actionEnabled)
         // A destructive action is clicked, never confirmed with Return.
         if actionRole == .destructive {
             button
         } else {
             button
-                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
         }
-    }
-}
-
-private struct SheetNote: View {
-    let text: String
-    var tint: Color = .secondary
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 11))
-            .foregroundStyle(tint)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -220,23 +207,30 @@ struct WorktreeCheckoutSheet: View {
 
     var body: some View {
         BranchSheetLayout(
+            symbol: "square.on.square",
             title: "Checkout as Worktree",
+            subtitle: branch.name,
             summary: "Checks out \(branch.name) in a new folder linked to this repository, so you can work on it while this worktree stays on its own branch.",
             actionTitle: "Create Worktree",
             actionEnabled: problem == nil,
             action: create
         ) {
-            HStack(spacing: 6) {
-                TextField("Folder", text: $path)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .accessibilityLabel("Worktree folder")
-                Button("Choose…", action: choose)
+            AviPopupField("Folder", note: problem ?? "Git creates this folder.", noteTone: problem == nil ? .secondary : .danger) {
+                HStack(spacing: 6) {
+                    TextField("Folder", text: $path)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .accessibilityLabel("Worktree folder")
+                    Button("Choose…", action: choose)
+                }
             }
-            SheetNote(text: problem ?? "Git creates this folder.", tint: problem == nil ? .secondary : .red)
-            Toggle("Switch to it", isOn: $openAfterwards)
-                .help("The repository's tab shows the new worktree. Its other worktrees are a hover over the tab away.")
-                .controlSize(.small)
+            AviPopupGroup {
+                AviPopupOption(
+                    "Switch to it",
+                    detail: "The repository's tab shows the new worktree. Its other worktrees are a hover over the tab away.",
+                    isOn: $openAfterwards
+                )
+            }
         }
         .onAppear {
             if path.isEmpty {
@@ -290,21 +284,22 @@ struct MergeBranchSheet: View {
     var body: some View {
         let current = store.branch?.name ?? "HEAD"
         BranchSheetLayout(
+            symbol: "arrow.triangle.merge",
+            tint: DS.Palette.infoPurple,
             title: "Merge Branch",
+            subtitle: "\(branch.name) into \(current)",
             summary: "Merges \(branch.name) into \(current), the branch checked out here.",
             actionTitle: mode == .squash ? "Squash" : "Merge",
             action: { Task { await store.merge(branch: branch.name, mode: mode) } }
         ) {
-            Picker("Merge", selection: $mode) {
-                ForEach(MergeMode.allCases) { mode in
-                    Text(Self.title(of: mode)).tag(mode)
-                }
-            }
-            .pickerStyle(.radioGroup)
-            .labelsHidden()
-            SheetNote(text: Self.explanation(of: mode, branch: branch.name, current: current))
+            AviPopupChoices(
+                choices: MergeMode.allCases.map { mode in
+                    .init(value: mode, title: Self.title(of: mode), detail: Self.explanation(of: mode, branch: branch.name, current: current))
+                },
+                selection: $mode
+            )
             if !store.entries.isEmpty {
-                SheetNote(text: "You have uncommitted changes. Git stops before the merge if it would overwrite them.", tint: .orange)
+                AviPopupCallout("You have uncommitted changes. Git stops before the merge if it would overwrite them.", tone: .warning)
             }
         }
     }
@@ -343,21 +338,29 @@ struct RebaseBranchSheet: View {
     var body: some View {
         let current = store.branch?.name ?? "HEAD"
         BranchSheetLayout(
+            symbol: "arrow.triangle.pull",
+            tint: DS.Palette.infoTeal,
             title: "Rebase Branch",
+            subtitle: "\(current) onto \(onto.name)",
             summary: "Replays the commits of \(current) that \(onto.name) does not have on top of \(onto.name).",
             actionTitle: "Rebase",
             action: { Task { await store.rebase(onto: onto.name, autostash: autostash) } }
         ) {
             if let commitCount {
-                SheetNote(text: commitCount == 0
+                AviPopupNote(commitCount == 0
                     ? "\(current) has no commits of its own, so it simply moves to \(onto.name)."
                     : "\(commitCount == 1 ? "1 commit is" : "\(commitCount) commits are") replayed and get new IDs.")
             }
             if store.branch?.upstream != nil {
-                SheetNote(text: "\(current) is already pushed. After rebasing, pushing it again needs Force push.", tint: .orange)
+                AviPopupCallout("\(current) is already pushed. After rebasing, pushing it again needs Force push.", tone: .warning)
             }
-            Toggle("Stash uncommitted changes during the rebase", isOn: $autostash)
-                .controlSize(.small)
+            AviPopupGroup {
+                AviPopupOption(
+                    "Stash uncommitted changes during the rebase",
+                    detail: "Puts them aside while the commits are replayed, then brings them back.",
+                    isOn: $autostash
+                )
+            }
         }
         .task {
             commitCount = try? await store.rebaseCandidates(onto: onto.name).count
@@ -377,7 +380,10 @@ struct DeleteBranchSheet: View {
     var body: some View {
         let upstream = branch.isUpstreamGone ? nil : store.upstreamParts(of: branch)
         BranchSheetLayout(
+            symbol: "trash",
+            tint: DS.Palette.danger,
             title: "Delete Branch",
+            subtitle: branch.name,
             summary: "Deletes \(branch.name) from this Mac.",
             actionTitle: "Delete",
             actionRole: .destructive,
@@ -385,24 +391,27 @@ struct DeleteBranchSheet: View {
         ) {
             if let upstream, upstream.branch == store.defaultBranchName {
                 // Tracking the default branch is common; deleting it never is.
-                SheetNote(text: "Its upstream is '\(upstream.branch)', the default branch on '\(upstream.remote)', which stays.")
+                AviPopupNote("Its upstream is '\(upstream.branch)', the default branch on '\(upstream.remote)', which stays.")
             } else if let upstream {
-                Toggle("Also delete '\(upstream.branch)' on '\(upstream.remote)'", isOn: $alsoOnRemote)
-                    .controlSize(.small)
-                if upstream.branch != branch.name {
-                    SheetNote(text: "That is its upstream, which has a different name.", tint: .orange)
+                AviPopupGroup {
+                    AviPopupOption(
+                        "Also delete '\(upstream.branch)' on '\(upstream.remote)'",
+                        detail: upstream.branch != branch.name ? "That is its upstream, which has a different name." : nil,
+                        detailTone: .warning,
+                        isOn: $alsoOnRemote
+                    )
                 }
                 if alsoOnRemote {
-                    SheetNote(
-                        text: "Removes it for everyone who uses '\(upstream.remote)'."
+                    AviPopupCallout(
+                        "Removes it for everyone who uses '\(upstream.remote)'."
                             + ((branch.behind ?? 0) > 0
                                 ? " It has \(branch.behind ?? 0) commit\(branch.behind == 1 ? "" : "s") that \(branch.name) does not."
                                 : ""),
-                        tint: .orange
+                        tone: .warning
                     )
                 }
             }
-            SheetNote(text: "Git refuses when the branch has commits the current branch does not; Avi then asks before forcing.")
+            AviPopupNote("Git refuses when the branch has commits the current branch does not; Avi then asks before forcing.")
         }
     }
 

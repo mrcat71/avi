@@ -17,65 +17,50 @@ struct PlanRevisionSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(heading)
-                    .font(.system(size: 15, weight: .semibold))
-                Text(request.title)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
+        AviPopup(
+            symbol: isSplit ? "rectangle.split.3x1" : "wand.and.stars",
+            tint: DS.Palette.infoPurple,
+            title: heading,
+            subtitle: request.title,
+            width: 480
+        ) {
+            AviPopupField("What should change?", note: "For example: put the tests in their own commit. Use the scope \"agents\". Merge the docs into the feature commit. Explain why in each body.") {
+                TextEditor(text: $instructions)
+                    .font(.system(size: 12))
+                    .scrollContentBackground(.hidden)
+                    .focused($editorFocused)
+                    .frame(minHeight: 110)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .textBackgroundColor))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    )
+                    .accessibilityLabel("Instructions for the AI")
             }
-
-            Text("What should change?")
-                .font(.system(size: 12, weight: .medium))
-            TextEditor(text: $instructions)
-                .font(.system(size: 12))
-                .scrollContentBackground(.hidden)
-                .focused($editorFocused)
-                .frame(minHeight: 110)
-                .padding(6)
-                .background(
-                    RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
-                        .fill(.regularMaterial)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
-                        .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
-                )
-                .accessibilityLabel("Instructions for the AI")
-            Text("For example: put the tests in their own commit. Use the scope \"agents\". Merge the docs into the feature commit. Explain why in each body.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack {
-                Text(footnote)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 12)
-                Button("Cancel", role: .cancel) {
-                    store.revisionRequest = nil
-                }
-                .keyboardShortcut(.cancelAction)
-                Button(isSplit ? "Split" : (request.draftIDs.count > 1 ? "Rethink" : "Revise")) {
-                    if isSplit {
-                        store.splitIntoCommits(request.files, instructions: instructions)
-                    } else {
-                        store.reviseDrafts(request.draftIDs, instructions: instructions)
-                    }
-                    store.revisionRequest = nil
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.return, modifiers: [.command])
-                .disabled(instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .help("Cmd+Return")
+        } footer: {
+            AviPopupFooterNote(footnote)
+            Button("Cancel", role: .cancel) {
+                store.revisionRequest = nil
             }
+            .buttonStyle(.aviSecondary)
+            .keyboardShortcut(.cancelAction)
+            Button(isSplit ? "Split" : (request.draftIDs.count > 1 ? "Rethink" : "Revise")) {
+                if isSplit {
+                    store.splitIntoCommits(request.files, instructions: instructions)
+                } else {
+                    store.reviseDrafts(request.draftIDs, instructions: instructions)
+                }
+                store.revisionRequest = nil
+            }
+            .buttonStyle(.aviProminent)
+            .keyboardShortcut(.return, modifiers: [.command])
+            .disabled(instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .help("Cmd+Return")
         }
-        .padding(20)
-        .frame(width: 480)
         .onAppear {
             editorFocused = true
         }
