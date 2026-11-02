@@ -6,6 +6,14 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-02
+
+### Changed
+- Updates run in a notice at the top of the window instead of Sparkle's windows: the check, the new version with **What's New** from the changelog, the download with its progress, and **Relaunch to Update**. **Later** lets you keep working, and a downloaded update installs when you quit; **Skip This Version** skips it. Updating to this release still shows Sparkle's window, because the version you have draws it.
+- Git and file errors float as a notice under the toolbar instead of an alert that blocked the window. The notice names what failed, folds long Git output to three lines behind **Show Full Message**, and has **Copy**.
+- Sheets share one layout after Rex's popups: an icon and title at the top, labels above their fields, switches that say what they do, choices as rows, warnings in a tinted box, and the buttons in a bar at the bottom. This covers Push, the branch, tag, reset, stash, AI, interactive rebase, clone, repository picker, and sign-in sheets.
+- The command palette floats over the window instead of opening as a sheet, and clicking outside it closes it.
+
 ## [0.9.4] - 2026-10-30
 
 ### Fixed
