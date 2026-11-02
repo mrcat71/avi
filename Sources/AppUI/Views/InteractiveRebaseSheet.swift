@@ -84,44 +84,49 @@ struct InteractiveRebaseSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Interactive Rebase")
-                    .font(.system(size: 14, weight: .semibold))
-                Text(base.isCommit
+        VStack(alignment: .leading, spacing: 0) {
+            AviPopupHeader(
+                symbol: "list.number",
+                tint: DS.Palette.infoTeal,
+                title: "Interactive Rebase",
+                subtitle: base.isCommit
                     ? "Replays \(current)'s commits after \(base.title), oldest at the top. Git applies them from top to bottom."
-                    : "Replays \(current)'s commits onto \(base.title), oldest at the top. Git applies them from top to bottom.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    : "Replays \(current)'s commits onto \(base.title), oldest at the top. Git applies them from top to bottom."
+            )
+            VStack(alignment: .leading, spacing: 10) {
+                content
+                if let problem {
+                    AviPopupNote(problem, tone: .danger)
+                }
+                HStack(spacing: 8) {
+                    Button("Move Up") { move(by: -1) }
+                        .buttonStyle(AviPopupButtonStyle(size: .small))
+                        .disabled(!canMove(by: -1))
+                    Button("Move Down") { move(by: 1) }
+                        .buttonStyle(AviPopupButtonStyle(size: .small))
+                        .disabled(!canMove(by: 1))
+                    Spacer()
+                    Toggle("Stash uncommitted changes during the rebase", isOn: $autostash)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .font(.system(size: 12))
+                }
             }
-            content
-            if let problem {
-                Text(problem)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack(spacing: 8) {
-                Button("Move Up") { move(by: -1) }
-                    .disabled(!canMove(by: -1))
-                Button("Move Down") { move(by: 1) }
-                    .disabled(!canMove(by: 1))
-                Toggle("Stash uncommitted changes during the rebase", isOn: $autostash)
-                    .controlSize(.small)
-                    .padding(.leading, 8)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 14)
+            AviPopupFooter {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
+                    .buttonStyle(.aviSecondary)
                     .keyboardShortcut(.cancelAction)
                 Button("Start Rebase", action: start)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.aviProminent)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(plan == nil)
+                    .help("Cmd+Return")
             }
-            .controlSize(.small)
         }
-        .padding(18)
-        .frame(width: 680, height: 520)
+        .frame(width: 680, height: 560)
         .task(load)
     }
 

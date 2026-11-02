@@ -121,37 +121,42 @@ struct PATEntrySheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Sign in to \(providerName)")
-                .font(.system(size: 14, weight: .semibold))
+        AviPopup(
+            symbol: "key.fill",
+            tint: DS.Palette.infoIndigo,
+            title: "Sign in to \(providerName)",
+            subtitle: "With a personal access token",
+            width: 440
+        ) {
             Text(instructions)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.leading)
+                .font(.system(size: 12))
+                .foregroundStyle(DS.Palette.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if requiresInstanceURL {
-                Text("Instance URL")
-                    .font(.system(size: 11, weight: .medium))
-                TextField("https://gitlab.com", text: $instanceURL)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            Text("Token")
-                .font(.system(size: 11, weight: .medium))
-            SecureField("ghp_… / glpat_…", text: $token)
-                .textFieldStyle(.roundedBorder)
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Sign In") {
-                    onSubmit(token.trimmingCharacters(in: .whitespacesAndNewlines), instanceURL)
+                AviPopupField("Instance URL") {
+                    TextField("https://gitlab.com", text: $instanceURL)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Instance URL")
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+
+            AviPopupField("Token", note: "Avi keeps it in your Keychain.") {
+                SecureField("ghp_… / glpat_…", text: $token)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Token")
+            }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            Button("Sign In") {
+                onSubmit(token.trimmingCharacters(in: .whitespacesAndNewlines), instanceURL)
+            }
+            .buttonStyle(.aviProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(20)
-        .frame(width: 420)
     }
 }

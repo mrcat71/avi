@@ -31,58 +31,59 @@ struct PushSheet: View {
     @State private var base = ""
     @State private var description = ""
     @State private var isDraft = ConfigStore.shared.config.pullRequests.draft
+    @Environment(\.aviDensity) private var density
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            Divider()
-
-            formRow(label: "Branch") {
-                branchPill
-            }
-
-            formRow(label: "To") {
-                remotePicker
-            }
-
-            Text(outcomeDescription)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, 130)
-
+        AviPopup(
+            symbol: "arrow.up",
+            title: sheetTitle,
+            subtitle: store.root?.lastPathComponent,
+            width: 520
+        ) {
             VStack(alignment: .leading, spacing: 6) {
-                tagToggles
-                Toggle("Push all tags", isOn: $pushAllTags)
-                    .toggleStyle(.checkbox)
-                    .help("Also push every other local tag, once the branch is in")
-                Toggle("Force push", isOn: $forcePush)
-                    .toggleStyle(.checkbox)
-                if forcePush {
-                    Text("Uses `--force-with-lease` to avoid clobbering unseen remote work.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                // Two equal columns under labels on one line; the arrow sits
+                // between the controls.
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Branch")
+                            .aviLabel(density)
+                        branchPill
+                    }
+                    .frame(maxWidth: .infinity)
+                    VStack(spacing: 6) {
+                        Text(" ")
+                            .aviLabel(density)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(DS.Palette.textTertiary)
+                            .frame(height: 22)
+                    }
+                    .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("To")
+                            .aviLabel(density)
+                        remotePicker
+                    }
+                    .frame(maxWidth: .infinity)
                 }
+                AviPopupNote(outcomeDescription)
             }
-            .padding(.leading, 130)
+
+            options
 
             if canOfferPullRequest {
-                Divider()
                 pullRequestSection
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button(actionTitle, action: perform)
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canPerform)
-            }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            Button(actionTitle, action: perform)
+                .buttonStyle(.aviProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canPerform)
         }
-        .padding(18)
-        .frame(width: 520)
         .onAppear {
             createsPullRequest = includesPullRequest && canOfferPullRequest
             configureDefaultRemote()
@@ -103,36 +104,58 @@ struct PushSheet: View {
         }
     }
 
+    private var sheetTitle: String {
+        guard createsPullRequest else { return "Push" }
+        return "Push and Create \(forge?.requestNoun ?? "Pull Request")"
+    }
+
+    /// The tags to send along, then the push's own switches.
+    private var options: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            AviPopupGroup {
+                tagToggles
+                AviPopupOption(
+                    "Push all tags",
+                    detail: "Also pushes every other local tag, once the branch is in.",
+                    isOn: $pushAllTags
+                )
+                AviPopupGroupDivider()
+                AviPopupOption(
+                    "Force push",
+                    detail: forcePush
+                        ? "Uses --force-with-lease, so remote work you have not fetched is never overwritten."
+                        : "Replaces the remote branch, such as after a rebase.",
+                    detailTone: forcePush ? .warning : .secondary,
+                    isOn: $forcePush
+                )
+            }
+            if !tagChoices.isEmpty {
+                AviPopupNote(tagNote)
+            }
+            if let tagsError {
+                AviPopupNote("Could not read the tags on these commits: \(tagsError)", tone: .warning)
+            }
+        }
+    }
+
     // MARK: - Tags
 
-    @ViewBuilder
     private var tagToggles: some View {
         ForEach(tagChoices) { choice in
-            Toggle(isOn: Binding(
-                get: { chosenTags.contains(choice.name) },
-                set: { chosen in
-                    if chosen {
-                        chosenTags.insert(choice.name)
-                    } else {
-                        chosenTags.remove(choice.name)
+            AviPopupOption(
+                "Push tag \(choice.name) with the branch",
+                isOn: Binding(
+                    get: { chosenTags.contains(choice.name) },
+                    set: { chosen in
+                        if chosen {
+                            chosenTags.insert(choice.name)
+                        } else {
+                            chosenTags.remove(choice.name)
+                        }
                     }
-                }
-            )) {
-                Text("Push tag \(choice.name) with the branch")
-            }
-            .toggleStyle(.checkbox)
-        }
-        if !tagChoices.isEmpty {
-            Text(tagNote)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        if let tagsError {
-            Text("Could not read the tags on these commits: \(tagsError)")
-                .font(.system(size: 10))
-                .foregroundStyle(.orange)
-                .fixedSize(horizontal: false, vertical: true)
+                )
+            )
+            AviPopupGroupDivider()
         }
     }
 
@@ -164,66 +187,26 @@ struct PushSheet: View {
         }
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [Color.blue.opacity(0.85), Color.blue.opacity(0.55)], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 42, height: 42)
-                Circle()
-                    .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
-                    .frame(width: 42, height: 42)
-                Image(systemName: "arrow.up.to.line")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .aviShadow(Glass.Elevation.resting.shadow)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Push")
-                    .font(.system(size: 15, weight: .semibold))
-                Text(createsPullRequest
-                    ? "Push your branch and open a \(forge?.requestNoun.lowercased() ?? "pull request") for it"
-                    : "Push your local changes to remote repository")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-    }
-
     // MARK: - Rows
 
-    private func formRow(label: String, @ViewBuilder content: () -> some View) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text("\(label):")
-                .font(.system(size: 12, weight: .medium))
-                .frame(width: 110, alignment: .trailing)
-            content()
-        }
-    }
-
     private var branchPill: some View {
-        HStack(spacing: 6) {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        return HStack(spacing: 6) {
             Image(systemName: "arrow.triangle.branch")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Text(currentBranchName ?? "(detached HEAD)")
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-            Spacer()
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .frame(height: 26)
+        .frame(height: 22)
         .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.primary.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
-        )
+        .background(shape.fill(Color.primary.opacity(0.05)))
+        .overlay(shape.strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5))
+        .help(currentBranchName ?? "HEAD is detached")
     }
 
     private var remotePicker: some View {
@@ -238,6 +221,7 @@ struct PushSheet: View {
         .pickerStyle(.menu)
         .labelsHidden()
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel("Remote")
     }
 
     private func label(for remote: String) -> String {
@@ -252,46 +236,48 @@ struct PushSheet: View {
     @ViewBuilder
     private var pullRequestSection: some View {
         let noun = forge?.requestNoun ?? "Pull Request"
-        Toggle("Create \(noun.lowercased()) on \(forge?.name ?? "the forge")", isOn: $createsPullRequest)
-            .toggleStyle(.checkbox)
-            .padding(.leading, 130)
-        if createsPullRequest {
-            if let existing = context?.existing, let forge {
-                formRow(label: noun) {
-                    Button("\(forge.reference(existing.number)) \(existing.title)") {
-                        NSWorkspace.shared.open(existing.url)
+        VStack(alignment: .leading, spacing: 14) {
+            AviPopupGroup {
+                AviPopupOption(
+                    "Create \(noun.lowercased()) on \(forge?.name ?? "the forge")",
+                    detail: "Titled after the branch, into the remote's default branch. You can change both.",
+                    isOn: $createsPullRequest
+                )
+            }
+            if createsPullRequest {
+                if let existing = context?.existing, let forge {
+                    AviPopupField(noun, note: "Already open. Pushing updates it.") {
+                        Button("\(forge.reference(existing.number)) \(existing.title)") {
+                            NSWorkspace.shared.open(existing.url)
+                        }
+                        .buttonStyle(.link)
+                        .lineLimit(1)
                     }
-                    .buttonStyle(.link)
-                    .lineLimit(1)
-                    .help("Already open. Pushing updates it.")
+                } else if let context {
+                    requestFields(context)
+                } else if isLoadingContext {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Reading the repository…")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    AviPopupNote("\(selectedRemote) is not on GitHub or GitLab.")
                 }
-            } else if let context {
-                requestFields(context)
-            } else if isLoadingContext {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Reading the repository…")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.leading, 130)
-            } else {
-                Text("\(selectedRemote) is not on GitHub or GitLab.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 130)
             }
         }
     }
 
     @ViewBuilder
     private func requestFields(_ context: PullRequestContext) -> some View {
-        formRow(label: "Title") {
+        AviPopupField("Title") {
             HStack(spacing: 4) {
                 TextField("", text: $title, prompt: Text(context.title))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12))
+                    .accessibilityLabel("Title")
                 Menu {
                     Button("Made from the Branch: \(context.title)") { title = context.title }
                     ForEach(context.titleAlternatives, id: \.self) { alternative in
@@ -308,7 +294,7 @@ struct PushSheet: View {
                 .accessibilityLabel("Other titles")
             }
         }
-        formRow(label: "Into") {
+        AviPopupField("Into") {
             Picker("", selection: $base) {
                 ForEach(context.bases, id: \.self) { name in
                     Text(name).tag(name)
@@ -317,32 +303,30 @@ struct PushSheet: View {
             .pickerStyle(.menu)
             .labelsHidden()
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel("Into")
         }
-        formRow(label: "Description") {
+        AviPopupField("Description") {
             TextEditor(text: $description)
                 .font(.system(size: 12))
                 .scrollContentBackground(.hidden)
-                .padding(4)
+                .padding(6)
                 .frame(height: 110)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color(nsColor: .textBackgroundColor))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
                 )
                 .accessibilityLabel("Description")
         }
         VStack(alignment: .leading, spacing: 6) {
-            Toggle("Draft", isOn: $isDraft)
-                .toggleStyle(.checkbox)
-            Text(routeNote(context))
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            AviPopupGroup {
+                AviPopupOption("Draft", detail: "Opens it marked as not ready for review.", isOn: $isDraft)
+            }
+            AviPopupNote(routeNote(context))
         }
-        .padding(.leading, 130)
     }
 
     private func routeNote(_ context: PullRequestContext) -> String {

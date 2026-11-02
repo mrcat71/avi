@@ -86,7 +86,7 @@ struct RepositoryView: View {
                 if store.isAIWorking {
                     aiWorkBanner
                 }
-                workspace
+                workspaceWithNotices
             }
             .frame(minWidth: 760)
         }
@@ -165,17 +165,22 @@ struct RepositoryView: View {
             )) { target in
                 CreateTagSheet(store: store, targetOID: target.oid)
             }
-            .sheet(isPresented: $showingCommandPalette) {
-                CommandPalette(
-                    commands: CommandRegistry.commands(
-                        store: store,
-                        setSelection: { selection = $0 },
-                        openCreateBranch: { showingCommandPalette = false; showingCreateBranch = true }
-                    ),
-                    isPresented: $showingCommandPalette
-                )
-                .padding(.top, 80)
-                .background(Color.clear)
+            .overlay {
+                // Animated on its own: a command that switches views as the
+                // palette closes must not animate the workspace too.
+                ZStack {
+                    if showingCommandPalette {
+                        CommandPaletteOverlay(
+                            commands: CommandRegistry.commands(
+                                store: store,
+                                setSelection: { selection = $0 },
+                                openCreateBranch: { showingCommandPalette = false; showingCreateBranch = true }
+                            ),
+                            isPresented: $showingCommandPalette
+                        )
+                    }
+                }
+                .animation(Glass.Motion.snappy, value: showingCommandPalette)
             }
             .alert(
                 store.pendingCheckout.map { $0.leftBehind == 1 ? "Leave 1 Commit Behind?" : "Leave \($0.leftBehind) Commits Behind?" } ?? "",
@@ -202,11 +207,6 @@ struct RepositoryView: View {
                     + "After switching to \(pending.ref.name), only the reflog keeps \(pending.leftBehind == 1 ? "it" : "them"), for about 30 days. "
                     + "Create a branch to keep \(pending.leftBehind == 1 ? "it" : "them").")
             }
-            .alert("Git Error", isPresented: errorPresented) {
-                Button("OK", role: .cancel) { store.dismissError() }
-            } message: {
-                Text(store.errorMessage ?? "")
-            }
             .sheet(isPresented: aiRewordPresented) {
                 if let preview = store.aiRewordPreview {
                     AIRewordSheet(store: store, preview: preview)
@@ -217,6 +217,22 @@ struct RepositoryView: View {
                     AISplitSheet(store: store, preview: preview)
                 }
             }
+    }
+
+    /// The workspace with this window's notices floating at its top, under
+    /// the toolbar and the banners.
+    private var workspaceWithNotices: some View {
+        workspace.aviNotices(notices)
+    }
+
+    /// This window's notices under the toolbar: the workspace's error, then
+    /// this repository's. The app's own, such as the update, come after them.
+    private var notices: [AviNotice] {
+        var notices = session.notices
+        if let message = store.errorMessage {
+            notices.append(.error(id: "repository-error-\(store.id)", text: message) { [store] in store.dismissError() })
+        }
+        return notices
     }
 
     private var aiRewordPresented: Binding<Bool> {
@@ -356,17 +372,6 @@ struct RepositoryView: View {
         }
 
         selection = store.entries.isEmpty ? .allCommits : .localChanges
-    }
-
-    private var errorPresented: Binding<Bool> {
-        Binding(
-            get: { store.errorMessage != nil },
-            set: {
-                presented in if !presented {
-                    store.dismissError()
-                }
-            }
-        )
     }
 }
 
@@ -1498,37 +1503,30 @@ struct CreateBranchSheet: View {
     @State private var checkout = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Create Branch")
-                .font(.system(size: 14, weight: .semibold))
-
-            if let startPoint {
-                Text("From \(RefNameDisplay.short(startPoint))")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            } else if let current = store.branch?.name {
-                Text("From \(current)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+        AviPopup(
+            symbol: "arrow.triangle.branch",
+            title: "Create Branch",
+            subtitle: startPoint.map { "From \(RefNameDisplay.short($0))" } ?? store.branch.map { "From \($0.name)" },
+            width: 400
+        ) {
+            AviPopupField("Name", note: "Spaces become dashes as you type.") {
+                TextField("feature/name", text: sanitizedName)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(create)
+                    .accessibilityLabel("Branch name")
             }
-
-            TextField("Name", text: sanitizedName)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(create)
-
-            Toggle("Check out after creating", isOn: $checkout)
-                .controlSize(.small)
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Create", action: create)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            AviPopupGroup {
+                AviPopupOption("Check out after creating", isOn: $checkout)
             }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            Button("Create", action: create)
+                .buttonStyle(.aviProminent)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(18)
-        .frame(width: 360)
     }
 
     private func create() {
@@ -1569,57 +1567,55 @@ struct CreateTagSheet: View {
     @State private var remoteHasCommit: Bool?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Create Tag")
-                .font(.system(size: 14, weight: .semibold))
-
-            Text("At \(String(targetOID.prefix(7)))")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-
-            TextField("Name (e.g. v1.2.3)", text: $name)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(create)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Message (optional)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+        AviPopup(
+            symbol: "tag.fill",
+            tint: DS.Palette.infoOrange,
+            title: "Create Tag",
+            subtitle: "At \(String(targetOID.prefix(7)))",
+            width: 400
+        ) {
+            AviPopupField("Name") {
+                TextField("v1.2.3", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(create)
+                    .accessibilityLabel("Tag name")
+            }
+            AviPopupField("Message", note: message.isEmpty ? "Optional. Without a message the tag is lightweight." : "Annotated tag.") {
                 TextEditor(text: $message)
                     .font(.system(size: 12))
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
                     .frame(minHeight: 60, maxHeight: 100)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .textBackgroundColor))
                     )
-                Text(message.isEmpty ? "Lightweight tag" : "Annotated tag")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    )
+                    .accessibilityLabel("Tag message")
             }
 
             if let remote = store.defaultRemoteName {
                 if remoteHasCommit == false {
-                    Text("\(remote) does not have this commit yet, so the tag stays here for now. Push sends the commit and the tag together.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    AviPopupCallout("\(remote) does not have this commit yet, so the tag stays here for now. Push sends the commit and the tag together.")
                 } else {
-                    Toggle("Push tag to \(remote) after creating", isOn: $pushTag)
-                        .controlSize(.small)
-                        .disabled(remoteHasCommit == nil)
+                    AviPopupGroup {
+                        AviPopupOption("Push tag to \(remote) after creating", isOn: $pushTag)
+                            .disabled(remoteHasCommit == nil)
+                    }
                 }
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                Button("Create", action: create)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            Button("Create", action: create)
+                .buttonStyle(.aviProminent)
+                .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(18)
-        .frame(width: 380)
         .task {
             guard let remote = store.defaultRemoteName else { return }
             remoteHasCommit = await store.remoteHasCommit(targetOID, remote: remote)

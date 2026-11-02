@@ -139,32 +139,41 @@ struct StashFilesSheet: View {
     @State private var message = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(request.files.count == 1 ? "Stash 1 File" : "Stash \(request.files.count) Files")
-                .font(.system(size: 14, weight: .semibold))
-            Text("Saves the staged and unstaged changes of \(request.files.count == 1 ? "this file" : "these files") in a new stash and removes them from the working tree. Everything else stays as it is.")
+        AviPopup(
+            symbol: "archivebox.fill",
+            tint: DS.Palette.infoBrown,
+            title: request.files.count == 1 ? "Stash 1 File" : "Stash \(request.files.count) Files",
+            subtitle: "Everything else stays as it is",
+            width: 440
+        ) {
+            Text("Saves the staged and unstaged changes of \(request.files.count == 1 ? "this file" : "these files") in a new stash and removes them from the working tree.")
                 .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DS.Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(fileList)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(6)
-                .truncationMode(.middle)
-            TextField("Message (optional)", text: $message)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(stash)
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Stash", action: stash)
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+            AviPopupGroup {
+                Text(fileList)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(DS.Palette.textSecondary)
+                    .lineLimit(6)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
             }
+            AviPopupField("Message", note: "Optional. Without one, Git names it after the branch and its last commit.") {
+                TextField("Message", text: $message)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(stash)
+                    .accessibilityLabel("Stash message")
+            }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            Button("Stash", action: stash)
+                .buttonStyle(.aviProminent)
+                .keyboardShortcut(.defaultAction)
         }
-        .padding(18)
-        .frame(width: 420)
     }
 
     private var fileList: String {

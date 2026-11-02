@@ -17,8 +17,6 @@ struct AISplitSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
             Divider()
 
             ScrollView {
@@ -30,10 +28,7 @@ struct AISplitSheet: View {
                 .padding(18)
             }
 
-            Divider()
             footer
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
         }
         .frame(minWidth: 640, idealWidth: 720, minHeight: 460, idealHeight: 540)
     }
@@ -41,27 +36,7 @@ struct AISplitSheet: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [Color.accentColor.opacity(0.85), Color.accentColor.opacity(0.55)], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 42, height: 42)
-                Circle()
-                    .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
-                    .frame(width: 42, height: 42)
-                Image(systemName: "rectangle.split.3x1")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .aviShadow(Glass.Elevation.resting.shadow)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Split with AI")
-                    .font(.system(size: 15, weight: .semibold))
-                Text(sourceLabel)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+        AviPopupHeader(symbol: "rectangle.split.3x1", tint: DS.Palette.infoPurple, title: "Split with AI", subtitle: sourceLabel) {
             Text("\(groups.count) commit\(groups.count == 1 ? "" : "s")")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
@@ -158,24 +133,27 @@ struct AISplitSheet: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 8) {
+        AviPopupFooter {
+            if canApply {
+                Spacer()
+            } else {
+                Text("Every group needs a message.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DS.Palette.warning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Button("Cancel", role: .cancel) {
                 store.dismissAISplitPreview()
             }
+            .buttonStyle(.aviSecondary)
             .keyboardShortcut(.cancelAction)
-            Spacer()
-            if !canApply {
-                Text("Every group needs a message.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
-            }
             Button("Apply") {
                 var p = preview
                 p.groups = groups
                 store.aiSplitPreview = p
                 store.applyAISplitPreview()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.aviProminent)
             .keyboardShortcut(.defaultAction)
             .disabled(!canApply)
         }

@@ -40,7 +40,6 @@ public struct RepositoryPickerView: View {
             searchBar
             Divider()
             content
-            Divider()
             footer
         }
         .frame(minWidth: 620, minHeight: 420)
@@ -51,24 +50,11 @@ public struct RepositoryPickerView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 18, weight: .light))
-                .foregroundStyle(DS.Palette.accent)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Repositories")
-                    .font(.system(size: 15, weight: .semibold))
-                if entries.isEmpty {
-                    Text("Open or add a repository to get started")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("\(entries.count) recent · search to filter")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
+        AviPopupHeader(
+            symbol: "folder.fill",
+            title: "Repositories",
+            subtitle: entries.isEmpty ? "Open or add a repository to get started" : "\(entries.count) recent · search to filter"
+        ) {
             if presentation == .sheet, let onDismiss {
                 Button {
                     onDismiss()
@@ -85,8 +71,6 @@ public struct RepositoryPickerView: View {
                 .accessibilityLabel("Close repository picker")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     // MARK: - Search bar
@@ -243,25 +227,21 @@ public struct RepositoryPickerView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        HStack(spacing: 8) {
+        AviPopupFooter {
             Button {
                 openPanelToAdd()
             } label: {
                 Label("Add existing", systemImage: "folder.badge.plus")
-                    .font(.system(size: 12, weight: .medium))
             }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
+            .buttonStyle(.aviSecondary)
 
             if onClone != nil {
                 Button {
                     onClone?()
                 } label: {
                     Label("Clone", systemImage: "square.and.arrow.down")
-                        .font(.system(size: 12, weight: .medium))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
+                .buttonStyle(.aviSecondary)
             }
 
             Spacer()
@@ -272,8 +252,6 @@ public struct RepositoryPickerView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     // MARK: - Filtering

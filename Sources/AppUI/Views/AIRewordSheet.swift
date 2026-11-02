@@ -16,16 +16,14 @@ struct AIRewordSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            Divider()
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Current message")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
+        AviPopup(
+            symbol: "wand.and.stars",
+            tint: DS.Palette.infoPurple,
+            title: "Reword with AI",
+            subtitle: "Commit \(String(preview.oid.prefix(7)))",
+            width: 560
+        ) {
+            AviPopupField("Current message") {
                 ScrollView {
                     Text(preview.oldMessage)
                         .font(.system(size: 12, design: .monospaced))
@@ -34,81 +32,49 @@ struct AIRewordSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                 }
-                .frame(maxHeight: 100)
+                .frame(minHeight: 44, idealHeight: 80, maxHeight: 100)
                 .background(
-                    RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
-                        .fill(.regularMaterial)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.04))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
-                        .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
                 )
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Proposed message")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .tracking(0.5)
+            AviPopupField("Proposed message") {
                 TextEditor(text: $draft)
                     .font(.system(size: 12, design: .monospaced))
                     .scrollContentBackground(.hidden)
-                    .frame(minHeight: 140, maxHeight: 240)
+                    .frame(minHeight: 140, idealHeight: 180, maxHeight: 240)
                     .padding(6)
                     .background(
-                        RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
-                            .fill(.regularMaterial)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .textBackgroundColor))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: Glass.Corner.inline, style: .continuous)
-                            .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
                     )
+                    .accessibilityLabel("Proposed message")
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) {
-                    store.dismissAIRewordPreview()
-                }
-                .keyboardShortcut(.cancelAction)
-                Button("Apply") {
-                    var p = preview
-                    p.proposed = draft
-                    store.aiRewordPreview = p
-                    store.applyAIRewordPreview()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(18)
-        .frame(width: 560)
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [Color.accentColor.opacity(0.85), Color.accentColor.opacity(0.55)], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 42, height: 42)
-                Circle()
-                    .strokeBorder(Glass.edgeStroke, lineWidth: 0.6)
-                    .frame(width: 42, height: 42)
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .aviShadow(Glass.Elevation.resting.shadow)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Reword with AI")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("Commit \(String(preview.oid.prefix(7)))")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
+        } footer: {
             Spacer()
+            Button("Cancel", role: .cancel) {
+                store.dismissAIRewordPreview()
+            }
+            .buttonStyle(.aviSecondary)
+            .keyboardShortcut(.cancelAction)
+            Button("Apply") {
+                var p = preview
+                p.proposed = draft
+                store.aiRewordPreview = p
+                store.applyAIRewordPreview()
+            }
+            .buttonStyle(.aviProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
 }

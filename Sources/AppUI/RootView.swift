@@ -9,11 +9,6 @@ public struct RootView: View {
         session.repositories
     }
 
-    private var openErrorMessage: String? {
-        get { session.errorMessage }
-        nonmutating set { session.errorMessage = newValue }
-    }
-
     @State private var showingPicker: Bool = false
     @State private var showingCloneSheet: Bool = false
     /// A folder is being dragged over the window.
@@ -65,6 +60,8 @@ public struct RootView: View {
                     onDismiss: nil,
                     presentation: .standalone
                 )
+                // With a repository open, RepositoryView shows these under its toolbar.
+                .aviNotices(session.notices)
             }
         }
         .sheet(isPresented: $showingCloneSheet) {
@@ -114,11 +111,6 @@ public struct RootView: View {
             }
         } message: { approval in
             Text("\(approval.path)\n\nOpening a repository runs Git in it, and its settings can make Git run other programs. Open only repositories you trust.")
-        }
-        .alert("Git Error", isPresented: openErrorPresented) {
-            Button("OK", role: .cancel) { openErrorMessage = nil }
-        } message: {
-            Text(openErrorMessage ?? "")
         }
         .onReceive(NotificationCenter.default.publisher(for: .aviOpenRepository)) { notification in
             // A URL means "open this path", such as a sibling worktree. The
@@ -188,17 +180,6 @@ public struct RootView: View {
         )
     }
 
-    private var openErrorPresented: Binding<Bool> {
-        Binding(
-            get: { openErrorMessage != nil },
-            set: {
-                presented in if !presented {
-                    openErrorMessage = nil
-                }
-            }
-        )
-    }
-
     private func openRepositoryPicker() {
         if selectedStore == nil {
             // We're already on the picker (standalone empty state). Nothing to open.
@@ -213,6 +194,14 @@ public struct RootView: View {
 
     private func closeRepository(_ id: RepositoryStore.ID) {
         session.close(id)
+    }
+}
+
+extension WorkspaceSession {
+    /// The window's own notices: an error opening or restoring repositories.
+    var notices: [AviNotice] {
+        guard let errorMessage else { return [] }
+        return [.error(id: "workspace-error", text: errorMessage) { [weak self] in self?.errorMessage = nil }]
     }
 }
 

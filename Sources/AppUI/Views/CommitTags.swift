@@ -104,56 +104,53 @@ struct CommitTagSheet: View {
     @State private var message = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(request.original == nil ? "Tag \(commitName)" : "Edit Tag")
-                .font(.system(size: 14, weight: .semibold))
-
-            Text("Avi creates the tag on this commit right after making it. Push then sends the commit and the tag together, so the tag never reaches the remote before its commit.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                TextField("Name (e.g. v1.2.3)", text: nameBinding)
+        AviPopup(
+            symbol: "tag.fill",
+            tint: DS.Palette.infoOrange,
+            title: request.original == nil ? "Tag \(commitName)" : "Edit Tag",
+            subtitle: request.original == nil ? "Created right after the commit" : request.original?.name,
+            width: 400
+        ) {
+            AviPopupCallout(
+                "Avi creates the tag on this commit right after making it. Push then sends the commit and the tag together, so the tag never reaches the remote before its commit."
+            )
+            AviPopupField("Name", note: problem, noteTone: .warning) {
+                TextField("v1.2.3", text: nameBinding)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(save)
-                if let problem {
-                    Text(problem)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                    .accessibilityLabel("Tag name")
             }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Message (optional)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+            AviPopupField(
+                "Message",
+                note: message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "Optional. Without a message the tag is lightweight."
+                    : "Annotated tag."
+            ) {
                 TextEditor(text: $message)
                     .font(.system(size: 12))
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
                     .frame(minHeight: 60, maxHeight: 100)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .textBackgroundColor))
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(Color.secondary.opacity(0.3), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
                     )
                     .accessibilityLabel("Tag message")
-                Text(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Lightweight tag" : "Annotated tag")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
             }
-
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button(request.original == nil ? "Add Tag" : "Save", action: save)
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(trimmedName.isEmpty || problem != nil)
-            }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }
+                .buttonStyle(.aviSecondary)
+                .keyboardShortcut(.cancelAction)
+            Button(request.original == nil ? "Add Tag" : "Save", action: save)
+                .buttonStyle(.aviProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(trimmedName.isEmpty || problem != nil)
         }
-        .padding(18)
-        .frame(width: 380)
         .onAppear {
             name = request.original?.name ?? ""
             message = request.original?.message ?? ""

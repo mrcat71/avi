@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// The palette floating near the top of the window, like Rex's: no sheet
+/// around it, and a click anywhere else closes it.
+struct CommandPaletteOverlay: View {
+    let commands: [AppCommand]
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Color.black.opacity(0.06)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isPresented = false
+                }
+                .accessibilityHidden(true)
+            CommandPalette(commands: commands, isPresented: $isPresented)
+                .padding(.top, 80)
+                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
+        }
+    }
+}
+
 struct CommandPalette: View {
     let commands: [AppCommand]
     @Binding var isPresented: Bool
@@ -58,13 +79,8 @@ struct CommandPalette: View {
             }
         }
         .frame(width: 540)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.25), radius: 24, y: 8)
+        .clipShape(RoundedRectangle(cornerRadius: AviNoticeCard.cornerRadius, style: .continuous))
+        .modifier(AviFloatingSurface())
         .onChange(of: query) { _, _ in
             selectedIndex = 0
         }
