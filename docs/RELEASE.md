@@ -213,7 +213,9 @@ curl -sL https://github.com/mrcat71/avi/releases/latest/download/appcast.xml | g
 Download the DMG, the ZIP, and `SHA256SUMS` from the release into a fresh
 directory, verify `shasum -a 256 -c SHA256SUMS`, and install from the DMG on
 another Mac. On a Mac running the previous version (0.7.1 or later), **Avi >
-Check for Updates…** must offer and install the new one. Local build success
+Check for Updates…** must offer and install the new one. The version you
+update from draws the offer: releases with the update notice show it at the
+top of the window, older ones show Sparkle's window. Local build success
 alone does not verify the published assets.
 
 ## Failed or incorrect releases
