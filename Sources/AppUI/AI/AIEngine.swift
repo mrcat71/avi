@@ -291,17 +291,15 @@ final class CommandAIEngine: AIEngine {
                     continue
                 }
                 current.append(ch)
-            } else {
-                if ch == "\"" {
-                    inDoubleQuote = true
-                } else if ch.isWhitespace {
-                    if !current.isEmpty {
-                        result.append(current)
-                        current = ""
-                    }
-                } else {
-                    current.append(ch)
+            } else if ch == "\"" {
+                inDoubleQuote = true
+            } else if ch.isWhitespace {
+                if !current.isEmpty {
+                    result.append(current)
+                    current = ""
                 }
+            } else {
+                current.append(ch)
             }
             i = input.index(after: i)
         }

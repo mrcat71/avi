@@ -28,7 +28,6 @@ struct KeyboardSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private var shortcutList: some View {
         #if canImport(KeyboardShortcuts)
         ForEach(Array(AviShortcuts.Action.allCases.enumerated()), id: \.element.id) { index, action in

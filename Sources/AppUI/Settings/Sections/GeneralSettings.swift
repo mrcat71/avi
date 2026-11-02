@@ -91,7 +91,6 @@ struct GeneralSettingsView: View {
         }
     }
 
-    @ViewBuilder
     private var launchAtLoginToggle: some View {
         #if canImport(LaunchAtLogin)
         LaunchAtLogin.Toggle()
