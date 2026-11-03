@@ -83,7 +83,7 @@ jobs:
         run: swift test
 
       - name: Release build (arm64)
-        run: swift build -c release --arch arm64
+        run: bash scripts/build-release.sh
 
       - name: Package .app bundle, zip, and disk image
         run: scripts/package-app.sh "${{ steps.ver.outputs.version }}"
@@ -91,7 +91,8 @@ jobs:
       - name: Self-test packaged app
         # Runs the AI preflight in the binary that ships. A miscompiled async
         # sleep (swiftlang/swift#86204) aborts it here, before publishing, as
-        # does a bundle without the keys to verify its next update.
+        # does a bundle without the keys to verify its next update or the
+        # resources needed to construct the Keyboard settings recorder.
         run: dist/Avi.app/Contents/MacOS/Avi --self-test
 
       - name: Generate signed appcast

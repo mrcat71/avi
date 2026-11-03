@@ -71,10 +71,16 @@ jobs:
           restore-keys: |
             spm-${{ runner.os }}-
       - name: Release build
-        run: swift build -c release
+        run: bash scripts/build-release.sh
       - name: Version
-        run: .build/release/AviApp --version
+        run: '"$(bash scripts/build-release.sh --show-bin-path)/AviApp" --version'
       - name: Self-test
-        run: .build/release/AviApp --self-test
+        run: '"$(bash scripts/build-release.sh --show-bin-path)/AviApp" --self-test'
       - name: avi command
-        run: .build/release/AviApp --cli version
+        run: '"$(bash scripts/build-release.sh --show-bin-path)/AviApp" --cli version'
+      - name: Package app
+        run: scripts/package-app.sh 0.0.0-ci
+      - name: Verify packaged app
+        run: |
+          codesign --verify --deep --strict --verbose=2 dist/Avi.app
+          dist/Avi.app/Contents/MacOS/Avi --self-test

@@ -125,6 +125,23 @@ public enum AviShortcuts {
         #endif
     }
 
+    /// Exercises the dependency's resource loader in the packaged-app self-test.
+    /// A build-tree unit test alone cannot catch an installed .app's bundle paths.
+    @MainActor
+    public static func recorderResourceProblem() -> String? {
+        #if canImport(KeyboardShortcuts)
+        _ = NSApplication.shared
+        // Binding mode avoids creating or changing a persisted shortcut.
+        let recorder = KeyboardShortcuts.RecorderCocoa(shortcut: nil)
+        guard let placeholder = recorder.placeholderString,
+              !placeholder.isEmpty, placeholder != "record_shortcut"
+        else {
+            return "KeyboardShortcuts recorder localization is missing"
+        }
+        #endif
+        return nil
+    }
+
     #if canImport(KeyboardShortcuts)
     @MainActor
     static func removeLegacyFetchShortcut(for name: KeyboardShortcuts.Name = .fetch) {

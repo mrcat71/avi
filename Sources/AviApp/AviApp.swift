@@ -38,6 +38,10 @@ enum AviAppMain {
             _ = ConfigStore.shared
             let store = RepositoryStore()
             _ = store.id
+            if let problem = AviShortcuts.recorderResourceProblem() {
+                FileHandle.standardError.write(Data("self-test: shortcuts: \(problem)\n".utf8))
+                exit(1)
+            }
         }
         // A packaged app that cannot verify updates leaves everyone on this
         // version downloading the next one by hand. Bare binaries (CI's bundle
