@@ -6,6 +6,10 @@ import Testing
 @MainActor
 @Suite("Fetch keyboard shortcut")
 struct ShortcutTests {
+    @Test func recorderLoadsLocalizedResources() {
+        #expect(AviShortcuts.recorderResourceProblem() == nil)
+    }
+
     enum Binding: CaseIterable {
         case legacy, custom, none
     }
