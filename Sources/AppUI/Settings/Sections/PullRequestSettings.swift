@@ -23,7 +23,7 @@ struct PullRequestSettingsGroup: View {
                         store.update { $0.pullRequests.ticketPrefixes = PullRequestSettingsText.entries(commaSeparated: text) }
                     }
             }
-            Divider().padding(.vertical, 4)
+            SettingsDivider()
             SettingsFormRow(
                 "Keep hyphens in",
                 description: "One per line: a name, a pattern where * is one word (k8s-*-*-ams1), or a /regular expression/."
@@ -46,28 +46,25 @@ struct PullRequestSettingsGroup: View {
                         store.update { $0.pullRequests.keepHyphenated = PullRequestSettingsText.entries(lines: text) }
                     }
             }
-            Divider().padding(.vertical, 4)
+            SettingsDivider()
             SettingsFormRow(
                 "Learn names from the repository",
                 description: "Keeps the hyphens of file and folder names the repository has, such as environments/k8s-infra-ah-ams1/."
             ) {
-                Toggle("", isOn: bind(\.pullRequests.learnNamesFromRepository))
-                    .toggleStyle(.switch)
+                Toggle("Learn names from the repository", isOn: bind(\.pullRequests.learnNamesFromRepository))
                     .labelsHidden()
             }
-            Divider().padding(.vertical, 4)
+            SettingsDivider()
             SettingsFormRow("Capitalize the first word") {
-                Toggle("", isOn: bind(\.pullRequests.capitalize))
-                    .toggleStyle(.switch)
+                Toggle("Capitalize the first word", isOn: bind(\.pullRequests.capitalize))
                     .labelsHidden()
             }
-            Divider().padding(.vertical, 4)
+            SettingsDivider()
             SettingsFormRow("Create as drafts") {
-                Toggle("", isOn: bind(\.pullRequests.draft))
-                    .toggleStyle(.switch)
+                Toggle("Create as drafts", isOn: bind(\.pullRequests.draft))
                     .labelsHidden()
             }
-            Divider().padding(.vertical, 4)
+            SettingsDivider()
             SettingsFormRow(
                 "Try a branch",
                 description: "Names learned from a repository apply in the Push sheet, not here."

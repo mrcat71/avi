@@ -11,16 +11,15 @@ struct GitSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 320)
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Email") {
                     TextField("", text: bind(\.git.defaultAuthorEmail))
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 320)
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Sign commits", description: "Adds -S to git commit if your gpg/ssh signing is configured.") {
-                    Toggle("", isOn: bind(\.git.signCommits))
-                        .toggleStyle(.switch)
+                    Toggle("Sign commits", isOn: bind(\.git.signCommits))
                         .labelsHidden()
                 }
             }
@@ -35,16 +34,14 @@ struct GitSettingsView: View {
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Prune on fetch") {
-                    Toggle("", isOn: bind(\.git.pruneOnFetch))
-                        .toggleStyle(.switch)
+                    Toggle("Prune on fetch", isOn: bind(\.git.pruneOnFetch))
                         .labelsHidden()
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Auto-refresh", description: "Pick up filesystem changes automatically.") {
-                    Toggle("", isOn: bind(\.git.autoRefresh))
-                        .toggleStyle(.switch)
+                    Toggle("Auto-refresh", isOn: bind(\.git.autoRefresh))
                         .labelsHidden()
                 }
             }
@@ -57,7 +54,7 @@ struct GitSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 360)
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Terminal") {
                     TextField("/Applications/iTerm.app", text: bind(\.git.terminalApp))
                         .textFieldStyle(.roundedBorder)

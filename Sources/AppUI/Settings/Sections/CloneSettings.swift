@@ -26,10 +26,9 @@ struct CloneSettingsView: View {
                     description: "Open the cloned repository automatically"
                 ) {
                     Toggle("Open repository after clone", isOn: bind(\.clone.openAfterClone))
-                        .toggleStyle(.checkbox)
                         .labelsHidden()
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow(
                     "Protocol",
                     description: "What a repository from GitHub or GitLab is cloned over; each clone can switch"
@@ -42,13 +41,12 @@ struct CloneSettingsView: View {
                     .frame(maxWidth: 200)
                     .labelsHidden()
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow(
                     "Remember destination",
                     description: "Reuse the last destination folder per provider"
                 ) {
                     Toggle("Remember destination per provider", isOn: bind(\.clone.rememberDestinationPerProvider))
-                        .toggleStyle(.checkbox)
                         .labelsHidden()
                 }
             }

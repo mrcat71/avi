@@ -76,7 +76,7 @@ struct AviApp: App {
     private var mainWindow: some View {
         #if DEBUG
         if ScreenshotHarness.isActive {
-            Color.clear.frame(width: 1, height: 1)
+            ScreenshotHarnessHost()
         } else {
             RootView()
         }

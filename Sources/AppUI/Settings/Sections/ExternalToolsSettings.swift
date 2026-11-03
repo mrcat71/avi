@@ -15,7 +15,6 @@ struct ExternalToolsSettingsView: View {
                         Text("\(detection.count(where: { $0.isAvailable })) of \(detection.count) tools found")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                        Spacer()
                         Button(action: redetect) {
                             HStack(spacing: 4) {
                                 if isDetecting {
@@ -29,16 +28,15 @@ struct ExternalToolsSettingsView: View {
                         .disabled(isDetecting)
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 ForEach(detection) { tool in
                     toolRow(tool)
                     if tool.id != detection.last?.id {
-                        Divider().padding(.vertical, 4)
+                        SettingsDivider()
                     }
                 }
             }
             MergeToolSettings(store: store)
-                .padding(.top, 16)
         }
         .task {
             if detection.isEmpty {

@@ -25,10 +25,9 @@ struct AdvancedSettingsView: View {
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Verbose logging") {
-                    Toggle("", isOn: bind(\.advanced.verboseLogging))
-                        .toggleStyle(.switch)
+                    Toggle("Verbose logging", isOn: bind(\.advanced.verboseLogging))
                         .labelsHidden()
                 }
             }

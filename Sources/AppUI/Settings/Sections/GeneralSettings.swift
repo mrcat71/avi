@@ -11,81 +11,81 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            SettingsGroup {
+                SettingsHeroRow("Avi") {
+                    SettingsAppIcon()
+                } subtitle: {
+                    updateStatus
+                } trailing: {
+                    if updater.state == .running {
+                        Button("Check for Updates…") { updater.checkForUpdates() }
+                            .disabled(!updater.canCheckForUpdates)
+                    }
+                }
+                if updater.state == .running {
+                    SettingsDivider(underHero: true)
+                    SettingsFormRow("Check automatically", description: "Look for a new version once a day.") {
+                        Toggle("Check automatically", isOn: $updater.automaticallyChecksForUpdates)
+                            .labelsHidden()
+                    }
+                    .settingsHeroIndent()
+                    SettingsDivider(underHero: true)
+                    SettingsFormRow(
+                        "Install automatically",
+                        description: "Download new versions in the background and install them when you quit Avi."
+                    ) {
+                        Toggle("Install automatically", isOn: $updater.automaticallyDownloadsUpdates)
+                            .labelsHidden()
+                            .disabled(!updater.automaticallyChecksForUpdates)
+                    }
+                    .settingsHeroIndent()
+                }
+            }
+
             SettingsGroup("Startup") {
                 SettingsFormRow("Launch at login", description: "Open Avi automatically when you log in.") {
                     launchAtLoginToggle
                 }
             }
 
-            SettingsGroup("Updates") {
-                SettingsFormRow("Version") {
-                    Text(GitKit.version)
-                        .font(.system(size: 11, design: .monospaced))
-                        .textSelection(.enabled)
-                }
-                Divider().padding(.vertical, 4)
-                updateRows
-            }
-
             SettingsGroup("Config File") {
-                SettingsFormRow("Status") {
-                    statusBadge
-                }
-                Divider().padding(.vertical, 4)
-                SettingsFormRow("Path") {
-                    Text(ConfigPath.fileURL.path)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                Divider().padding(.vertical, 4)
-                SettingsFormRow("Actions") {
-                    HStack(spacing: 8) {
-                        Button("Open Config") { ConfigPath.openFile() }
-                        Button("Open Folder") { ConfigPath.openFolder() }
-                        Button("Reload") { store.reload() }
-                        Button("Reset to defaults", role: .destructive) { store.reset() }
+                SettingsHeroRow(ConfigPath.fileName) {
+                    SettingsIcon(symbol: "doc.text", tint: .gray, size: SettingsMetrics.heroIcon)
+                } subtitle: {
+                    VStack(alignment: .leading, spacing: 3) {
+                        statusBadge
+                        Text(ConfigPath.fileURL.path)
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
                     }
+                } trailing: {
+                    Button("Open Config") { ConfigPath.openFile() }
                 }
+                SettingsDivider(underHero: true)
+                HStack(spacing: 8) {
+                    Button("Open Folder") { ConfigPath.openFolder() }
+                    Button("Reload") { store.reload() }
+                    Spacer()
+                    Button("Reset to defaults", role: .destructive) { store.reset() }
+                }
+                .padding(.vertical, 10)
+                .settingsHeroIndent()
             }
         }
     }
 
-    @ViewBuilder
-    private var updateRows: some View {
-        switch updater.state {
-        case .running:
-            SettingsFormRow("Check automatically", description: "Look for a new version once a day.") {
-                Toggle("", isOn: $updater.automaticallyChecksForUpdates)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-            }
-            Divider().padding(.vertical, 4)
-            SettingsFormRow(
-                "Install automatically",
-                description: "Download new versions in the background and install them when you quit Avi."
-            ) {
-                Toggle("", isOn: $updater.automaticallyDownloadsUpdates)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .disabled(!updater.automaticallyChecksForUpdates)
-            }
-            Divider().padding(.vertical, 4)
-            SettingsFormRow("Actions") {
-                Button("Check Now") { updater.checkForUpdates() }
-                    .disabled(!updater.canCheckForUpdates)
-            }
-        case .notStarted:
-            SettingsFormRow("Status") {
+    /// The version, and why updates are off when they are.
+    private var updateStatus: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Version \(GitKit.version)")
+                .textSelection(.enabled)
+            switch updater.state {
+            case .running:
+                EmptyView()
+            case .notStarted:
                 Text("Starting…")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-        case .unavailable(let reason):
-            SettingsFormRow("Status") {
+            case .unavailable(let reason):
                 Text(reason)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
         }
@@ -94,12 +94,10 @@ struct GeneralSettingsView: View {
     private var launchAtLoginToggle: some View {
         #if canImport(LaunchAtLogin)
         LaunchAtLogin.Toggle()
-            .toggleStyle(.switch)
             .labelsHidden()
         #else
         HStack(spacing: 6) {
-            Toggle("", isOn: .constant(false))
-                .toggleStyle(.switch)
+            Toggle("Launch at login", isOn: .constant(false))
                 .labelsHidden()
                 .disabled(true)
             Text("Unavailable in this build")

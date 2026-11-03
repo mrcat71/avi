@@ -36,7 +36,7 @@ struct AppearanceSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 260)
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Diff text size", description: "Diffs and their line numbers.") {
                     HStack {
                         Slider(value: fontSizeBinding, in: 11 ... 16, step: 1)
@@ -46,7 +46,7 @@ struct AppearanceSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Graph lane width") {
                     Picker("", selection: laneWidthBinding) {
                         Text("12 pt").tag(12)
@@ -57,13 +57,12 @@ struct AppearanceSettingsView: View {
                     .labelsHidden()
                     .frame(maxWidth: 240)
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow(
                     "Author pictures",
                     description: "Shows each author's picture beside their name in History. Avi asks the repository's GitHub or GitLab which account wrote each commit, signed in with your token from Settings or through gh or glab, and otherwise looks the email address up there and on Gravatar, which only receives a hash of it. Off shows the names alone and asks no server."
                 ) {
-                    Toggle("", isOn: authorPicturesBinding)
-                        .toggleStyle(.switch)
+                    Toggle("Author pictures", isOn: authorPicturesBinding)
                         .labelsHidden()
                 }
             }

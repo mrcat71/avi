@@ -24,13 +24,12 @@ struct AISettingsView: View {
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
-                        Spacer()
                         Button("Re-check", action: runValidation)
                     }
                 }
                 if let v = validation {
                     if let exe = v.resolvedExecutable {
-                        Divider().padding(.vertical, 4)
+                        SettingsDivider()
                         SettingsFormRow("Resolved") {
                             Text(exe)
                                 .font(.system(size: 11, design: .monospaced))
@@ -39,7 +38,7 @@ struct AISettingsView: View {
                         }
                     }
                     if let version = v.detectedVersion {
-                        Divider().padding(.vertical, 4)
+                        SettingsDivider()
                         SettingsFormRow("Version") {
                             Text(version)
                                 .font(.system(size: 11, design: .monospaced))
@@ -48,8 +47,8 @@ struct AISettingsView: View {
                         }
                     }
                     if !v.messages.isEmpty {
-                        Divider().padding(.vertical, 4)
-                        SettingsFormRow("Issues") {
+                        SettingsDivider()
+                        SettingsFormRow("Issues", layout: .stacked) {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(v.messages, id: \.self) { msg in
                                     Text("• \(msg)")
@@ -64,11 +63,10 @@ struct AISettingsView: View {
 
             SettingsGroup("Generation") {
                 SettingsFormRow("Enable AI commit messages") {
-                    Toggle("", isOn: bind(\.ai.enabled))
-                        .toggleStyle(.switch)
+                    Toggle("Enable AI commit messages", isOn: bind(\.ai.enabled))
                         .labelsHidden()
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Backend") {
                     Picker("", selection: bind(\.ai.backend)) {
                         Text("Custom command").tag("command")
@@ -78,13 +76,13 @@ struct AISettingsView: View {
                     .labelsHidden()
                     .frame(maxWidth: 320)
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Model") {
                     TextField("gpt-6-luna / gpt-6-sol / ...", text: bind(\.ai.model))
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 280)
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Temperature") {
                     HStack {
                         Slider(value: bind(\.ai.temperature), in: 0 ... 1, step: 0.05)
@@ -94,14 +92,14 @@ struct AISettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Max tokens") {
                     Stepper(value: bind(\.ai.maxTokens), in: 100 ... 4000, step: 100) {
                         Text("\(store.config.ai.maxTokens)")
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow(
                     "Reasoning effort",
                     description: "Sent as `reasoning_effort` to the OpenAI API; exposed as `${effort}` to custom commands."
@@ -117,16 +115,15 @@ struct AISettingsView: View {
                     .labelsHidden()
                     .frame(maxWidth: 200)
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow(
                     "Insert directly",
                     description: "Replace the commit summary and body on success. When off, show a preview card with Replace / Append / Discard."
                 ) {
-                    Toggle("", isOn: bind(\.ai.directInsert))
-                        .toggleStyle(.switch)
+                    Toggle("Insert directly", isOn: bind(\.ai.directInsert))
                         .labelsHidden()
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Timeout", description: "Kill the AI command if it doesn't finish.") {
                     Stepper(value: bind(\.ai.timeoutSeconds), in: 30 ... 600, step: 30) {
                         Text("\(store.config.ai.timeoutSeconds) seconds")
@@ -139,17 +136,18 @@ struct AISettingsView: View {
                 SettingsGroup("Custom command") {
                     SettingsFormRow(
                         "Command template",
-                        description: "${prompt_file} is a temp file containing the rendered Prompt template configured below; the same content is piped on stdin. ${model} = the model field above. ${effort_kv} expands to codex's `-c model_reasoning_effort=<value>` flag when an effort is picked, or to an empty string when not. ${effort} is the raw value (use only if your CLI accepts it directly)."
+                        description: "${prompt_file} is a temp file containing the rendered Prompt template configured below; the same content is piped on stdin. ${model} = the model field above. ${effort_kv} expands to codex's `-c model_reasoning_effort=<value>` flag when an effort is picked, or to an empty string when not. ${effort} is the raw value (use only if your CLI accepts it directly).",
+                        layout: .stacked
                     ) {
                         TextField("codex exec --skip-git-repo-check --model ${model} ${effort_kv}", text: bind(\.ai.commandTemplate))
                             .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 400)
                             .font(.system(size: 12, design: .monospaced))
                     }
-                    Divider().padding(.vertical, 4)
+                    SettingsDivider()
                     SettingsFormRow(
                         "Resolved preview",
-                        description: "How the template renders with the current settings."
+                        description: "How the template renders with the current settings.",
+                        layout: .stacked
                     ) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(resolvedCommandPreview)
@@ -158,7 +156,6 @@ struct AISettingsView: View {
                                 .textSelection(.enabled)
                                 .lineLimit(2)
                                 .truncationMode(.tail)
-                                .frame(maxWidth: 400, alignment: .leading)
                             if effortPickedButNotUsed {
                                 HStack(spacing: 4) {
                                     Image(systemName: "lightbulb")
@@ -178,7 +175,7 @@ struct AISettingsView: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 400)
                     }
-                    Divider().padding(.vertical, 4)
+                    SettingsDivider()
                     SettingsFormRow("API key", description: "Stored in macOS Keychain.") {
                         HStack(spacing: 8) {
                             SecureField("sk-…", text: $openAIKey)
@@ -193,13 +190,12 @@ struct AISettingsView: View {
                             .disabled(openAIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     }
-                    Divider().padding(.vertical, 4)
-                    SettingsFormRow("") {
-                        HStack {
+                    SettingsDivider()
+                    SettingsFormRow("Keychain") {
+                        HStack(spacing: 8) {
                             Text(KeychainStore.getString(account: store.config.ai.openAIKeychainItem) != nil ? "Key stored ✓" : "No key stored")
                                 .font(.system(size: 11))
                                 .foregroundStyle(KeychainStore.getString(account: store.config.ai.openAIKeychainItem) != nil ? .green : .secondary)
-                            Spacer()
                             Button("Delete Key") {
                                 KeychainStore.deleteString(account: store.config.ai.openAIKeychainItem)
                             }
@@ -211,25 +207,24 @@ struct AISettingsView: View {
 
             SettingsGroup("Style") {
                 SettingsFormRow("Conventional Commits") {
-                    Toggle("", isOn: bind(\.ai.conventionalCommits))
-                        .toggleStyle(.switch)
+                    Toggle("Conventional Commits", isOn: bind(\.ai.conventionalCommits))
                         .labelsHidden()
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Subject soft limit") {
                     Stepper(value: bind(\.ai.subjectSoftLimit), in: 30 ... 100, step: 1) {
                         Text("\(store.config.ai.subjectSoftLimit) chars")
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Subject hard limit") {
                     Stepper(value: bind(\.ai.subjectHardLimit), in: 40 ... 120, step: 1) {
                         Text("\(store.config.ai.subjectHardLimit) chars")
                             .font(.system(size: 12, design: .monospaced))
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Body wrap") {
                     Stepper(value: bind(\.ai.bodyWrap), in: 60 ... 120, step: 1) {
                         Text("\(store.config.ai.bodyWrap) chars")
@@ -239,14 +234,14 @@ struct AISettingsView: View {
             }
 
             SettingsGroup("Prompt template") {
-                SettingsFormRow("Available variables") {
+                SettingsFormRow("Available variables", layout: .stacked) {
                     Text("${target}, ${staged_diff}, ${lowLimit}, ${highLimit}, ${guideLine}, ${branch}, ${files}, ${repo}, ${model}")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-                Divider().padding(.vertical, 4)
-                SettingsFormRow("Template") {
+                SettingsDivider()
+                SettingsFormRow("Template", layout: .stacked) {
                     VStack(alignment: .leading, spacing: 6) {
                         TextEditor(text: bind(\.ai.promptTemplate))
                             .font(.system(size: 12, design: .monospaced))

@@ -9,29 +9,32 @@ struct GitLabSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ProviderInfoBanner(
-                provider: "GitLab",
+                section: .gitlab,
                 features: "Open on GitLab, create merge requests"
             )
 
             SettingsGroup("Command-line tool (glab)") {
-                SettingsFormRow("Status", description: "Avi will reuse glab's authentication when cloning and listing repositories.") {
-                    HStack(spacing: 8) {
+                SettingsHeroRow("GitLab CLI") {
+                    SettingsIcon(symbol: "terminal", tint: SettingsSection.gitlab.tint, size: SettingsMetrics.heroIcon)
+                } subtitle: {
+                    VStack(alignment: .leading, spacing: 3) {
                         ProviderCLIStatusBadge(state: glabAuth)
-                        Spacer()
-                        Button("Refresh") {
-                            Task { glabAuth = await GlabCLI.authStatus() }
-                        }
+                        Text("Avi will reuse glab's authentication when cloning and listing repositories.")
+                    }
+                } trailing: {
+                    Button("Refresh") {
+                        Task { glabAuth = await GlabCLI.authStatus() }
                     }
                 }
             }
 
             SettingsGroup("Accounts") {
                 if gitlabAccounts.isEmpty {
-                    SettingsFormRow("No GitLab account") {
-                        Text("Sign in to enable MR creation and 'Open on GitLab' actions. Supports gitlab.com and self-hosted.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingsFormRow(
+                        "No GitLab account",
+                        description: "Sign in to enable MR creation and 'Open on GitLab' actions. Supports gitlab.com and self-hosted."
+                    ) {}
+                    SettingsDivider()
                 } else {
                     ForEach(gitlabAccounts) { account in
                         SettingsFormRow(account.username, description: instanceDescription(account)) {
@@ -39,7 +42,6 @@ struct GitLabSettingsView: View {
                                 Text(account.status)
                                     .font(.system(size: 11))
                                     .foregroundStyle(statusColor(account.status))
-                                Spacer()
                                 Button("Validate") {
                                     Task { await manager.validate(accountID: account.id) }
                                 }
@@ -47,8 +49,9 @@ struct GitLabSettingsView: View {
                                     manager.removeAccount(id: account.id)
                                 }
                             }
+                            .fixedSize()
                         }
-                        Divider().padding(.vertical, 4)
+                        SettingsDivider()
                     }
                 }
                 SettingsFormRow("Add account") {

@@ -61,6 +61,11 @@ public enum ScreenshotHarness {
             guard let view = await panel.view(stores) else { continue }
             try await capturePanel(view, size: panel.size, asSheet: panel.asSheet, name: panel.name, into: output)
         }
+        for section in SettingsSection.allCases where only.isEmpty || only.contains("settings-\(section.rawValue)") {
+            log("panel settings-\(section.rawValue)")
+            try await captureSettings(section, into: output)
+        }
+        settingsWindow?.close()
         NSApp.appearance = nil
         print("render-screens: saved to \(output.path)")
     }
@@ -96,6 +101,12 @@ public enum ScreenshotHarness {
             },
             Panel(name: "sheet-commit-tag", size: CGSize(width: 380, height: 360)) { stores in
                 AnyView(CommitTagSheet(store: stores[0], request: TagEditRequest(target: .stagedCommit, original: NewTag(name: "v1.3.0", message: "Release 1.3.0"))))
+            },
+            Panel(name: "commit-tags-empty", size: CGSize(width: 560, height: 280)) { stores in
+                let store = stores[0]
+                store.commitSummary = "chore(release): prepare version 0.10.1"
+                store.commitTags = []
+                return AnyView(CommitPanelView(store: store).frame(width: 560, height: 280))
             },
             Panel(name: "tag-banner", size: CGSize(width: 900, height: 60)) { stores in
                 let store = stores[1]
@@ -136,17 +147,49 @@ public enum ScreenshotHarness {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .background(HeroBackground())
                 )
-            },
-            Panel(name: "settings-git", size: CGSize(width: 820, height: 900)) { _ in
-                ConfigStore.shared.update { $0.pullRequests.keepHyphenated = ["k8s-*-*-ams1"] }
-                SettingsNavigation.shared.requested = .git
-                return AnyView(SettingsRoot())
-            },
-            Panel(name: "settings-appearance", size: CGSize(width: 820, height: 700)) { _ in
-                SettingsNavigation.shared.requested = .appearance
-                return AnyView(SettingsRoot())
             }
         ]
+    }
+
+    /// Opens Avi's Settings window. Set by `ScreenshotHarnessHost`, which
+    /// stands in for the workspace while the harness runs.
+    static var openSettings: (@MainActor () -> Void)?
+
+    /// Shows `section` in the Settings window itself, `settings-<section>`
+    /// such as `settings-git`, so the capture has the window's own sidebar,
+    /// search field, and toolbar.
+    private static func captureSettings(_ section: SettingsSection, into output: URL) async throws {
+        if section == .git {
+            ConfigStore.shared.update { $0.pullRequests.keepHyphenated = ["k8s-*-*-ams1"] }
+        }
+        SettingsNavigation.shared.requested = section
+        if settingsWindow == nil {
+            guard let openSettings else { throw HarnessFailure(message: "nothing can open the Settings window") }
+            openSettings()
+        }
+        try await Task.safeSleep(for: .milliseconds(1200))
+        guard let window = settingsWindow else {
+            let windows = NSApp.windows.map { "\($0.identifier?.rawValue ?? "?") \"\($0.title)\"" }
+            throw HarnessFailure(message: "the Settings window did not open; windows: \(windows.joined(separator: ", "))")
+        }
+        window.setContentSize(CGSize(width: 820, height: 900))
+        for appearance in ["light", "dark"] {
+            NSApp.appearance = NSAppearance(named: appearance == "light" ? .aqua : .darkAqua)
+            try await Task.safeSleep(for: .milliseconds(1800))
+            try capture(window, to: output.appendingPathComponent("settings-\(section.rawValue)-\(appearance).png"))
+        }
+    }
+
+    private static var settingsWindow: NSWindow? {
+        NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" }
+    }
+
+    private struct HarnessFailure: Error, CustomStringConvertible {
+        let message: String
+
+        var description: String {
+            message
+        }
     }
 
     /// Hosts `view` in a window of its own, in both appearances. A sheet
@@ -276,6 +319,22 @@ public enum ScreenshotHarness {
 
     private static func log(_ message: String) {
         FileHandle.standardError.write(Data("render-screens: \(message)\n".utf8))
+    }
+}
+
+/// The workspace window's stand-in while the harness runs, from where it
+/// can open the Settings window.
+public struct ScreenshotHarnessHost: View {
+    @Environment(\.openSettings) private var openSettings
+
+    public init() {}
+
+    public var body: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .onAppear {
+                ScreenshotHarness.openSettings = { openSettings() }
+            }
     }
 }
 

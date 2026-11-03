@@ -11,29 +11,29 @@ struct GitHubSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ProviderInfoBanner(
-                provider: "GitHub",
+                section: .github,
                 features: "Open on GitHub, create pull requests, view PR status"
             )
 
             SettingsGroup("Command-line tool (gh)") {
-                SettingsFormRow("Status", description: "Avi will reuse gh's authentication when cloning and listing repositories.") {
-                    HStack(spacing: 8) {
+                SettingsHeroRow("GitHub CLI") {
+                    SettingsIcon(symbol: "terminal", tint: SettingsSection.github.tint, size: SettingsMetrics.heroIcon)
+                } subtitle: {
+                    VStack(alignment: .leading, spacing: 3) {
                         ProviderCLIStatusBadge(state: ghAuth)
-                        Spacer()
-                        Button("Refresh") {
-                            Task { ghAuth = await GhCLI.authStatus() }
-                        }
+                        Text("Avi will reuse gh's authentication when cloning and listing repositories.")
+                    }
+                } trailing: {
+                    Button("Refresh") {
+                        Task { ghAuth = await GhCLI.authStatus() }
                     }
                 }
             }
 
             SettingsGroup("Accounts") {
                 if githubAccounts.isEmpty {
-                    SettingsFormRow("No GitHub account") {
-                        Text("Sign in to enable PR creation and 'Open on GitHub' actions.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+                    SettingsFormRow("No GitHub account", description: "Sign in to enable PR creation and 'Open on GitHub' actions.") {}
+                    SettingsDivider()
                 } else {
                     ForEach(githubAccounts) { account in
                         SettingsFormRow(account.username, description: account.statusDescription) {
@@ -41,7 +41,6 @@ struct GitHubSettingsView: View {
                                 Text(account.status)
                                     .font(.system(size: 11))
                                     .foregroundStyle(statusColor(account.status))
-                                Spacer()
                                 Button("Validate") {
                                     Task { await manager.validate(accountID: account.id) }
                                 }
@@ -49,25 +48,24 @@ struct GitHubSettingsView: View {
                                     manager.removeAccount(id: account.id)
                                 }
                             }
+                            .fixedSize()
                         }
-                        Divider().padding(.vertical, 4)
+                        SettingsDivider()
                     }
                 }
                 SettingsFormRow("Add account") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 8) {
-                            Button("Sign in with browser") { showingDeviceFlow = true }
-                                .disabled(!isDeviceFlowConfigured)
-                            Button("Use Personal Access Token") {
-                                patValue = ""
-                                showingPATSheet = true
-                            }
+                    HStack(spacing: 8) {
+                        Button("Sign in with browser") { showingDeviceFlow = true }
+                            .disabled(!isDeviceFlowConfigured)
+                        Button("Use Personal Access Token") {
+                            patValue = ""
+                            showingPATSheet = true
                         }
-                        if !isDeviceFlowConfigured {
-                            Text("Browser sign-in is planned. Use a Personal Access Token for now.")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.orange)
-                        }
+                    }
+                    .fixedSize()
+                } detail: {
+                    if !isDeviceFlowConfigured {
+                        AviPopupNote("Browser sign-in is planned. Use a Personal Access Token for now.", tone: .warning)
                     }
                 }
             }
