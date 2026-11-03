@@ -1506,7 +1506,7 @@ struct CreateBranchSheet: View {
         AviPopup(
             symbol: "arrow.triangle.branch",
             title: "Create Branch",
-            subtitle: startPoint.map { "From \(RefNameDisplay.short($0))" } ?? store.branch.map { "From \($0.name)" },
+            subtitle: startPoint.map { "From \(RefNameDisplay.short($0))" } ?? store.branch?.name.map { "From \($0)" },
             width: 400
         ) {
             AviPopupField("Name", note: "Spaces become dashes as you type.") {
