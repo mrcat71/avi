@@ -232,7 +232,8 @@ public final class AgentBridge {
                     tags: commit.tag.map { [$0.newTag] } ?? []
                 )
             },
-            replace: params.replace ?? false
+            replace: params.replace ?? false,
+            takeOver: params.takeOver ?? false
         )
         return await serialized(canonicalRoot) { [self] in
             switch await locateOrOpen(root, requester: proposal.agent) {

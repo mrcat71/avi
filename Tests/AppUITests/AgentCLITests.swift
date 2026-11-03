@@ -45,6 +45,31 @@ struct AgentCLITests {
         #expect(propose.files == ["a.swift", "-odd-name.swift"])
     }
 
+    @Test func takeOverRequiresAnExplicitFlagAndRoundTripsThroughTheProtocol() throws {
+        let parsed = try AgentCLI.parse(["propose", "--take-over", "-m", "follow-up", "--", "a.swift"])
+        guard case .propose(let proposal) = parsed.command else {
+            Issue.record("expected propose")
+            return
+        }
+        #expect(proposal.takeOver)
+        #expect(!proposal.replace)
+        let params = AgentParams(repo: "/repo", takeOver: proposal.takeOver)
+        let decoded = try JSONDecoder().decode(AgentParams.self, from: AgentProtocol.encoder.encode(params))
+        #expect(decoded.takeOver == true)
+        let old = try JSONDecoder().decode(AgentParams.self, from: Data(#"{"repo":"/repo"}"#.utf8))
+        #expect(old.takeOver == nil)
+        guard case .propose(let normal) = try AgentCLI.parse(["propose", "-m", "normal", "a.swift"]).command else {
+            Issue.record("expected normal propose")
+            return
+        }
+        #expect(!normal.takeOver)
+        guard case .propose(let plan) = try AgentCLI.parse(["propose", "--file", "plan.json", "--take-over"]).command else {
+            Issue.record("expected plan propose")
+            return
+        }
+        #expect(plan.takeOver)
+    }
+
     @Test func parsesTagProposals() throws {
         let withCommit = try AgentCLI.parse(["propose", "-m", "chore(release): 1.0", "--tag", "v1.0", "--tag-message", "Release 1.0", "--", "CHANGELOG.md"])
         guard case .propose(let commit) = withCommit.command else {

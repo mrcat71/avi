@@ -128,8 +128,9 @@ staged stay staged.
 
 A commit in a proposal can carry a tag, such as a release's `v1.2.0`. The tag
 shows above the commit's message as "Tag after committing", where you can
-rename it, change its message, or remove it; **Add Tag…** in a commit's menu
-tags one yourself. Avi creates the tag right after it makes that commit, before
+rename it, change its message, or remove it. **Add Tag…** beside the commit
+message, also in its menu, adds a tag even when the commit has none yet.
+Avi creates the tag right after it makes that commit, before
 the next one, so the tag marks exactly that commit. A tag with a message is
 annotated, one without is lightweight. When Git refuses a tag, the commits are
 still made and the error names the tag. Regrouping commits keeps their tags:
@@ -170,9 +171,9 @@ this way.
 avi status [--repo PATH] [--json]
 avi open [PATH] [--focus] [--json]
 avi propose --file PLAN.json|- [--repo PATH] [--agent NAME] [--session ID]
-            [--title TEXT] [--replace] [--focus] [--json]
+            [--title TEXT] [--replace] [--take-over] [--focus] [--json]
 avi propose -m SUBJECT [-m BODY]... [--tag NAME [--tag-message TEXT]]
-            [--agent NAME] [--session ID] [--] [FILE...]
+            [--agent NAME] [--session ID] [--take-over] [--] [FILE...]
 avi propose --tag NAME [--tag-message TEXT] [--at REVISION]
 avi skill status | install | remove [--claude] [--codex] [--opencode] [--command] [--force]
 avi version
@@ -206,6 +207,17 @@ avi version
   `--tag` proposes a tag for the commit `--at` names, `HEAD` by default.
 - `-m` joins its values with blank lines, like `git commit -m`. Files after it
   are relative to the current directory.
+- A `file_claimed` rejection normally means another session already owns the
+  files in the plan. After explicit user approval, retry the same command with
+  `--take-over`. Only the listed paths (including rename partners) move. Other
+  files and messages stay in their drafts; drafts emptied by the transfer are
+  removed. The result's `notes` names each transferred path and previous owner.
+  The transfer becomes a planned commit, not an automatic staging operation.
+  User-edited, manual, AI-generated, and tagged proposals cannot be taken over;
+  resolve those in Avi. `--replace` still applies only to the caller's own
+  edited proposal and never bypasses these protections. Do not impersonate the
+  other session with `--agent` or `--session`. Both the CLI and running Avi must
+  be version 0.10.1 or newer for this option.
 - The agent and session come from `--agent`/`--session`, then the plan file,
   then the environment: `CODEX_THREAD_ID` (Codex), `CLAUDE_CODE_SESSION_ID`
   (Claude Code), or `OPENCODE_SESSION_ID` (OpenCode).
@@ -223,10 +235,13 @@ one JSON request on one line and reads one JSON line back:
 
 ```text
 {"v":1,"method":"propose","params":{"repo":"/abs/worktree","agent":"Codex","session":"t1","commits":[{"message":"...","files":["a.swift"]}]}}
-{"v":1,"ok":true,"result":{"app":{"version":"0.10.0"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
+{"v":1,"ok":true,"result":{"app":{"version":"0.10.1"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
 ```
 
-Methods are `status`, `open`, and `propose`. `propose` takes `commits`, each
+Methods are `status`, `open`, and `propose`. `propose` accepts optional
+`takeOver: true` only for an explicitly user-approved file transfer, with the
+same protections as `--take-over`; absent or false keeps ownership unchanged.
+It takes `commits`, each
 with an optional `tag`, or a top-level `tag` without commits. Its result lists
 the tags Avi will create in `tags`; an Avi from before tags leaves `tags` out
 and ignores them. `status` lists open repositories, their counts, the
@@ -238,7 +253,7 @@ the tags waiting in banners. Failures carry `error.code`:
 | `unknown_path` | A path has no changes; `error.changed` lists the paths that do. |
 | `duplicate_path`, `empty_message`, `files_required`, `no_commits` | The plan itself is invalid. |
 | `file_claimed` | Another session's proposal holds the files; `error.owners` names it. |
-| `edited_by_user` | You edited this session's earlier proposal. |
+| `edited_by_user` | A proposal you would replace or take files from was edited in Avi. |
 | `conflicts` | The repository has unresolved conflicts. |
 | `invalid_tag` | Git would refuse the tag name, or the proposal names it twice. |
 | `tag_exists` | The repository has the tag, or another pending proposal or commit creates it. |

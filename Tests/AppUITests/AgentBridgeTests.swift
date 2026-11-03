@@ -205,6 +205,22 @@ struct AgentBridgeTests {
         }
         withExtendedLifetime(h) {}
     }
+
+    @Test func takeOverPassesFromTheProtocolToTheRepository() async {
+        let h = harness()
+        let root = "/tmp/avi-take-over"
+        let first = await h.bridge.handle(propose(root, [
+            AgentCommit(message: "one", files: ["a.swift"]), AgentCommit(message: "two", files: ["b.swift"])
+        ]))
+        #expect(first.ok)
+        let response = await h.bridge.handle(AgentRequest(method: .propose, params: AgentParams(
+            repo: root, agent: "Codex", session: "b", commits: [AgentCommit(message: "follow-up", files: ["a.swift"])], takeOver: true
+        )))
+        #expect(response.ok)
+        #expect(response.result?.placement == .plan)
+        #expect(h.session.repositories.first?.commitPlan.drafts.map(\.message) == ["two", "follow-up"])
+        withExtendedLifetime(h) {}
+    }
 }
 
 @Suite("Agent protocol")
