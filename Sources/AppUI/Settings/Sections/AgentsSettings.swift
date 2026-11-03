@@ -26,12 +26,11 @@ struct AgentsSettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsGroup("Agent proposals") {
                 SettingsFormRow("Accept proposals", description: "Agents hand finished work to Avi with the avi command. Nothing is committed until you approve it.") {
-                    Toggle("", isOn: bind(\.agents.enabled))
-                        .toggleStyle(.switch)
+                    Toggle("Allow agent proposals", isOn: bind(\.agents.enabled))
                         .labelsHidden()
                         .accessibilityLabel("Accept proposals from agents")
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 SettingsFormRow("Socket") {
                     socketStatus
                 }
@@ -41,10 +40,10 @@ struct AgentsSettingsView: View {
                 ForEach(AgentInstaller.Target.allCases) { target in
                     installRow(target)
                     if target != AgentInstaller.Target.allCases.last {
-                        Divider().padding(.vertical, 4)
+                        SettingsDivider()
                     }
                 }
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
                 HStack {
                     if let lastError {
                         Text(lastError)
@@ -59,21 +58,19 @@ struct AgentsSettingsView: View {
                     Button("Install All", action: installAll)
                         .disabled(!canInstallAny)
                 }
+                .padding(.vertical, 10)
             }
 
             SettingsGroup("Waiting for review") {
                 let pending = bridge.openRepositories.filter { !$0.commitPlan.isEmpty || $0.fieldProposal != nil }
                 if pending.isEmpty {
-                    Text("No proposals are waiting in open repositories.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                    SettingsFormRow("", description: "No proposals are waiting in open repositories.") {}
                 } else {
                     ForEach(pending) { repository in
-                        SettingsFormRow(repository.root?.lastPathComponent ?? "Repository") {
-                            Text(pendingSummary(repository))
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                        if repository.id != pending.first?.id {
+                            SettingsDivider()
                         }
+                        SettingsFormRow(repository.root?.lastPathComponent ?? "Repository", description: pendingSummary(repository)) {}
                     }
                 }
             }
@@ -131,17 +128,10 @@ struct AgentsSettingsView: View {
     private func installRow(_ target: AgentInstaller.Target) -> some View {
         let state = states[target] ?? .notInstalled
         return SettingsFormRow(target.title, description: description(for: target)) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol(for: state))
-                    .foregroundStyle(color(for: state))
-                Text(AgentCLI.Runner.describe(state))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(color(for: state))
-                    .lineLimit(2)
-                Spacer()
-                if case .unavailable = state {
-                    EmptyView()
-                } else {
+            if case .unavailable = state {
+                EmptyView()
+            } else {
+                HStack(spacing: 8) {
                     Button(installTitle(for: state)) {
                         perform(target, remove: false, force: false)
                     }
@@ -152,7 +142,19 @@ struct AgentsSettingsView: View {
                         }
                     }
                 }
+                .fixedSize()
             }
+        } detail: {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Image(systemName: symbol(for: state))
+                    .foregroundStyle(color(for: state))
+                Text(AgentCLI.Runner.describe(state))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(color(for: state))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.system(size: 11))
+            .padding(.top, 2)
         }
     }
 

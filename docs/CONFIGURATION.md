@@ -105,7 +105,7 @@ filled-in form in your browser.
 
 ## Update settings
 
-The switches in **Settings → General → Updates** are not in `config.toml`.
+The update switches in **Settings → General** are not in `config.toml`.
 Sparkle, which installs Avi's updates, keeps them in Avi's user defaults
 (`com.svinarenko.avi`): `SUEnableAutomaticChecks` for the daily check and
 `SUAutomaticallyUpdate` for installing in the background. To set them from a

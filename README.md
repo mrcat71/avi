@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.10.0. The config schema, the UI, and the
+Alpha. The current release is v0.10.1. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -201,9 +201,10 @@ keys in it, so it can run while you work. CI runs them, and
 `AVI_UI_TESTS=1 swift test` runs them on your Mac too.
 
 A debug build can also render the Push sheet, the commit composer with a tag,
-a tag proposal, a diff, Settings panes, the update and error notices
-(`notices`, `notice-release-notes`), and the sheets presented as sheets
-(`popup-*`) against demo repositories and quit, without touching your
+a tag proposal, a diff, the update and error notices (`notices`,
+`notice-release-notes`), the sheets presented as sheets (`popup-*`), and every
+Settings section in the Settings window itself (`settings-<section>`, such as
+`settings-git`) against demo repositories and quit, without touching your
 workspace or config. `--only` takes a comma-separated list of panel names:
 
 ```sh
@@ -296,7 +297,7 @@ From 0.7.1 on, Avi updates itself through
 **Avi > Check for Updates…** checks right away. Each step shows as a notice at
 the top of the window: the new version with what is new in it, the download,
 and **Relaunch to Update**; **Later** installs a downloaded update when you
-quit. Settings > General > Updates turns the daily check off, or has Avi
+quit. Settings > General turns the daily check off, or has Avi
 download updates in the background and install them when you quit. Avi installs an update only when the feed and the
 download carry valid signatures from Avi's EdDSA key, whose public half is
 built into the app, and an updated Avi opens without the Gatekeeper warning.

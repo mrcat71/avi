@@ -32,7 +32,7 @@ struct KeyboardSettingsView: View {
         #if canImport(KeyboardShortcuts)
         ForEach(Array(AviShortcuts.Action.allCases.enumerated()), id: \.element.id) { index, action in
             if index > 0 {
-                Divider().padding(.vertical, 4)
+                SettingsDivider()
             }
             SettingsFormRow(action.label) {
                 KeyboardShortcuts.Recorder(for: action.shortcutName) { _ in
