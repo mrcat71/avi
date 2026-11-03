@@ -6,6 +6,21 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-03
+
+### Added
+- An explicit `avi propose --take-over` option transfers files from another session's unedited, untagged agent proposals after user approval, without discarding unrelated work. User-edited, manual, AI-generated, and tagged proposals remain protected.
+- **Add Tag…** is visible beside every commit message, including commits without tags, so a release tag can be attached without opening a menu.
+- **Search Settings** at the top of the Settings sidebar finds a section by its title or by the settings in it, and **Back** and **Forward** (Cmd-[ and Cmd-]) beside the section's title return to the sections you looked at.
+
+### Changed
+- Settings use compact 30 x 18 pt switches with circular thumbs, keeping their right-aligned layout.
+- Settings looks like Rex's: colored icons in groups in the sidebar, with General on top showing Avi's version, and the settings in flat cards under bold titles, each switch, field, or button at the end of its row. General starts with Avi, its version, **Check for Updates…**, and the update switches in one card. Clone's two options are switches instead of checkboxes.
+- Sheets share that look: their groups are flat cards without an outline, labels are titles instead of small capitals, the buttons are pills without a bar under the content, and the icon no longer glows. In **Push**, the branch name gets the room the remote does not need, and the Interactive Rebase list is a flat card instead of a striped table.
+
+### Fixed
+- The **Create Branch** sheet's subtitle reads `From main` instead of `From Optional("main")`.
+
 ## [0.10.0] - 2026-11-02
 
 ### Changed
