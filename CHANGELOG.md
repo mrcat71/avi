@@ -6,6 +6,9 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- Opening Settings > Keyboard no longer crashes in installed builds because the shortcut recorder cannot locate its resource bundle. Release builds now use an app-aware resource loader, and the packaged self-test constructs a recorder before publication.
+
 ## [0.10.0] - 2026-11-02
 
 ### Changed

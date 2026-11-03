@@ -3,7 +3,7 @@
 # Wrap the SwiftPM release executable in a minimal Avi.app bundle, then zip it
 # (the archive Sparkle installs updates from) and put it on a disk image next
 # to a link to /Applications (what people download to install Avi).
-# Expects `swift build -c release` to have produced `.build/release/AviApp`.
+# Expects `bash scripts/build-release.sh` to have produced the release executable.
 #
 # If the build produced dylibs (e.g., `libAppUI.dylib`, `libGitKit.dylib`) the
 # script copies them into `Contents/Frameworks/` and rewrites the executable's
@@ -24,8 +24,6 @@ APP_NAME="Avi"
 APP_DIR="dist/${APP_NAME}.app"
 EXE="${APP_DIR}/Contents/MacOS/${APP_NAME}"
 FRAMEWORKS="${APP_DIR}/Contents/Frameworks"
-SRC_DIR=".build/release"
-SRC_BIN="${SRC_DIR}/AviApp"
 TEMPLATE="scripts/Info.plist.template"
 ZIP="avi-${VERSION}-macos-arm64.zip"
 DMG="avi-${VERSION}-macos-arm64.dmg"
@@ -34,8 +32,11 @@ DMG_LAYOUT="scripts/dmg/DS_Store"
 
 cd "$(dirname "$0")/.."
 
+SRC_DIR="$(bash scripts/build-release.sh --show-bin-path)"
+SRC_BIN="${SRC_DIR}/AviApp"
+
 if [[ ! -x "${SRC_BIN}" ]]; then
-    echo "error: ${SRC_BIN} not found. Run 'swift build -c release --arch arm64' first." >&2
+    echo "error: ${SRC_BIN} not found. Run 'bash scripts/build-release.sh' first." >&2
     exit 1
 fi
 
@@ -102,12 +103,9 @@ if (( NEED_FW_RPATH )); then
 fi
 
 # SwiftPM-generated resource bundles for the AppUI / dependency targets sit
-# next to the executable as `<Pkg>_<Target>.bundle`. These do NOT satisfy
-# `Bundle.module`: its generated accessor only looks in `Bundle.main.bundleURL`
-# (the .app root, where content cannot be sealed by the signature) before
-# trapping on the build machine's absolute .build path. App code therefore
-# reads its resources from Contents/Resources through `Bundle.main`; the
-# bundles are carried along so dependency assets ship with the app.
+# next to the executable as `<Pkg>_<Target>.bundle`. The Swift Build backend used by
+# build-release.sh generates a Bundle.module accessor that searches the app's
+# Contents/Resources. Keep these inside the signed bundle, not in the .app root.
 shopt -s nullglob
 RES_BUNDLES=( "${SRC_DIR}"/*.bundle )
 shopt -u nullglob
