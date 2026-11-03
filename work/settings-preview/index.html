@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Avi settings control options</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1e1d1c;
+      color: #f2f1f0;
+      --surface: #292827;
+      --line: #3c3a38;
+      --secondary: #b7b4b1;
+      --accent: #0a84ff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1060px; margin: 0 auto; padding: 48px 24px; }
+    h1 { font-size: 26px; font-weight: 600; margin: 0 0 10px; }
+    header p { color: var(--secondary); margin: 0; line-height: 1.5; }
+    .options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; margin-top: 36px; }
+    h2 { font-size: 17px; font-weight: 600; margin: 0 0 8px; }
+    .summary { color: var(--secondary); font-size: 13px; line-height: 1.5; margin: 0 0 20px; }
+    .pane { background: #222120; border-radius: 14px; padding: 20px; }
+    .group-title { font-size: 13px; font-weight: 600; margin: 0 0 10px 12px; }
+    .group { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 0 12px; }
+    .group > label, .setting-row, .check-row { display: flex; align-items: center; gap: 14px; min-height: 78px; padding: 14px 0; }
+    .group > label { cursor: pointer; }
+    .group > * + * { border-top: 1px solid var(--line); }
+    .text { display: grid; flex: 1; gap: 4px; min-width: 0; }
+    .name { font-size: 13px; }
+    .description { font-size: 11px; line-height: 1.5; color: var(--secondary); }
+    input { appearance: none; margin: 0; position: relative; cursor: pointer; }
+    .checkbox { width: 16px; height: 16px; flex: 0 0 16px; border: 1px solid #797775; border-radius: 4px; background: #454342; }
+    .checkbox:checked { background: var(--accent); border-color: var(--accent); }
+    .checkbox:checked::after { content: ""; position: absolute; width: 4px; height: 8px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg); left: 5px; top: 1px; }
+    .switch { width: 30px; height: 18px; flex: 0 0 30px; border: 1px solid #5c5a58; border-radius: 10px; background: #474543; }
+    .switch::after { content: ""; position: absolute; width: 14px; height: 14px; border-radius: 50%; background: white; top: 1px; left: 1px; box-shadow: 0 1px 2px #0003; transition: transform 120ms ease; }
+    .switch:checked { background: var(--accent); border-color: var(--accent); }
+    .switch:checked::after { transform: translateX(12px); }
+    input:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+    button { font: inherit; cursor: pointer; }
+    .segments { display: flex; flex: 0 0 auto; padding: 2px; gap: 2px; border: 1px solid #53504e; border-radius: 7px; background: #222120; }
+    .segment-option { position: relative; cursor: pointer; }
+    .segment-option input { position: absolute; width: 100%; height: 100%; inset: 0; border-radius: 4px; }
+    .segment-option span { display: block; padding: 4px 8px; border-radius: 4px; font-size: 11px; color: var(--secondary); }
+    .segment-option input:checked + span { background: #55514d; color: white; }
+    .text-toggle { flex: 0 0 42px; padding: 5px 0; border-radius: 5px; border: 1px solid #5c5855; background: transparent; color: var(--secondary); font-size: 12px; }
+    .text-toggle[aria-pressed="true"] { color: #69b3ff; border-color: #41668c; background: #213448; }
+    .check-row { width: 100%; text-align: left; border: 0; color: inherit; background: transparent; }
+    .check-row + .check-row { border-top: 1px solid var(--line); }
+    .checkmark { width: 18px; flex: 0 0 18px; color: #69b3ff; font-size: 17px; font-weight: 600; }
+    .check-row[aria-pressed="false"] .checkmark { visibility: hidden; }
+    .check-row:hover { background: #ffffff05; }
+    footer { margin-top: 28px; font-size: 12px; line-height: 1.5; color: var(--secondary); }
+    @media (max-width: 700px) {
+      main { padding: 28px 16px; }
+      .options { grid-template-columns: 1fr; gap: 32px; margin-top: 28px; }
+      .pane { padding: 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .switch::after { transition: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Avi settings controls</h1>
+      <p>Six alternatives to the large switches. Try the controls to compare their on and off states.</p>
+    </header>
+    <div class="options">
+      <section aria-labelledby="checkbox-heading">
+        <h2 id="checkbox-heading">Checkboxes</h2>
+        <p class="summary">My pick: compact controls beside their labels.</p>
+        <div class="pane">
+          <h3 class="group-title">Fetch</h3>
+          <div class="group">
+            <label>
+              <input class="checkbox" type="checkbox" checked aria-labelledby="check-prune">
+              <span class="text"><span class="name" id="check-prune">Prune on fetch</span><span class="description">Remove remote-tracking branches that no longer exist.</span></span>
+            </label>
+            <label>
+              <input class="checkbox" type="checkbox" aria-labelledby="check-refresh">
+              <span class="text"><span class="name" id="check-refresh">Auto-refresh</span><span class="description">Refresh when repository files change.</span></span>
+            </label>
+          </div>
+        </div>
+      </section>
+      <section aria-labelledby="switch-heading">
+        <h2 id="switch-heading">Compact switches</h2>
+        <p class="summary">Same right-aligned layout, smaller on/off controls.</p>
+        <div class="pane">
+          <h3 class="group-title">Fetch</h3>
+          <div class="group">
+            <label>
+              <span class="text"><span class="name" id="switch-prune">Prune on fetch</span><span class="description">Remove remote-tracking branches that no longer exist.</span></span>
+              <input class="switch" type="checkbox" role="switch" checked aria-labelledby="switch-prune">
+            </label>
+            <label>
+              <span class="text"><span class="name" id="switch-refresh">Auto-refresh</span><span class="description">Refresh when repository files change.</span></span>
+              <input class="switch" type="checkbox" role="switch" aria-labelledby="switch-refresh">
+            </label>
+          </div>
+        </div>
+      </section>
+      <section aria-labelledby="trailing-heading">
+        <h2 id="trailing-heading">Right-aligned checkboxes</h2>
+        <p class="summary">Keep the current layout, lose the sliding knobs.</p>
+        <div class="pane">
+          <h3 class="group-title">Fetch</h3>
+          <div class="group">
+            <label>
+              <span class="text"><span class="name" id="trailing-prune">Prune on fetch</span><span class="description">Remove remote-tracking branches that no longer exist.</span></span>
+              <input class="checkbox" type="checkbox" checked aria-labelledby="trailing-prune">
+            </label>
+            <label>
+              <span class="text"><span class="name" id="trailing-refresh">Auto-refresh</span><span class="description">Refresh when repository files change.</span></span>
+              <input class="checkbox" type="checkbox" aria-labelledby="trailing-refresh">
+            </label>
+          </div>
+        </div>
+      </section>
+      <section aria-labelledby="segments-heading">
+        <h2 id="segments-heading">Off / On segments</h2>
+        <p class="summary">Both choices are visible, with an explicit selected state.</p>
+        <div class="pane">
+          <h3 class="group-title">Fetch</h3>
+          <div class="group">
+            <div class="setting-row">
+              <span class="text"><span class="name" id="segments-prune">Prune on fetch</span><span class="description">Remove remote-tracking branches that no longer exist.</span></span>
+              <div class="segments" role="radiogroup" aria-labelledby="segments-prune">
+                <label class="segment-option"><input type="radio" name="prune-segment" value="off"><span>Off</span></label>
+                <label class="segment-option"><input type="radio" name="prune-segment" value="on" checked><span>On</span></label>
+              </div>
+            </div>
+            <div class="setting-row">
+              <span class="text"><span class="name" id="segments-refresh">Auto-refresh</span><span class="description">Refresh when repository files change.</span></span>
+              <div class="segments" role="radiogroup" aria-labelledby="segments-refresh">
+                <label class="segment-option"><input type="radio" name="refresh-segment" value="off" checked><span>Off</span></label>
+                <label class="segment-option"><input type="radio" name="refresh-segment" value="on"><span>On</span></label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section aria-labelledby="text-heading">
+        <h2 id="text-heading">Text toggles</h2>
+        <p class="summary">Small On/Off buttons instead of a switch or checkbox.</p>
+        <div class="pane">
+          <h3 class="group-title">Fetch</h3>
+          <div class="group">
+            <div class="setting-row">
+              <span class="text"><span class="name" id="text-prune">Prune on fetch</span><span class="description">Remove remote-tracking branches that no longer exist.</span></span>
+              <button class="text-toggle" type="button" data-toggle data-state-text aria-pressed="true" aria-labelledby="text-prune">On</button>
+            </div>
+            <div class="setting-row">
+              <span class="text"><span class="name" id="text-refresh">Auto-refresh</span><span class="description">Refresh when repository files change.</span></span>
+              <button class="text-toggle" type="button" data-toggle data-state-text aria-pressed="false" aria-labelledby="text-refresh">Off</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section aria-labelledby="check-row-heading">
+        <h2 id="check-row-heading">Checkmark rows</h2>
+        <p class="summary">Click anywhere in the row. Only enabled settings get a mark.</p>
+        <div class="pane">
+          <h3 class="group-title">Fetch</h3>
+          <div class="group">
+            <button class="check-row" type="button" data-toggle aria-pressed="true">
+              <span class="text"><span class="name">Prune on fetch</span><span class="description">Remove remote-tracking branches that no longer exist.</span></span>
+              <span class="checkmark" aria-hidden="true">&#10003;</span>
+            </button>
+            <button class="check-row" type="button" data-toggle aria-pressed="false">
+              <span class="text"><span class="name">Auto-refresh</span><span class="description">Refresh when repository files change.</span></span>
+              <span class="checkmark" aria-hidden="true">&#10003;</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+    <footer>Interactive visual approximations, not native macOS captures. These controls do not change Avi settings.</footer>
+  </main>
+  <script>
+    document.querySelectorAll('[data-toggle]').forEach(button => {
+      button.addEventListener('click', () => {
+        const enabled = button.getAttribute('aria-pressed') !== 'true';
+        button.setAttribute('aria-pressed', String(enabled));
+        if (button.hasAttribute('data-state-text')) button.textContent = enabled ? 'On' : 'Off';
+      });
+    });
+  </script>
+</body>
+</html>
