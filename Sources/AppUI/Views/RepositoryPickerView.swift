@@ -227,7 +227,7 @@ public struct RepositoryPickerView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        AviPopupFooter {
+        AviPopupFooter(separated: true) {
             Button {
                 openPanelToAdd()
             } label: {

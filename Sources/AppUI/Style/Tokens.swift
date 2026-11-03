@@ -44,6 +44,10 @@ extension DS {
         static let dividerStrong = SwiftUI.Color.primary.opacity(0.10)
         static let dividerSoft = SwiftUI.Color.primary.opacity(0.06)
 
+        /// Behind a group of rows in Settings and sheets: a flat card with no
+        /// outline, a shade off the window.
+        static let groupFill = SwiftUI.Color.primary.opacity(0.045)
+
         /// Behind text that matches a search, readable in both appearances.
         static let searchHighlight = SwiftUI.Color.yellow.opacity(0.35)
 

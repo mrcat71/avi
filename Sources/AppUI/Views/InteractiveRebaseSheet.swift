@@ -157,7 +157,10 @@ struct InteractiveRebaseSheet: View {
                 }
                 .onMove { rows.move(fromOffsets: $0, toOffset: $1) }
             }
-            .listStyle(.bordered(alternatesRowBackgrounds: true))
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(DS.Palette.groupFill)
+            .clipShape(RoundedRectangle(cornerRadius: Glass.Corner.card, style: .continuous))
         }
     }
 

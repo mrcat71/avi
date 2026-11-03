@@ -1,8 +1,9 @@
 # Popups and notices
 
-Avi's sheets and transient messages share one look, after the popups in Rex:
-floating cards with an icon, a short title, and the buttons in reach. The
-components live in `Sources/AppUI/Components/`.
+Avi's sheets and transient messages share one look with Settings, after Rex:
+floating cards with an icon, a short title, flat groups of rows, and pill
+buttons in reach. The components live in `Sources/AppUI/Components/`; the
+Settings side is in [Settings](settings.md).
 
 ## Notices
 
@@ -46,19 +47,28 @@ steps with the screenshot harness below.
 `AviPopup` frames a sheet: `AviPopupHeader` (icon tile, title, subtitle, an
 optional accessory), the content, and `AviPopupFooter`. Sheets that size
 themselves, such as Compare or Interactive Rebase, use the header and footer
-directly.
+directly. The footer has no bar of its own; a sheet whose content scrolls up
+to the buttons, such as the repository picker, uses
+`AviPopupFooter(separated: true)` for a line above them.
+
+Groups are flat cards in `DS.Palette.groupFill` with no outline, and the
+lines between their rows stop short of both edges, in line with the text.
+Labels are short titles in sentence case (`AviPopupLabel`); the uppercase
+monospaced `aviLabel` belongs to the workspace's panel headers, not to sheets.
 
 | Need | Component |
 | --- | --- |
 | A labelled control | `AviPopupField`, label above |
+| A label over a control you lay out yourself | `AviPopupLabel` |
 | On/off choices | `AviPopupOption` rows in an `AviPopupGroup`, split by `AviPopupGroupDivider` |
 | One of a few choices | `AviPopupChoices`, in place of radio buttons |
 | A warning before the click | `AviPopupCallout` |
 | Small print under a control | `AviPopupNote` |
 | Small print in the footer | `AviPopupFooterNote` |
 
-Buttons use `.aviProminent` for the action (red with a destructive role) and
-`.aviSecondary` for Cancel and the rest. Keep `.keyboardShortcut(.cancelAction)`
+Buttons are flat pills. They use `.aviProminent` for the action (red with a
+destructive role) and `.aviSecondary` for Cancel and the rest (red-tinted
+with red text for a destructive role). Keep `.keyboardShortcut(.cancelAction)`
 on Cancel and `.defaultAction` on the action, except for destructive actions,
 which are clicked, never confirmed with Return.
 

@@ -31,7 +31,6 @@ struct PushSheet: View {
     @State private var base = ""
     @State private var description = ""
     @State private var isDraft = ConfigStore.shared.config.pullRequests.draft
-    @Environment(\.aviDensity) private var density
 
     var body: some View {
         AviPopup(
@@ -41,18 +40,16 @@ struct PushSheet: View {
             width: 520
         ) {
             VStack(alignment: .leading, spacing: 6) {
-                // Two equal columns under labels on one line; the arrow sits
-                // between the controls.
+                // The branch takes the width the remote does not need, so a
+                // long name shows; the arrow sits between the controls.
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Branch")
-                            .aviLabel(density)
+                        AviPopupLabel("Branch")
                         branchPill
                     }
                     .frame(maxWidth: .infinity)
                     VStack(spacing: 6) {
-                        Text(" ")
-                            .aviLabel(density)
+                        AviPopupLabel(" ")
                         Image(systemName: "arrow.right")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(DS.Palette.textTertiary)
@@ -60,11 +57,10 @@ struct PushSheet: View {
                     }
                     .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("To")
-                            .aviLabel(density)
+                        AviPopupLabel("To")
                         remotePicker
                     }
-                    .frame(maxWidth: .infinity)
+                    .fixedSize()
                 }
                 AviPopupNote(outcomeDescription)
             }
@@ -204,8 +200,7 @@ struct PushSheet: View {
         .padding(.horizontal, 10)
         .frame(height: 22)
         .frame(maxWidth: .infinity)
-        .background(shape.fill(Color.primary.opacity(0.05)))
-        .overlay(shape.strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5))
+        .background(shape.fill(DS.Palette.groupFill))
         .help(currentBranchName ?? "HEAD is detached")
     }
 
@@ -220,7 +215,6 @@ struct PushSheet: View {
         }
         .pickerStyle(.menu)
         .labelsHidden()
-        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityLabel("Remote")
     }
 
