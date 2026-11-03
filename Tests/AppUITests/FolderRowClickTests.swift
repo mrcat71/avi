@@ -27,24 +27,24 @@ final class FolderRowClickTests: XCTestCase {
             // Rows: 0 "Sources/App", 1 a.swift, 2 b.swift, 3 README.md.
             XCTAssertEqual(table.numberOfRows, 4)
 
-            fixture.click(table, row: 0, atX: 13)
+            fixture.click(table, row: 0, atX: 13) { !fixture.store.expandedFolders.contains("Sources/App") }
             XCTAssertFalse(fixture.store.expandedFolders.contains("Sources/App"), "the chevron collapses the folder")
             XCTAssertTrue(table.selectedRowIndexes.isEmpty, "the chevron does not select")
 
-            fixture.click(table, row: 0, atX: 13)
+            fixture.click(table, row: 0, atX: 13) { fixture.store.expandedFolders.contains("Sources/App") }
             XCTAssertTrue(fixture.store.expandedFolders.contains("Sources/App"), "the chevron expands it again")
 
-            fixture.select(table, row: 0)
+            fixture.select(table, row: 0, expecting: [0, 1, 2])
             XCTAssertEqual(table.selectedRowIndexes, IndexSet([0, 1, 2]), "the folder's row selects the folder and its files")
             XCTAssertTrue(fixture.store.expandedFolders.contains("Sources/App"), "selecting leaves the folder open")
 
-            fixture.select(table, row: 3)
+            fixture.select(table, row: 3, expecting: [3])
             XCTAssertEqual(table.selectedRowIndexes, IndexSet([3]), "a file's row selects just that file")
 
-            fixture.select(table, row: 0)
+            fixture.select(table, row: 0, expecting: [0, 1, 2])
             XCTAssertEqual(table.selectedRowIndexes, IndexSet([0, 1, 2]), "selecting the folder after a file takes its files, not the file")
 
-            fixture.click(table, row: 0, atX: 90)
+            fixture.clickOnce(table, row: 0, atX: 90)
             XCTAssertTrue(fixture.store.expandedFolders.contains("Sources/App"), "a click on the name leaves the folder open")
         }
     }
@@ -101,7 +101,21 @@ final class FolderRowClickTests: XCTestCase {
         /// mouse-down and its later mouse-up both wait in the event queue, and
         /// NSApp dispatches them in order. A mouse-down that tracks the mouse
         /// finds its mouse-up waiting, so the click cannot hang.
-        func click(_ table: NSTableView, row: Int, atX x: CGFloat) {
+        ///
+        /// On a loaded CI runner a click can also arrive before the row's
+        /// gesture is ready to take it, so the click repeats until `effect`
+        /// holds or the attempts run out, and the caller's assertion still
+        /// decides success.
+        func click(_ table: NSTableView, row: Int, atX x: CGFloat, timeout: TimeInterval = 5, effect: () -> Bool) {
+            let deadline = Date().addingTimeInterval(timeout)
+            while !effect(), Date() < deadline {
+                clickOnce(table, row: row, atX: x)
+            }
+        }
+
+        /// One click, no retry: for interactions whose point is that they do
+        /// nothing, retrying until a deadline would only spend time.
+        func clickOnce(_ table: NSTableView, row: Int, atX x: CGFloat) {
             let rect = table.convert(table.rect(ofRow: row), to: nil)
             let point = NSPoint(x: rect.minX + x, y: rect.midY)
             clicks += 1
@@ -114,9 +128,12 @@ final class FolderRowClickTests: XCTestCase {
         }
 
         /// Selects `row` through the table, as the row's drag gesture does on a
-        /// real click; the list then widens a folder to its files.
-        func select(_ table: NSTableView, row: Int) {
+        /// real click; the list then widens a folder to its files. The widened
+        /// selection comes back through a view update, so this waits for the
+        /// table to report `rows` instead of trusting a fixed settle.
+        func select(_ table: NSTableView, row: Int, expecting rows: IndexSet) {
             table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            waitUntil { table.selectedRowIndexes == rows }
             settle()
         }
 

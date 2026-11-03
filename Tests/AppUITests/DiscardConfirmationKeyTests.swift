@@ -77,6 +77,11 @@ final class DiscardConfirmationKeyTests: XCTestCase {
 
         /// Selects a.txt in Unstaged and sends what Cmd+Shift+D sends. Returns
         /// the confirmation sheet once it is up.
+        ///
+        /// The notification reaches the view only after the list has picked up
+        /// the store's selection, which on a loaded CI runner can take longer
+        /// than any fixed wait; a notification that arrives early finds no
+        /// selection and does nothing, so it is re-sent until the sheet answers.
         func requestDiscard() -> NSWindow? {
             guard let file = store.unstagedEntries.first(where: { $0.path == "a.txt" }) else { return nil }
             let selected = XCTestExpectation(description: "a.txt selected")
@@ -85,10 +90,11 @@ final class DiscardConfirmationKeyTests: XCTestCase {
                 selected.fulfill()
             }
             XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 5), .completed)
-            // The list picks up the store's selection on its next update.
-            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-            NotificationCenter.default.post(name: .aviDiscardSelection, object: nil)
-            waitUntil { self.window.attachedSheet != nil }
+            let deadline = Date().addingTimeInterval(10)
+            while window.attachedSheet == nil, Date() < deadline {
+                NotificationCenter.default.post(name: .aviDiscardSelection, object: nil)
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            }
             // Let the sheet finish appearing before it takes keys.
             RunLoop.current.run(until: Date().addingTimeInterval(0.3))
             return window.attachedSheet
