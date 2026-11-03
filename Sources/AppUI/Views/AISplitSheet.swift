@@ -133,7 +133,7 @@ struct AISplitSheet: View {
     // MARK: - Footer
 
     private var footer: some View {
-        AviPopupFooter {
+        AviPopupFooter(separated: true) {
             if canApply {
                 Spacer()
             } else {

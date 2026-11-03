@@ -78,7 +78,7 @@ public struct CloneSheet: View {
     }
 
     private var footer: some View {
-        AviPopupFooter {
+        AviPopupFooter(separated: true) {
             backButton
             Spacer()
             statusLabel

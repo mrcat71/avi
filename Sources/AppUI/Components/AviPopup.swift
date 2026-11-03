@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The frame Avi's sheets share, after Rex's popups: an icon tile with the
-/// title on top, the content in the middle, and a footer bar with the buttons.
-/// Fields put their label above the control, and on/off choices are rows of
-/// switches in a group, instead of a right-aligned form with checkboxes.
+/// The frame Avi's sheets share, after Rex: an icon tile with the title on
+/// top, the content in the middle, and the buttons at the bottom. Fields put
+/// their label above the control, and on/off choices are rows of switches in
+/// a flat group, instead of a right-aligned form with checkboxes.
 struct AviPopup<Content: View, Footer: View>: View {
     let symbol: String
     var tint: Color = DS.Palette.accent
@@ -90,16 +90,16 @@ struct AviPopupIcon: View {
             .foregroundStyle(.white)
             .frame(width: size, height: size)
             .background(shape.fill(tint.gradient))
-            .overlay(shape.fill(Glass.topHighlight))
-            .overlay(shape.strokeBorder(Color.white.opacity(0.18), lineWidth: 0.6))
-            .shadow(color: tint.opacity(0.30), radius: 6, x: 0, y: 3)
+            .overlay(shape.strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5))
             .accessibilityHidden(true)
     }
 }
 
-/// The bar under a sheet's content. Put an `AviPopupFooterNote` or a
+/// The buttons under a sheet's content. Put an `AviPopupFooterNote` or a
 /// `Spacer` first, then Cancel and the action.
 struct AviPopupFooter<Content: View>: View {
+    /// A line above the buttons, for a sheet whose content scrolls up to them.
+    var separated = false
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -107,13 +107,13 @@ struct AviPopupFooter<Content: View>: View {
             content()
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.top, separated ? 12 : 2)
+        .padding(.bottom, separated ? 12 : 18)
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .background(Color.primary.opacity(0.03))
         .overlay(alignment: .top) {
-            Rectangle()
-                .fill(DS.Palette.dividerSoft)
-                .frame(height: 1)
+            if separated {
+                Divider()
+            }
         }
     }
 }
@@ -135,14 +135,28 @@ struct AviPopupFooterNote: View {
     }
 }
 
+/// A field's name above its control, as Rex titles its groups.
+struct AviPopupLabel: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(DS.Palette.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 /// A labelled control: the label above it, a note under it.
 struct AviPopupField<Control: View>: View {
     let label: String
     var note: String?
     var noteTone: AviPopupNote.Tone = .secondary
     @ViewBuilder let control: () -> Control
-
-    @Environment(\.aviDensity) private var density
 
     init(
         _ label: String,
@@ -158,8 +172,7 @@ struct AviPopupField<Control: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .aviLabel(density)
+            AviPopupLabel(label)
             control()
             if let note, !note.isEmpty {
                 AviPopupNote(note, tone: noteTone)
@@ -169,28 +182,25 @@ struct AviPopupField<Control: View>: View {
     }
 }
 
-/// Rows in a rounded well, such as a sheet's switches.
+/// Rows on a flat rounded card, such as a sheet's switches, as in Settings.
 struct AviPopupGroup<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Glass.Corner.card, style: .continuous)
         VStack(alignment: .leading, spacing: 0) {
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(shape.fill(Color.primary.opacity(0.035)))
-        .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+        .background(shape.fill(DS.Palette.groupFill))
     }
 }
 
-/// The line between two rows of an `AviPopupGroup`.
+/// The line between two rows of an `AviPopupGroup`, in line with their text.
 struct AviPopupGroupDivider: View {
     var body: some View {
-        Rectangle()
-            .fill(DS.Palette.dividerSoft)
-            .frame(height: 1)
-            .padding(.leading, 12)
+        Divider()
+            .padding(.horizontal, 12)
     }
 }
 
@@ -371,14 +381,14 @@ struct AviPopupCallout: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(shape.fill(tone.color.opacity(0.10)))
-        .overlay(shape.strokeBorder(tone.color.opacity(0.22), lineWidth: 0.5))
+        .background(shape.fill(tone.color.opacity(0.12)))
         .accessibilityElement(children: .combine)
     }
 }
 
-/// Buttons in sheets and notices. Prominent is filled with the accent, red for
-/// a destructive role; secondary is a quiet tinted pill.
+/// Buttons in sheets, notices, and Settings: flat capsules, as in Rex.
+/// Prominent is filled with the accent, red for a destructive role; secondary
+/// is a quiet gray pill, red-tinted with red text for a destructive role.
 struct AviPopupButtonStyle: ButtonStyle {
     enum Emphasis {
         case prominent
@@ -416,26 +426,18 @@ private struct AviPopupButtonBody: View {
     let size: AviPopupButtonStyle.Size
 
     @Environment(\.isEnabled) private var isEnabled
-    @Environment(\.colorScheme) private var colorScheme
     @State private var isHovering = false
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: size == .small ? 7 : 8, style: .continuous)
         configuration.label
             .font(.system(size: size == .small ? 12 : 13, weight: .medium))
             .lineLimit(1)
-            .padding(.horizontal, size == .small ? 10 : 14)
+            .padding(.horizontal, size == .small ? 11 : 15)
             .frame(minWidth: size == .small ? 0 : 72)
             .frame(height: size == .small ? 24 : 28)
             .foregroundStyle(foreground)
-            .background(shape.fill(fill))
-            .overlay {
-                if emphasis == .prominent {
-                    shape.fill(Glass.topHighlight)
-                }
-            }
-            .overlay(shape.strokeBorder(stroke, lineWidth: 0.6))
-            .contentShape(shape)
+            .background(Capsule().fill(fill))
+            .contentShape(Capsule())
             .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
             .animation(Glass.Motion.snappy, value: configuration.isPressed)
@@ -456,16 +458,9 @@ private struct AviPopupButtonBody: View {
             let base = isDestructive ? DS.Palette.danger : DS.Palette.accent
             return configuration.isPressed ? base.opacity(0.8) : (isActive ? base.opacity(0.9) : base)
         case .secondary:
-            return Color.primary.opacity(configuration.isPressed ? 0.14 : (isActive ? 0.10 : 0.06))
-        }
-    }
-
-    private var stroke: Color {
-        switch emphasis {
-        case .prominent:
-            return Color.white.opacity(0.18)
-        case .secondary:
-            return Color.primary.opacity(colorScheme == .dark ? 0.12 : 0.10)
+            let base = isDestructive ? DS.Palette.danger : Color.primary
+            let rest = isDestructive ? 0.14 : 0.08
+            return base.opacity(configuration.isPressed ? rest + 0.08 : (isActive ? rest + 0.04 : rest))
         }
     }
 
