@@ -66,7 +66,7 @@ enum AgentSkillContent {
 
     `result.repo.commitField` and `result.repo.drafts` show what is already
     waiting, including your earlier proposal. Sending again replaces your own
-    proposal and never touches another session's.
+    proposal. Another session's files require explicit user-approved take-over.
 
     ## Build the proposal
 
@@ -174,7 +174,11 @@ enum AgentSkillContent {
     - `duplicate_path`, `empty_message`, `files_required`: fix the plan and send it
       again.
     - `file_claimed`: another session's proposal holds those files
-      (`error.owners`). Tell the user; do not take them over.
+      (`error.owners`). Normally leave it alone. Only after the user explicitly
+      approves transferring those files, retry with `--take-over` on Avi 0.10.1
+      or newer. It moves only listed paths from unedited, untagged agent drafts;
+      unrelated work stays. User-edited, manual, AI, and tagged proposals must
+      be resolved in Avi. Never impersonate the other session's agent or ID.
     - `edited_by_user`: the user edited your earlier proposal in Avi. Ask before
       sending again with `--replace`.
     - `conflicts`: the repository has unresolved merge conflicts. Tell the user.
@@ -197,6 +201,7 @@ enum AgentSkillContent {
       user approves and pushes it with its commit.
     - Push, or ask Avi to commit for you.
     - Pass `--replace` without the user's OK.
+    - Pass `--take-over` without explicit user approval for the affected files.
 
     ## Troubleshooting
 

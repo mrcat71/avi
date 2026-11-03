@@ -23,6 +23,7 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     /// Recorded calls for batched staging assertions in tests.
     public private(set) var stagePathsCalls: [[String]] = []
     public private(set) var unstagePathsCalls: [[String]] = []
+    public var unstagePathsError: (any Error)?
     /// Paths passed to the batched `discard`, one entry per call.
     public private(set) var discardCalls: [[String]] = []
     /// Branch names passed to `deleteBranch`, in call order.
@@ -265,6 +266,9 @@ public final class FakeGitProvider: GitProviding, @unchecked Sendable {
     public func unstage(path _: String, in _: URL) async throws {}
     public func unstage(paths: [String], in _: URL) async throws {
         unstagePathsCalls.append(paths)
+        if let unstagePathsError {
+            throw unstagePathsError
+        }
         events.append("unstage " + paths.joined(separator: ","))
         guard appliesStaging else { return }
         let chosen = Set(paths)

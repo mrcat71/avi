@@ -53,6 +53,8 @@ public struct AgentParams: Codable, Equatable, Sendable {
     /// A tag for a commit that already exists, sent without commits.
     public var tag: AgentTag?
     public var replace: Bool?
+    /// Explicitly approved transfer of files from other unedited agent proposals.
+    public var takeOver: Bool?
     public var focus: Bool?
 
     public init(
@@ -63,6 +65,7 @@ public struct AgentParams: Codable, Equatable, Sendable {
         commits: [AgentCommit]? = nil,
         tag: AgentTag? = nil,
         replace: Bool? = nil,
+        takeOver: Bool? = nil,
         focus: Bool? = nil
     ) {
         self.repo = repo
@@ -72,6 +75,7 @@ public struct AgentParams: Codable, Equatable, Sendable {
         self.commits = commits
         self.tag = tag
         self.replace = replace
+        self.takeOver = takeOver
         self.focus = focus
     }
 }

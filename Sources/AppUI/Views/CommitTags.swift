@@ -9,8 +9,8 @@ struct CommitTagsRow: View {
 
     var body: some View {
         let tags = store.tags(for: target)
-        if !tags.isEmpty {
-            HStack(spacing: 6) {
+        HStack(spacing: 6) {
+            if !tags.isEmpty {
                 Text("Tag after committing:")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -21,10 +21,19 @@ struct CommitTagsRow: View {
                         remove: { store.removeTag(named: tag.name, from: target) }
                     )
                 }
-                Spacer(minLength: 0)
             }
-            .help("Avi creates the tag on this commit right after making it. Push sends the commit and its tag together.")
+            Spacer(minLength: 0)
+            Button {
+                store.requestTagEdit(for: target)
+            } label: {
+                Label("Add Tag…", systemImage: "tag")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.borderless)
+            .disabled(store.isLoading || store.isApplyingPlan)
+            .help("Add a tag, such as a release version, to this commit")
         }
+        .help("Avi creates the tag on this commit right after making it. Push sends the commit and its tag together.")
     }
 }
 

@@ -557,13 +557,16 @@ public struct AgentProposal: Equatable, Sendable {
     public let commits: [Commit]
     /// Replace this session's earlier proposal even after you edited it.
     public let replace: Bool
+    /// Transfer listed files from other unedited, untagged agent proposals.
+    public let takeOver: Bool
 
-    public init(agent: String, session: String, title: String?, commits: [Commit], replace: Bool) {
+    public init(agent: String, session: String, title: String?, commits: [Commit], replace: Bool, takeOver: Bool = false) {
         self.agent = agent
         self.session = session
         self.title = title
         self.commits = commits
         self.replace = replace
+        self.takeOver = takeOver
     }
 
     public var source: DraftSource {
@@ -622,9 +625,12 @@ extension ProposalRejection: LocalizedError {
             return "The repository has unresolved conflicts: \(paths.joined(separator: ", "))"
         case .fileClaimed(let owners):
             let list = owners.keys.sorted().map { "\($0) (\(owners[$0] ?? "?"))" }
-            return "Another pending proposal already holds: \(list.joined(separator: ", "))"
+            return "Another pending proposal already holds: \(list.joined(separator: ", ")). "
+                + "With the user's explicit approval, retry with --take-over for unedited, untagged agent proposals. "
+                + "Resolve user-edited, manual, AI-generated, or tagged proposals in Avi."
         case .editedByUser:
-            return "Your earlier proposal was edited in Avi. Ask the user before replacing it."
+            return "A pending proposal was edited in Avi. Ask before using --replace for your own proposal; "
+                + "another session's edits must be resolved in Avi."
         case .busy:
             return "Avi is committing in this repository. Try again shortly."
         case .invalidTag(let name, let problem):
@@ -643,7 +649,8 @@ extension ProposalRejection: LocalizedError {
 public extension RepositoryStore {
     /// Places an agent proposal. A single commit goes to the commit field when
     /// nothing else is pending and nothing else is staged; everything else
-    /// becomes planned commits. A session replaces only its own earlier proposal.
+    /// becomes planned commits. Other sessions keep their files unless an
+    /// explicitly approved take-over transfers unedited, untagged agent work.
     /// `revealPlan` leaves the repository on Changes with the proposal selected,
     /// which callers skip while you are looking at this repository.
     func receiveProposal(_ proposal: AgentProposal, revealPlan: Bool) async throws -> ProposalOutcome {
@@ -695,7 +702,29 @@ public extension RepositoryStore {
                 owners[path] = other.source.displayName
             }
         }
-        guard owners.isEmpty else { throw ProposalRejection.fileClaimed(owners) }
+        if !owners.isEmpty {
+            guard proposal.takeOver else { throw ProposalRejection.fileClaimed(owners) }
+            let affected = commitPlan.drafts.filter {
+                $0.source.groupKey != source.groupKey && $0.files.contains(where: listedSet.contains)
+            }
+            if affected.contains(where: \.isEdited) {
+                throw ProposalRejection.editedByUser
+            }
+            guard affected.allSatisfy({ draft in
+                if case .agent = draft.source {
+                    return draft.tags.isEmpty
+                }
+                return false
+            }) else { throw ProposalRejection.fileClaimed(owners) }
+            if let other = fieldProposal, ownField == nil, other.files.contains(where: listedSet.contains) {
+                guard !fieldWasEdited(other) else {
+                    throw ProposalRejection.editedByUser
+                }
+                guard case .agent = other.source, other.tags.isEmpty else {
+                    throw ProposalRejection.fileClaimed(owners)
+                }
+            }
+        }
 
         if !proposal.replace {
             let ownDraftsEdited = commitPlan.drafts(from: source).contains(where: \.isEdited)
@@ -706,7 +735,6 @@ public extension RepositoryStore {
 
         // A commit carrying the tag supersedes the session's tag proposal of it.
         let tagNames = Set(commits.flatMap(\.tags).map(\.name))
-        tagProposals.removeAll { $0.source.groupKey == source.groupKey && tagNames.contains($0.tag.name) }
 
         let othersPending = commitPlan.drafts.contains { $0.source.groupKey != source.groupKey }
         let otherField = fieldProposal != nil && ownField == nil
@@ -717,11 +745,13 @@ public extension RepositoryStore {
 
         // A message without files is for whatever is staged, so staged files are expected.
         let messageOnly = commits.count == 1 && commits[0].files.isEmpty
-        if commits.count == 1, !othersPending, !otherField, messageOnly || !stagedElsewhere {
+        if owners.isEmpty, commits.count == 1, !othersPending, !otherField, messageOnly || !stagedElsewhere {
             if revealPlan {
                 reveal()
             }
-            return try await placeInCommitField(commits[0], source: source, previous: ownField, root: root)
+            let outcome = try await placeInCommitField(commits[0], source: source, previous: ownField, root: root)
+            tagProposals.removeAll { $0.source.groupKey == source.groupKey && tagNames.contains($0.tag.name) }
+            return outcome
         }
 
         let commit = commits[0]
@@ -739,12 +769,29 @@ public extension RepositoryStore {
 
         var notes: [String] = []
         if let field = fieldProposal {
-            await withdrawFieldProposal(field, keepAsDraft: field.source.groupKey != source.groupKey)
+            if let failure = await withdrawFieldProposal(field, keepAsDraft: field.source.groupKey != source.groupKey) {
+                throw GitError.invalidInput("Could not prepare the proposal: \(failure)")
+            }
             if field.source.groupKey != source.groupKey {
                 notes.append("Moved \(field.source.displayName)'s proposal from the commit field into the plan.")
             }
         }
+        if !owners.isEmpty {
+            var emptied = Set<UUID>()
+            for index in commitPlan.drafts.indices where commitPlan.drafts[index].source.groupKey != source.groupKey {
+                guard commitPlan.drafts[index].files.contains(where: listedSet.contains) else { continue }
+                commitPlan.drafts[index].files.removeAll(where: listedSet.contains)
+                commitPlan.drafts[index].isEdited = true
+                if commitPlan.drafts[index].files.isEmpty {
+                    emptied.insert(commitPlan.drafts[index].id)
+                }
+            }
+            commitPlan.drafts.removeAll { emptied.contains($0.id) }
+            let transferred = owners.keys.sorted().map { "\($0) (\(owners[$0] ?? "?"))" }.joined(separator: ", ")
+            notes.append("Transferred these files with --take-over: \(transferred). Unrelated proposals were kept.")
+        }
         let drafts = commits.map { CommitDraft(message: $0.message, files: $0.files, source: source, tags: $0.tags) }
+        tagProposals.removeAll { $0.source.groupKey == source.groupKey && tagNames.contains($0.tag.name) }
         commitPlan.replaceDrafts(from: source, with: drafts)
         hasUnseenProposal = true
         if revealPlan {
@@ -844,6 +891,14 @@ extension RepositoryStore {
     /// unstaging failed, for the caller to show once its refresh is done.
     @discardableResult
     private func withdrawFieldProposal(_ field: FieldProposal, keepAsDraft: Bool) async -> String? {
+        // Keep the proposal intact if Git cannot release what Avi staged.
+        if let root, !field.stagedByAvi.isEmpty {
+            do {
+                try await git.unstage(paths: field.stagedByAvi, in: root)
+            } catch {
+                return error.localizedDescription
+            }
+        }
         let edited = fieldWasEdited(field)
         let message = field.inField && !commitMessage.isEmpty ? commitMessage : field.message
         // In the field, the proposal's tags are Commit 1's, perhaps edited by you.
@@ -859,13 +914,7 @@ extension RepositoryStore {
         if keepAsDraft, !field.files.isEmpty {
             commitPlan.drafts.insert(CommitDraft(message: message, files: field.files, source: field.source, isEdited: edited, tags: tags), at: 0)
         }
-        guard let root, !field.stagedByAvi.isEmpty else { return nil }
-        do {
-            try await git.unstage(paths: field.stagedByAvi, in: root)
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
+        return nil
     }
 
     /// Leaves this repository on Changes, which shows the proposal, for when
@@ -875,7 +924,7 @@ extension RepositoryStore {
     }
 
     func fieldWasEdited(_ field: FieldProposal) -> Bool {
-        field.inField && commitMessage.trimmingCharacters(in: .whitespacesAndNewlines) != field.message
+        field.inField && (commitMessage.trimmingCharacters(in: .whitespacesAndNewlines) != field.message || commitTags != field.tags)
     }
 
     /// Both sides of a staged rename travel together.

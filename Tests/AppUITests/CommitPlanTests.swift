@@ -182,9 +182,11 @@ struct AgentProposalTests {
         _ commits: [(String, [String])],
         agent: String = "Claude Code",
         session: String = "a",
-        replace: Bool = false
+        replace: Bool = false,
+        takeOver: Bool = false
     ) -> AgentProposal {
-        AgentProposal(agent: agent, session: session, title: nil, commits: commits.map { .init(message: $0.0, files: $0.1) }, replace: replace)
+        AgentProposal(agent: agent, session: session, title: nil, commits: commits.map { .init(message: $0.0, files: $0.1) },
+                      replace: replace, takeOver: takeOver)
     }
 
     @Test func singleCommitStagesItsFilesAndFillsTheField() async throws {
@@ -276,6 +278,146 @@ struct AgentProposalTests {
         _ = try await store.receiveProposal(proposal([("claude", ["a.swift"])]), revealPlan: true)
         _ = try await store.receiveProposal(proposal([("claude again", ["a.swift"])]), revealPlan: true)
         #expect(store.commitPlan.drafts.map(\.message) == ["codex", "codex 2", "claude again"])
+    }
+
+    @Test func explicitTakeOverMovesOnlyListedFilesAndKeepsOtherProposals() async throws {
+        let (store, git) = await store([modified("a.swift"), modified("b.swift"), modified("c.swift")])
+        _ = try await store.receiveProposal(proposal([("shared", ["a.swift", "b.swift"]), ("unrelated", ["c.swift"])]), revealPlan: true)
+        let unrelated = store.commitPlan.drafts[1]
+        let outcome = try await store.receiveProposal(
+            proposal([("follow-up", ["b.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true
+        )
+        #expect(outcome.placement == .plan)
+        #expect(store.commitPlan.drafts.map(\.files) == [["a.swift"], ["c.swift"], ["b.swift"]])
+        #expect(store.commitPlan.drafts[0].isEdited)
+        #expect(store.commitPlan.drafts[1] == unrelated)
+        #expect(store.commitPlan.drafts[2].source.displayName == "Codex")
+        #expect(outcome.notes.contains { $0.contains("b.swift (Claude Code)") })
+        #expect(git.stagePathsCalls.isEmpty)
+        #expect(git.unstagePathsCalls.isEmpty)
+    }
+
+    @Test func takeOverRemovesOnlyTheDraftsItEmpties() async throws {
+        let (store, _) = await store([modified("a.swift"), modified("b.swift")])
+        _ = try await store.receiveProposal(proposal([("one", ["a.swift"]), ("two", ["b.swift"])]), revealPlan: true)
+        _ = try await store.receiveProposal(
+            proposal([("mine", ["a.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true
+        )
+        #expect(store.commitPlan.drafts.map(\.message) == ["two", "mine"])
+        #expect(store.commitPlan.drafts.allSatisfy { !$0.files.isEmpty })
+    }
+
+    @Test func takeOverConvertsAFieldProposalWithoutLosingItsOtherFiles() async throws {
+        let (store, git) = await store([modified("a.swift"), modified("b.swift")])
+        _ = try await store.receiveProposal(proposal([("from claude", ["a.swift", "b.swift"])]), revealPlan: true)
+        _ = try await store.receiveProposal(
+            proposal([("from codex", ["b.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true
+        )
+        #expect(store.fieldProposal == nil)
+        #expect(store.commitPlan.drafts.map(\.files) == [["a.swift"], ["b.swift"]])
+        #expect(store.commitPlan.drafts.map(\.message) == ["from claude", "from codex"])
+        #expect(git.unstagePathsCalls == [["a.swift", "b.swift"]])
+    }
+
+    @Test func takeOverNeverOverwritesAnotherSessionsEditedDraftEvenWithReplace() async throws {
+        let (store, _) = await store([modified("a.swift"), modified("b.swift")])
+        _ = try await store.receiveProposal(proposal([("one", ["a.swift"]), ("two", ["b.swift"])]), revealPlan: true)
+        store.setMessage("my edit", forDraft: store.commitPlan.drafts[0].id)
+        let before = store.commitPlan
+        await #expect(throws: ProposalRejection.editedByUser) {
+            try await store.receiveProposal(
+                proposal([("mine", ["a.swift"])], agent: "Codex", session: "b", replace: true, takeOver: true), revealPlan: true
+            )
+        }
+        #expect(store.commitPlan == before)
+    }
+
+    @Test func takeOverProtectsEditedFieldProposals() async throws {
+        let (store, git) = await store([modified("a.swift")])
+        _ = try await store.receiveProposal(proposal([("one", ["a.swift"])]), revealPlan: true)
+        store.commitSummary = "my edit"
+        let before = store.fieldProposal
+        await #expect(throws: ProposalRejection.editedByUser) {
+            try await store.receiveProposal(proposal([("mine", ["a.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true)
+        }
+        #expect(store.fieldProposal == before)
+        #expect(store.commitSummary == "my edit")
+        #expect(git.unstagePathsCalls.isEmpty)
+    }
+
+    @Test func takeOverKeepsTheFieldProposalWhenUnstagingFails() async throws {
+        let (store, git) = await store([modified("a.swift")])
+        _ = try await store.receiveProposal(proposal([("from claude", ["a.swift"])]), revealPlan: true)
+        let before = store.fieldProposal
+        git.unstagePathsError = GitError.invalidInput("index is locked")
+        await #expect(throws: GitError.self) {
+            try await store.receiveProposal(proposal([("from codex", ["a.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true)
+        }
+        #expect(store.fieldProposal == before)
+        #expect(store.commitSummary == "from claude")
+        #expect(store.commitPlan.isEmpty)
+    }
+
+    @Test func changingTheFieldProposalsTagsCountsAsAUserEdit() async throws {
+        let (store, git) = await store([modified("a.swift")])
+        _ = try await store.receiveProposal(proposal([("one", ["a.swift"])]), revealPlan: true)
+        store.commitTags = [NewTag(name: "v1.0", message: "Release 1.0")]
+        let before = store.fieldProposal
+        await #expect(throws: ProposalRejection.editedByUser) {
+            try await store.receiveProposal(proposal([("again", ["a.swift"])]), revealPlan: true)
+        }
+        await #expect(throws: ProposalRejection.editedByUser) {
+            try await store.receiveProposal(proposal([("mine", ["a.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true)
+        }
+        #expect(store.fieldProposal == before)
+        #expect(store.commitTags.map(\.name) == ["v1.0"])
+        #expect(git.unstagePathsCalls.isEmpty)
+    }
+
+    @Test func takeOverMovesBothSidesOfAStagedRename() async throws {
+        let rename = FileStatus(path: "new.swift", originalPath: "old.swift", index: .renamed, worktree: .unmodified)
+        let (store, _) = await store([rename, modified("other.swift")])
+        _ = try await store.receiveProposal(proposal([("rename", ["new.swift"]), ("other", ["other.swift"])]), revealPlan: true)
+        _ = try await store.receiveProposal(
+            proposal([("follow-up", ["old.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true
+        )
+        #expect(Set(store.commitPlan.drafts.last?.files ?? []) == ["new.swift", "old.swift"])
+        #expect(store.commitPlan.drafts.first?.files == ["other.swift"])
+    }
+
+    @Test func takeOverRejectsInvalidPathsBeforeChangingOwnership() async throws {
+        let (store, git) = await store([modified("a.swift"), modified("b.swift")])
+        _ = try await store.receiveProposal(proposal([("one", ["a.swift"]), ("two", ["b.swift"])]), revealPlan: true)
+        let before = store.commitPlan
+        await #expect(throws: ProposalRejection.self) {
+            try await store.receiveProposal(proposal([("mine", ["a.swift", "missing"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true)
+        }
+        #expect(store.commitPlan == before)
+        #expect(git.stagePathsCalls.isEmpty)
+    }
+
+    @Test(arguments: [DraftSource.manual, .ai])
+    func takeOverDoesNotClaimManualOrAIDrafts(_ source: DraftSource) async throws {
+        let (store, _) = await store([modified("a.swift")])
+        store.commitPlan = CommitPlan(drafts: [CommitDraft(message: "keep", files: ["a.swift"], source: source)])
+        let before = store.commitPlan
+        await #expect(throws: ProposalRejection.fileClaimed(["a.swift": source.displayName])) {
+            try await store.receiveProposal(proposal([("mine", ["a.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true)
+        }
+        #expect(store.commitPlan == before)
+    }
+
+    @Test func takeOverDoesNotMoveAReleaseTagImplicitly() async throws {
+        let (store, _) = await store([modified("a.swift")])
+        store.commitPlan = CommitPlan(drafts: [CommitDraft(
+            message: "release", files: ["a.swift"], source: .agent(name: "Claude Code", session: "a", title: nil),
+            tags: [NewTag(name: "v1.0", message: "Release 1.0")]
+        )])
+        let before = store.commitPlan
+        await #expect(throws: ProposalRejection.fileClaimed(["a.swift": "Claude Code"])) {
+            try await store.receiveProposal(proposal([("mine", ["a.swift"])], agent: "Codex", session: "b", takeOver: true), revealPlan: true)
+        }
+        #expect(store.commitPlan == before)
     }
 
     @Test func editedDraftsNeedReplaceToBeOverwritten() async throws {

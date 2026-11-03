@@ -147,6 +147,18 @@ new one, everyone has to install the next version by hand from the disk image.
 
 ## Commit, then wait for branch CI
 
+When handing off through Avi, existing planned commits already read the latest
+working-tree contents of their files. Keep those proposals and propose only
+unclaimed files when that preserves the intended commit order. If ownership
+really must move, `avi propose --take-over` on Avi 0.10.1 or newer requires
+explicit approval for the affected files; it never takes user-edited or tagged
+proposals. See [agent handoff](AGENT-INTEGRATION.md).
+
+The visible **Add Tag…** control beside a commit message can attach a release
+tag. For Avi's own release, leave the preparation commit untagged until branch
+CI passes on that exact commit, then propose the tag for it. A local tag is not
+a published release, but pushing it triggers the release workflow.
+
 Stage only the reviewed release contents, including new implementation files
 and tests. Review the final index before committing:
 

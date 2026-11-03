@@ -56,6 +56,7 @@ public enum AgentCLI {
         var messages: [String] = []
         var files: [String] = []
         var replace = false
+        var takeOver = false
         var tag: String?
         var tagMessage: String?
         var at: String?
@@ -147,6 +148,7 @@ public enum AgentCLI {
             case "--tag-message": propose.tagMessage = try value(for: arg, from: &args)
             case "--at": propose.at = try value(for: arg, from: &args)
             case "--replace": propose.replace = true
+            case "--take-over": propose.takeOver = true
             case "--focus": invocation.focus = true
             case "--json": invocation.json = true
             case "--": filesOnly = true
@@ -265,9 +267,9 @@ public enum AgentCLI {
       avi status [--repo PATH] [--json]
       avi open [PATH] [--focus] [--json]
       avi propose --file PLAN.json|- [--repo PATH] [--agent NAME] [--session ID]
-                  [--title TEXT] [--replace] [--focus] [--json]
+                  [--title TEXT] [--replace] [--take-over] [--focus] [--json]
       avi propose -m SUBJECT [-m BODY]... [--tag NAME [--tag-message TEXT]]
-                  [--agent NAME] [--session ID] [--] [FILE...]
+                  [--agent NAME] [--session ID] [--take-over] [--] [FILE...]
       avi propose --tag NAME [--tag-message TEXT] [--at REVISION]
       avi skill status | install | remove [--claude] [--codex] [--opencode] [--command] [--force]
       avi version
@@ -283,6 +285,10 @@ public enum AgentCLI {
     a tag for a commit that already exists (`--at`, default HEAD). Nothing is
     committed, tagged, or pushed until you approve it in Avi, and Avi pushes a
     tag together with its commit.
+
+    With the user's explicit approval, --take-over transfers only the listed
+    files from other unedited, untagged agent proposals. User-edited, manual,
+    AI-generated, and tagged proposals must be resolved in Avi instead.
 
     Exit codes: 0 ok, 1 rejected by Avi, 2 usage error, 3 Avi not reachable.
     See https://github.com/mrcat71/avi/blob/main/docs/AGENT-INTEGRATION.md
@@ -349,7 +355,8 @@ extension AgentCLI {
                 AgentCLI.printError("avi: \(repoURL.path) is not inside a Git repository.")
                 return ExitCode.rejected
             }
-            var params = AgentParams(repo: root, replace: propose.replace ? true : nil, focus: invocation.focus ? true : nil)
+            var params = AgentParams(repo: root, replace: propose.replace ? true : nil,
+                                     takeOver: propose.takeOver ? true : nil, focus: invocation.focus ? true : nil)
             let detected = AgentCLI.detectAgent(in: environment)
             if let planFile = propose.planFile {
                 let plan: PlanFile
