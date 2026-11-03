@@ -95,16 +95,25 @@ new one, everyone has to install the next version by hand from the disk image.
    ```sh
    swiftformat --lint .
    swift test
-   swift build -c release --arch arm64
-   .build/release/AviApp --version
-   .build/release/AviApp --self-test
+   bash scripts/build-release.sh
+   RELEASE_BIN="$(bash scripts/build-release.sh --show-bin-path)/AviApp"
+   "$RELEASE_BIN" --version
+   "$RELEASE_BIN" --self-test
    ```
 
    `swift test` skips the tests that put a window on screen and click or press
    keys in it unless `AVI_UI_TESTS=1` is set. CI runs them, so the CI run on
    the release commit covers them.
 
-   The reported version must match the intended tag. `--self-test` runs the
+   Release builds explicitly use the Swift Build backend so dependency `Bundle.module`
+   accessors search `Contents/Resources` in an installed app. The native backend
+   searches the `.app` root and then an absolute build-machine path, which made
+   Settings > Keyboard crash even though its resource bundle was shipped.
+   Do not substitute a native `.build/release/AviApp` in packaging. Keep the
+   explicit backend selection even on toolchains where Swift Build is the default.
+
+   The reported version must match the intended tag. `--self-test` constructs a
+   shortcut recorder and verifies its localized placeholder, then runs the
    AI preflight in the release binary, where a miscompiled async sleep aborts
    it (0.4.0 shipped with one). Branch CI runs it with its own toolchain, and
    the release workflow runs it on the packaged app before publishing. The
@@ -131,6 +140,12 @@ new one, everyone has to install the next version by hand from the disk image.
    open dist/Avi.app
    ./dist/Avi.app/Contents/MacOS/Avi --cli status
    ```
+
+   Run the packaged self-test from a copy outside the checkout as well. It must
+   print `ok` without the build tree's resource bundles. Open **Settings >
+   Keyboard**, confirm the recorders load, and record and clear a shortcut.
+   This catches resource lookup failures that an unpackaged binary or a unit
+   test can hide by loading resources from `.build`.
 
    The disk image must open on Avi and Applications side by side; the layout
    comes from `scripts/dmg/DS_Store` (to change it, arrange a writable copy of
