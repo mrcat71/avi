@@ -97,6 +97,9 @@ final class SettingsSwitchTests: XCTestCase {
         let state = State()
         let host: NSHostingView<AnyView>
         let window: NSWindow
+        /// Numbers the clicks: a mouse-down and its mouse-up share a number,
+        /// as they do from the window server.
+        private var clicks = 0
 
         init(disabled: Bool = false, native: Bool = false) {
             _ = NSApplication.shared
@@ -129,11 +132,20 @@ final class SettingsSwitchTests: XCTestCase {
             host.layoutSubtreeIfNeeded()
         }
 
+        /// A click delivered the way the window server delivers one: the
+        /// mouse-down and its later mouse-up both wait in the event queue, and
+        /// NSApp dispatches them in order. A mouse-down that tracks the mouse
+        /// finds its mouse-up waiting, so the click cannot hang (see
+        /// FolderRowClickTests).
         func click() {
+            clicks += 1
             for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                window.sendEvent(NSEvent.mouseEvent(with: type, location: NSPoint(x: 90, y: 40), modifierFlags: [],
-                                                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-                                                    context: nil, eventNumber: 1, clickCount: 1, pressure: 1)!)
+                NSApp.postEvent(NSEvent.mouseEvent(with: type, location: NSPoint(x: 90, y: 40), modifierFlags: [],
+                                                   timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                                   context: nil, eventNumber: clicks, clickCount: 1, pressure: 1)!, atStart: false)
+            }
+            while let next = NSApp.nextEvent(matching: [.leftMouseDown, .leftMouseUp], until: Date(), inMode: .default, dequeue: true) {
+                NSApp.sendEvent(next)
             }
             settle()
         }
