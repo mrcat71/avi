@@ -47,7 +47,7 @@ struct PlanRevisionSheet: View {
                 store.revisionRequest = nil
             }
             .buttonStyle(.aviSecondary)
-            .keyboardShortcut(.cancelAction)
+            .aviKeyboardShortcut(.cancelAction)
             Button(isSplit ? "Split" : (request.draftIDs.count > 1 ? "Rethink" : "Revise")) {
                 if isSplit {
                     store.splitIntoCommits(request.files, instructions: instructions)
@@ -57,7 +57,7 @@ struct PlanRevisionSheet: View {
                 store.revisionRequest = nil
             }
             .buttonStyle(.aviProminent)
-            .keyboardShortcut(.return, modifiers: [.command])
+            .aviKeyboardShortcut(.return, modifiers: [.command])
             .disabled(instructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .help("Cmd+Return")
         }

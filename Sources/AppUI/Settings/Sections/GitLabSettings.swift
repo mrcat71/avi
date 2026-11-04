@@ -153,12 +153,12 @@ struct PATEntrySheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .buttonStyle(.aviSecondary)
-                .keyboardShortcut(.cancelAction)
+                .aviKeyboardShortcut(.cancelAction)
             Button("Sign In") {
                 onSubmit(token.trimmingCharacters(in: .whitespacesAndNewlines), instanceURL)
             }
             .buttonStyle(.aviProminent)
-            .keyboardShortcut(.defaultAction)
+            .aviKeyboardShortcut(.defaultAction)
             .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }

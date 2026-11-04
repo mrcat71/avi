@@ -146,7 +146,7 @@ struct AISplitSheet: View {
                 store.dismissAISplitPreview()
             }
             .buttonStyle(.aviSecondary)
-            .keyboardShortcut(.cancelAction)
+            .aviKeyboardShortcut(.cancelAction)
             Button("Apply") {
                 var p = preview
                 p.groups = groups
@@ -154,7 +154,7 @@ struct AISplitSheet: View {
                 store.applyAISplitPreview()
             }
             .buttonStyle(.aviProminent)
-            .keyboardShortcut(.defaultAction)
+            .aviKeyboardShortcut(.defaultAction)
             .disabled(!canApply)
         }
     }

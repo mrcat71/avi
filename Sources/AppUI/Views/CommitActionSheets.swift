@@ -48,7 +48,7 @@ struct ResetToCommitSheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .buttonStyle(.aviSecondary)
-                .keyboardShortcut(.cancelAction)
+                .aviKeyboardShortcut(.cancelAction)
             Button(mode == .hard ? "Reset and Discard Changes" : "Reset", role: mode == .hard ? .destructive : nil) {
                 let mode = mode
                 dismiss()
@@ -98,7 +98,7 @@ struct CompareWithWorkingTreeSheet: View {
             ) {
                 Button("Done") { dismiss() }
                     .buttonStyle(.aviSecondary)
-                    .keyboardShortcut(.cancelAction)
+                    .aviKeyboardShortcut(.cancelAction)
             }
             Divider()
             content

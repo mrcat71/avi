@@ -58,6 +58,7 @@ monospaced `aviLabel` belongs to the workspace's panel headers, not to sheets.
 
 | Need | Component |
 | --- | --- |
+| A setting or value in a card: label on the left, control at the end, as in Settings | `AviPopupRow` in an `AviPopupGroup`; `.stacked` puts a wide control, such as a text field, under the label |
 | A labelled control | `AviPopupField`, label above |
 | A label over a control you lay out yourself | `AviPopupLabel` |
 | On/off choices | `AviPopupOption` rows in an `AviPopupGroup`, split by `AviPopupGroupDivider` |
@@ -68,9 +69,19 @@ monospaced `aviLabel` belongs to the workspace's panel headers, not to sheets.
 
 Buttons are flat pills. They use `.aviProminent` for the action (red with a
 destructive role) and `.aviSecondary` for Cancel and the rest (red-tinted
-with red text for a destructive role). Keep `.keyboardShortcut(.cancelAction)`
-on Cancel and `.defaultAction` on the action, except for destructive actions,
-which are clicked, never confirmed with Return.
+with red text for a destructive role). Put `.aviKeyboardShortcut(.cancelAction)`
+on Cancel and `.aviKeyboardShortcut(.defaultAction)` on the action, except for
+destructive actions, which are clicked, never confirmed with Return.
+
+Use `aviKeyboardShortcut`, never `keyboardShortcut`, on a pill. SwiftUI draws
+the pill itself, so its key is SwiftUI's to route, and a sheet presented from
+inside a split view's pane, such as Push from the toolbar or a branch sheet
+from the sidebar, gets it routed to the window behind the sheet: Return and
+Escape did nothing there. `aviKeyboardShortcut` also puts the key on an
+invisible AppKit button in the sheet's own window, as system buttons carry
+theirs, so the key works wherever the sheet comes from. Return in a text
+editor still adds a line, and Return in a text field confirms, as in any Mac
+dialog.
 
 Confirmations (`.alert`, `.confirmationDialog`) stay system alerts: macOS
 draws them in its current style and keeps their keyboard and VoiceOver

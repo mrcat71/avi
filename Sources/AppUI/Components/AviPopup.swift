@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The frame Avi's sheets share, after Rex: an icon tile with the title on
@@ -242,6 +243,75 @@ struct AviPopupOption: View {
     }
 }
 
+/// A row in an `AviPopupGroup`, as a setting is in Settings: what it is on
+/// the left, its control or value at the end. `.stacked` puts a wide
+/// control, such as a text field, under the label.
+struct AviPopupRow<Control: View>: View {
+    enum Layout {
+        case inline
+        case stacked
+    }
+
+    let label: String
+    var detail: String?
+    var detailTone: AviPopupNote.Tone = .secondary
+    var layout: Layout = .inline
+    @ViewBuilder let control: () -> Control
+
+    init(
+        _ label: String,
+        detail: String? = nil,
+        detailTone: AviPopupNote.Tone = .secondary,
+        layout: Layout = .inline,
+        @ViewBuilder control: @escaping () -> Control
+    ) {
+        self.label = label
+        self.detail = detail
+        self.detailTone = detailTone
+        self.layout = layout
+        self.control = control
+    }
+
+    var body: some View {
+        Group {
+            switch layout {
+            case .inline:
+                HStack(alignment: .center, spacing: 16) {
+                    labels
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    control()
+                }
+            case .stacked:
+                VStack(alignment: .leading, spacing: 6) {
+                    labels
+                    control()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+    }
+
+    private var labels: some View {
+        let hasDetail = !(detail ?? "").isEmpty
+        return VStack(alignment: .leading, spacing: 2) {
+            // A title on its own keeps its width, so a long value, such as
+            // a branch name, gives up its middle instead.
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(DS.Palette.textPrimary)
+                .fixedSize(horizontal: !hasDetail, vertical: true)
+            if let detail, hasDetail {
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(detailTone.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 /// One of a few choices, as rows in a group: the chosen row is ticked and
 /// says what it does. Takes the place of radio buttons.
 struct AviPopupChoices<Value: Hashable>: View {
@@ -389,7 +459,8 @@ struct AviPopupCallout: View {
 /// Buttons in sheets, notices, and Settings: flat capsules, as in Rex.
 /// Prominent is filled with the accent, red for a destructive role; secondary
 /// is a quiet gray pill, red-tinted with red text for a destructive role.
-struct AviPopupButtonStyle: ButtonStyle {
+/// Give one its key with `aviKeyboardShortcut(_:)`, not `keyboardShortcut(_:)`.
+struct AviPopupButtonStyle: PrimitiveButtonStyle {
     enum Emphasis {
         case prominent
         case secondary
@@ -404,11 +475,129 @@ struct AviPopupButtonStyle: ButtonStyle {
     var size: Size = .regular
 
     func makeBody(configuration: Configuration) -> some View {
+        Button(configuration)
+            .buttonStyle(AviPopupButtonLook(emphasis: emphasis, size: size))
+            .background(AviKeyEquivalentButton(action: configuration.trigger))
+    }
+}
+
+extension View {
+    /// `keyboardShortcut(_:)` for a button in `AviPopupButtonStyle`. SwiftUI
+    /// draws the pill itself, so the key is SwiftUI's to route, and a sheet
+    /// presented from inside a split view's pane gets it routed to the
+    /// window behind it: Return and Escape did nothing in Push. The pill also
+    /// puts the key on an AppKit button in its own window, the way the
+    /// system buttons carry theirs.
+    func aviKeyboardShortcut(_ shortcut: KeyboardShortcut) -> some View {
+        keyboardShortcut(shortcut)
+            .environment(\.aviKeyEquivalent, shortcut)
+    }
+
+    /// `keyboardShortcut(_:modifiers:)` for a button in `AviPopupButtonStyle`.
+    func aviKeyboardShortcut(_ key: KeyEquivalent, modifiers: EventModifiers = .command) -> some View {
+        aviKeyboardShortcut(KeyboardShortcut(key, modifiers: modifiers))
+    }
+}
+
+private struct AviKeyEquivalentKey: EnvironmentKey {
+    static let defaultValue: KeyboardShortcut? = nil
+}
+
+extension EnvironmentValues {
+    /// Set by `aviKeyboardShortcut(_:)` for the pill under it.
+    var aviKeyEquivalent: KeyboardShortcut? {
+        get { self[AviKeyEquivalentKey.self] }
+        set { self[AviKeyEquivalentKey.self] = newValue }
+    }
+}
+
+/// The pill's key as an AppKit button behind it: it draws nothing and takes
+/// no clicks, focus, or VoiceOver, and presses the pill's action when its
+/// window gets the key, unless the pill is disabled.
+private struct AviKeyEquivalentButton: View {
+    let action: () -> Void
+
+    @Environment(\.aviKeyEquivalent) private var shortcut
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        if let shortcut {
+            KeyEquivalentButton(shortcut: shortcut, isEnabled: isEnabled, action: action)
+        }
+    }
+}
+
+private struct KeyEquivalentButton: NSViewRepresentable {
+    let shortcut: KeyboardShortcut
+    let isEnabled: Bool
+    let action: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = PassThroughButton(title: "", target: context.coordinator, action: #selector(Coordinator.press))
+        button.isBordered = false
+        button.isTransparent = true
+        button.refusesFirstResponder = true
+        button.setAccessibilityElement(false)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        context.coordinator.action = action
+        button.keyEquivalent = String(shortcut.key.character)
+        button.keyEquivalentModifierMask = NSEvent.ModifierFlags(shortcut.modifiers)
+        button.isEnabled = isEnabled
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var action: () -> Void = {}
+
+        @objc func press() {
+            action()
+        }
+    }
+
+    /// Clicks land on the pill in front of it.
+    private final class PassThroughButton: NSButton {
+        override func hitTest(_: NSPoint) -> NSView? {
+            nil
+        }
+    }
+}
+
+extension NSEvent.ModifierFlags {
+    init(_ modifiers: EventModifiers) {
+        self = []
+        if modifiers.contains(.command) {
+            insert(.command)
+        }
+        if modifiers.contains(.shift) {
+            insert(.shift)
+        }
+        if modifiers.contains(.option) {
+            insert(.option)
+        }
+        if modifiers.contains(.control) {
+            insert(.control)
+        }
+    }
+}
+
+/// The pill itself, drawn for `AviPopupButtonStyle`.
+private struct AviPopupButtonLook: ButtonStyle {
+    let emphasis: AviPopupButtonStyle.Emphasis
+    let size: AviPopupButtonStyle.Size
+
+    func makeBody(configuration: Configuration) -> some View {
         AviPopupButtonBody(configuration: configuration, emphasis: emphasis, size: size)
     }
 }
 
-extension ButtonStyle where Self == AviPopupButtonStyle {
+extension PrimitiveButtonStyle where Self == AviPopupButtonStyle {
     /// The sheet's action: accent-filled, or red with a destructive role.
     static var aviProminent: AviPopupButtonStyle {
         AviPopupButtonStyle(emphasis: .prominent)

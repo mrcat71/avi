@@ -154,10 +154,10 @@ struct CommitTagSheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .buttonStyle(.aviSecondary)
-                .keyboardShortcut(.cancelAction)
+                .aviKeyboardShortcut(.cancelAction)
             Button(request.original == nil ? "Add Tag" : "Save", action: save)
                 .buttonStyle(.aviProminent)
-                .keyboardShortcut(.defaultAction)
+                .aviKeyboardShortcut(.defaultAction)
                 .disabled(trimmedName.isEmpty || problem != nil)
         }
         .onAppear {

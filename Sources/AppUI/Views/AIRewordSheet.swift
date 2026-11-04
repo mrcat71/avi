@@ -65,7 +65,7 @@ struct AIRewordSheet: View {
                 store.dismissAIRewordPreview()
             }
             .buttonStyle(.aviSecondary)
-            .keyboardShortcut(.cancelAction)
+            .aviKeyboardShortcut(.cancelAction)
             Button("Apply") {
                 var p = preview
                 p.proposed = draft
@@ -73,7 +73,7 @@ struct AIRewordSheet: View {
                 store.applyAIRewordPreview()
             }
             .buttonStyle(.aviProminent)
-            .keyboardShortcut(.defaultAction)
+            .aviKeyboardShortcut(.defaultAction)
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }
