@@ -1522,7 +1522,7 @@ struct CreateBranchSheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .buttonStyle(.aviSecondary)
-                .keyboardShortcut(.cancelAction)
+                .aviKeyboardShortcut(.cancelAction)
             Button("Create", action: create)
                 .buttonStyle(.aviProminent)
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -1611,7 +1611,7 @@ struct CreateTagSheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .buttonStyle(.aviSecondary)
-                .keyboardShortcut(.cancelAction)
+                .aviKeyboardShortcut(.cancelAction)
             Button("Create", action: create)
                 .buttonStyle(.aviProminent)
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

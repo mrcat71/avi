@@ -174,7 +174,7 @@ private struct BranchSheetLayout<Content: View>: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .buttonStyle(.aviSecondary)
-                .keyboardShortcut(.cancelAction)
+                .aviKeyboardShortcut(.cancelAction)
             actionButton
         }
     }
@@ -192,7 +192,7 @@ private struct BranchSheetLayout<Content: View>: View {
             button
         } else {
             button
-                .keyboardShortcut(.defaultAction)
+                .aviKeyboardShortcut(.defaultAction)
         }
     }
 }

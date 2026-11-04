@@ -98,11 +98,11 @@ struct GitHubDeviceFlowSheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .buttonStyle(.aviSecondary)
-                .keyboardShortcut(.cancelAction)
+                .aviKeyboardShortcut(.cancelAction)
             if GitHubDeviceFlowConfig.clientID.isEmpty == false, phase == .initial {
                 Button("Start") { Task { await start() } }
                     .buttonStyle(.aviProminent)
-                    .keyboardShortcut(.defaultAction)
+                    .aviKeyboardShortcut(.defaultAction)
             }
         }
     }

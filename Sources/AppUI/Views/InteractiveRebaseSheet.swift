@@ -118,10 +118,10 @@ struct InteractiveRebaseSheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
                     .buttonStyle(.aviSecondary)
-                    .keyboardShortcut(.cancelAction)
+                    .aviKeyboardShortcut(.cancelAction)
                 Button("Start Rebase", action: start)
                     .buttonStyle(.aviProminent)
-                    .keyboardShortcut(.return, modifiers: .command)
+                    .aviKeyboardShortcut(.return, modifiers: .command)
                     .disabled(plan == nil)
                     .help("Cmd+Return")
             }

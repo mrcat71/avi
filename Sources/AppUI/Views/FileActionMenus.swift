@@ -169,10 +169,10 @@ struct StashFilesSheet: View {
             Spacer()
             Button("Cancel", role: .cancel) { dismiss() }
                 .buttonStyle(.aviSecondary)
-                .keyboardShortcut(.cancelAction)
+                .aviKeyboardShortcut(.cancelAction)
             Button("Stash", action: stash)
                 .buttonStyle(.aviProminent)
-                .keyboardShortcut(.defaultAction)
+                .aviKeyboardShortcut(.defaultAction)
         }
     }
 
