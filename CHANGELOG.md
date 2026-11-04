@@ -6,6 +6,14 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-11-04
+
+### Changed
+- **Push** reads like Settings: the branch and the remote are rows of one card, with what the push does to the remote under its name, and the remote menu lists plain remote names. With **Create pull request** on, its title, target branch, description, and **Draft** are rows of the same card.
+
+### Fixed
+- Return and Escape work again in sheets opened from the toolbar, the sidebar, History, and Changes, such as **Push**, **Merge**, **Rebase**, **Stash**, and **Add Tag**. Since 0.10.0 their buttons only answered clicks. Cmd+Return starts an interactive rebase and sends a plan revision again, and Escape cancels the destructive sheets, such as **Delete Branch**, which are still confirmed only by clicking.
+
 ## [0.10.1] - 2026-11-03
 
 ### Added
