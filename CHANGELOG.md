@@ -6,6 +6,14 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-11-04
+
+### Changed
+- **Push** is rebuilt around its route: the branch, a line down to the remote, and a badge for what the push does there, **New branch**, the commits it sends, **Up to date**, or how many commits the remote has that the branch lacks, in orange. The remote is a plain name, or a pill menu when there are several. **Push all tags** and **Force push** keep their explanations in tooltips, and **Force push** says it uses a lease once it is on. With **Create pull request** on, the target branch is a pill menu and the title and description are flat fields. The icon tile above the title is gone.
+
+### Fixed
+- With **Create pull request** on, a remote branch with a long name no longer makes the **Push** sheet wider than its window, cutting off the title, the fields, and the buttons on both sides. The **Into** list grew to its longest branch name; it is now a pill that keeps to its width.
+
 ## [0.10.2] - 2026-11-04
 
 ### Changed
