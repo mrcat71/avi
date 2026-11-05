@@ -128,12 +128,20 @@ enum DemoRepositories {
             "environments/k8s-web-fra2/main.tf": "module \"cluster\" {\n  source = \"../../modules/cluster\"\n  name   = \"k8s-web-fra2\"\n}\n"
         ], message: "chore: import the clusters", author: ops, day: 3)
         try await git(["clone", "-q", "--bare", repo.path, origin.path], in: folder)
+        // Other branches on the remote, one named longer than the Push sheet
+        // is wide: a pull request's Into lists every one of them.
+        for name in ["release/2026-10", "renovate/hashicorp-terraform-provider-helm-3.x-and-kubernetes-2.x-lockfile-maintenance-for-all-environments"] {
+            try await git(["branch", name, "main"], in: origin)
+        }
         try await git(["remote", "add", "origin", origin.path], in: repo)
         try await git(["fetch", "-q", "origin"], in: repo)
         try await git(["branch", "-q", "--set-upstream-to=origin/main", "main"], in: repo)
         // Looks like GitHub, so pull requests are offered; pushes go to the local copy.
         try await git(["remote", "set-url", "origin", "https://github.com/skyline-demo/infra-live.git"], in: repo)
         try await git(["remote", "set-url", "--push", "origin", origin.path], in: repo)
+        // A second remote, so Push offers a choice of remote.
+        try await git(["remote", "add", "upstream", "https://github.com/skyline/infra-live.git"], in: repo)
+        try await git(["remote", "set-url", "--push", "upstream", origin.path], in: repo)
         try await git(["switch", "-q", "-c", "INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress"], in: repo)
         try await commit(repo, files: [
             "environments/k8s-infra-ah-ams1/ingress.tf": "resource \"helm_release\" \"ingress\" {\n  name    = \"ingress-nginx\"\n  version = \"4.12.1\"\n}\n"

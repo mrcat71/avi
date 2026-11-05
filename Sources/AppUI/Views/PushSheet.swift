@@ -1,14 +1,15 @@
 import AppKit
+import GitKit
 import SwiftUI
 
-/// Fork-style confirmation sheet for `git push`. Surfaces the branch
-/// (read-only), lets the user pick the target remote, and exposes "push all
-/// tags" + "force push" (mapped to `--force-with-lease` for safety) toggles.
-/// Tags on the commits the push sends are listed; the ticked ones go in the
-/// same atomic push as the branch, so none lands on the remote without its
-/// commit. On a GitHub or GitLab remote it can create the branch's pull or
-/// merge request in the same step, titled after the branch name with ticket
-/// keys and names that need their hyphens kept.
+/// Confirmation sheet for `git push`. A route card says what goes where:
+/// the branch, the remote you pick, and what the push does there. "Push all
+/// tags" and "Force push" (mapped to `--force-with-lease` for safety) are
+/// switches under it. Tags on the commits the push sends are listed; the
+/// ticked ones go in the same atomic push as the branch, so none lands on
+/// the remote without its commit. On a GitHub or GitLab remote it can create
+/// the branch's pull or merge request in the same step, titled after the
+/// branch name with ticket keys and names that need their hyphens kept.
 struct PushSheet: View {
     let store: RepositoryStore
     /// The branch to push; nil pushes the current branch.
@@ -33,27 +34,9 @@ struct PushSheet: View {
     @State private var isDraft = ConfigStore.shared.config.pullRequests.draft
 
     var body: some View {
-        AviPopup(
-            symbol: "arrow.up",
-            title: sheetTitle,
-            subtitle: store.root?.lastPathComponent,
-            width: 520
-        ) {
-            // What goes where, as rows in Settings: the remote's row says
-            // what the push does to it.
-            AviPopupGroup {
-                AviPopupRow("Branch") {
-                    branchLabel
-                        .layoutPriority(1)
-                }
-                AviPopupGroupDivider()
-                AviPopupRow("Remote", detail: outcomeDescription) {
-                    remotePicker
-                }
-            }
-
+        AviPopup(title: "Push", subtitle: store.repositoryName, width: 500) {
+            routeCard
             options
-
             if canOfferPullRequest {
                 pullRequestSection
             }
@@ -87,30 +70,73 @@ struct PushSheet: View {
         }
     }
 
-    private var sheetTitle: String {
-        guard createsPullRequest else { return "Push" }
-        return "Push and Create \(forge?.requestNoun ?? "Pull Request")"
+    // MARK: - Route
+
+    /// The branch, a line down to the remote it goes to, and what the push
+    /// does to the branch there.
+    private var routeCard: some View {
+        AviPopupGroup {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    PushRouteGlyph(symbol: "arrow.triangle.branch", tint: DS.Palette.accent)
+                    // A long name gives up its middle; the tooltip has all of it.
+                    Text(currentBranchName ?? "Detached HEAD")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(currentBranchName == nil ? DS.Palette.textSecondary : DS.Palette.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .help(currentBranchName ?? "HEAD is detached")
+                }
+                Capsule()
+                    .fill(Color.primary.opacity(0.14))
+                    .frame(width: 2, height: 12)
+                    .padding(.leading, PushRouteGlyph.size / 2 - 1)
+                    .accessibilityHidden(true)
+                HStack(spacing: 10) {
+                    PushRouteGlyph(symbol: "cloud", tint: DS.Palette.textSecondary)
+                    remoteChoice
+                    Spacer(minLength: 8)
+                    PushStatusBadge(status: routeStatus)
+                        .help(routeHelp)
+                        .accessibilityLabel(routeHelp)
+                }
+            }
+            .padding(12)
+        }
     }
 
-    /// The tags to send along, then the push's own switches.
+    /// The remote to push to: a menu when there is a choice, else its name.
+    @ViewBuilder
+    private var remoteChoice: some View {
+        if availableRemotes.count > 1 {
+            AviPopupMenu("Remote", options: availableRemotes, selection: $selectedRemote, maxWidth: 160)
+        } else {
+            Text(availableRemotes.first ?? "No remotes")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(availableRemotes.isEmpty ? DS.Palette.textSecondary : DS.Palette.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .accessibilityLabel("Remote: \(availableRemotes.first ?? "none")")
+        }
+    }
+
+    /// The tags to send along, then the push's own switches. What each does
+    /// is in its tooltip; only a force push spells out its safety net.
     private var options: some View {
         VStack(alignment: .leading, spacing: 6) {
             AviPopupGroup {
                 tagToggles
-                AviPopupOption(
-                    "Push all tags",
-                    detail: "Also pushes every other local tag, once the branch is in.",
-                    isOn: $pushAllTags
-                )
+                AviPopupOption("Push all tags", isOn: $pushAllTags)
+                    .help("Also pushes every other local tag, once the branch is in.")
                 AviPopupGroupDivider()
                 AviPopupOption(
                     "Force push",
-                    detail: forcePush
-                        ? "Uses --force-with-lease, so remote work you have not fetched is never overwritten."
-                        : "Replaces the remote branch, such as after a rebase.",
-                    detailTone: forcePush ? .warning : .secondary,
+                    detail: forcePush ? "With lease: work on the remote you have not fetched is never overwritten." : nil,
+                    detailTone: .warning,
                     isOn: $forcePush
                 )
+                .help("Replaces the remote branch, such as after a rebase.")
             }
             if !tagChoices.isEmpty {
                 AviPopupNote(tagNote)
@@ -170,52 +196,17 @@ struct PushSheet: View {
         }
     }
 
-    // MARK: - Rows
-
-    /// The pushed branch at the end of its row. It takes the width it
-    /// needs and gives up its middle when the row runs out.
-    private var branchLabel: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 11))
-                .foregroundStyle(DS.Palette.textSecondary)
-            Text(currentBranchName ?? "Detached HEAD")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(DS.Palette.textPrimary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .help(currentBranchName ?? "HEAD is detached")
-        .accessibilityElement(children: .combine)
-    }
-
-    private var remotePicker: some View {
-        Picker("", selection: $selectedRemote) {
-            ForEach(availableRemotes, id: \.self) { remote in
-                Text(remote).tag(remote)
-            }
-            if availableRemotes.isEmpty {
-                Text("No remotes").tag("")
-            }
-        }
-        .pickerStyle(.menu)
-        .labelsHidden()
-        .fixedSize()
-        .accessibilityLabel("Remote")
-    }
-
     // MARK: - Pull request
 
-    /// The switch, and once it is on, the request's fields as rows of the
-    /// same card.
+    /// The switch, and once it is on, the request's fields in the same card.
     @ViewBuilder
     private var pullRequestSection: some View {
         let noun = forge?.requestNoun ?? "Pull Request"
         VStack(alignment: .leading, spacing: 6) {
             AviPopupGroup {
                 AviPopupOption(
-                    "Create \(noun.lowercased()) on \(forge?.name ?? "the forge")",
-                    detail: "Titled after the branch, into the remote's default branch. You can change both.",
+                    "Create \(noun.lowercased())",
+                    detail: createsPullRequest ? nil : "On \(forge?.name ?? "the forge"), titled after the branch.",
                     isOn: $createsPullRequest
                 )
                 if createsPullRequest {
@@ -227,9 +218,11 @@ struct PushSheet: View {
                             }
                             .buttonStyle(.link)
                             .lineLimit(1)
+                            .truncationMode(.tail)
+                            .help(existing.title)
                         }
                     } else if let context {
-                        requestRows(context)
+                        requestFields(context)
                     } else if isLoadingContext {
                         AviPopupGroupDivider()
                         HStack(spacing: 6) {
@@ -254,62 +247,51 @@ struct PushSheet: View {
         }
     }
 
+    /// Where the request goes, then what it says. Every control keeps to
+    /// the card's width: a remote can have hundreds of branches, and the
+    /// longest name must not widen the sheet.
     @ViewBuilder
-    private func requestRows(_ context: PullRequestContext) -> some View {
-        AviPopupGroupDivider()
-        AviPopupRow("Title", layout: .stacked) {
-            HStack(spacing: 4) {
-                TextField("", text: $title, prompt: Text(context.title))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12))
-                    .accessibilityLabel("Title")
-                Menu {
-                    Button("Made from the Branch: \(context.title)") { title = context.title }
-                    ForEach(context.titleAlternatives, id: \.self) { alternative in
-                        Button(alternative) { title = alternative }
-                    }
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("Other titles")
-                .accessibilityLabel("Other titles")
-            }
-        }
+    private func requestFields(_ context: PullRequestContext) -> some View {
         AviPopupGroupDivider()
         AviPopupRow("Into") {
-            Picker("", selection: $base) {
-                ForEach(context.bases, id: \.self) { name in
-                    Text(name).tag(name)
-                }
+            AviPopupMenu(
+                "Into",
+                options: context.bases,
+                selection: $base,
+                symbol: "arrow.triangle.branch",
+                maxWidth: 240
+            )
+        }
+        AviPopupGroupDivider()
+        AviPopupRow("Title", layout: .stacked) {
+            AviPopupTextField(label: "Title", text: $title, prompt: context.title) {
+                titleSuggestions(context)
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .fixedSize()
-            .accessibilityLabel("Into")
         }
-        AviPopupGroupDivider()
         AviPopupRow("Description", layout: .stacked) {
-            TextEditor(text: $description)
-                .font(.system(size: 12))
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .frame(height: 110)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                )
-                .accessibilityLabel("Description")
+            AviPopupTextEditor("Description", text: $description)
         }
         AviPopupGroupDivider()
-        AviPopupOption("Draft", detail: "Opens it marked as not ready for review.", isOn: $isDraft)
+        AviPopupOption("Draft", isOn: $isDraft)
+            .help("Opens it marked as not ready for review.")
+    }
+
+    /// The other titles, at the end of the title field.
+    private func titleSuggestions(_ context: PullRequestContext) -> some View {
+        Menu {
+            Button("Made from the Branch: \(context.title)") { title = context.title }
+            ForEach(context.titleAlternatives, id: \.self) { alternative in
+                Button(alternative) { title = alternative }
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Other titles")
+        .accessibilityLabel("Other titles")
     }
 
     private func routeNote(_ context: PullRequestContext) -> String {
@@ -401,6 +383,12 @@ struct PushSheet: View {
         return store.refs.localBranches.first { $0.name == name }?.upstream
     }
 
+    /// The pushed branch's own ref, for how far it is from its upstream.
+    private var branchRef: GitReference? {
+        guard let name = currentBranchName else { return nil }
+        return store.refs.localBranches.first { $0.name == name }
+    }
+
     /// Spells out whether the push updates a remote branch or creates one, so
     /// pushing never silently publishes a new name.
     nonisolated static func outcome(branch: String?, remote: String, upstream: String?, remoteBranches: [String]) -> String {
@@ -411,13 +399,38 @@ struct PushSheet: View {
             return "Choose a remote to push to."
         }
         let target = "\(remote)/\(branch)"
+        // An upstream deleted on the remote is created again.
+        guard remoteBranches.contains(target) else {
+            return "Creates \(target) and makes it the upstream of \(branch)."
+        }
         if upstream == target {
             return "Updates \(target), the upstream of \(branch)."
         }
-        if remoteBranches.contains(target) {
-            return "Updates the existing \(target) and makes it the upstream of \(branch)."
+        return "Updates the existing \(target) and makes it the upstream of \(branch)."
+    }
+
+    /// The route card's word or two for `outcome`, with the commits the push
+    /// sends, or a warning when the remote has commits the branch lacks.
+    nonisolated static func routeStatus(
+        branch: String?,
+        remote: String,
+        upstream: String?,
+        remoteBranches: [String],
+        ahead: Int?,
+        behind: Int?
+    ) -> PushRouteStatus {
+        guard let branch else { return .detached }
+        guard !remote.isEmpty else { return .noRemote }
+        let target = "\(remote)/\(branch)"
+        guard remoteBranches.contains(target) else { return .creates }
+        guard upstream == target else { return .adopts }
+        if let behind, behind > 0 {
+            return .behind(behind)
         }
-        return "Creates \(target) and makes it the upstream of \(branch)."
+        if let ahead, ahead > 0 {
+            return .sends(ahead)
+        }
+        return .upToDate
     }
 
     private var outcomeDescription: String {
@@ -427,6 +440,25 @@ struct PushSheet: View {
             upstream: branchUpstream,
             remoteBranches: store.refs.remoteBranches.map(\.name)
         )
+    }
+
+    private var routeStatus: PushRouteStatus {
+        Self.routeStatus(
+            branch: currentBranchName,
+            remote: selectedRemote,
+            upstream: branchUpstream,
+            remoteBranches: store.refs.remoteBranches.map(\.name),
+            ahead: branchRef?.ahead,
+            behind: branchRef?.behind
+        )
+    }
+
+    /// The status badge's tooltip: the outcome, and why a push behind its
+    /// upstream is refused.
+    private var routeHelp: String {
+        guard case let .behind(count) = routeStatus else { return outcomeDescription }
+        let commits = count == 1 ? "1 commit" : "\(count) commits"
+        return "\(outcomeDescription) The remote has \(commits) this branch lacks: pull first, or force push."
     }
 
     private var availableRemotes: [String] {
@@ -485,4 +517,90 @@ struct PushSheet: View {
 private struct PullRequestKey: Hashable {
     let remote: String
     let wanted: Bool
+}
+
+/// What a push does to the branch on the remote, as the route card's badge
+/// shows it.
+enum PushRouteStatus: Equatable {
+    case detached
+    case noRemote
+    /// The remote has no branch of that name yet.
+    case creates
+    /// The remote has the branch, but it is not this branch's upstream yet.
+    case adopts
+    case upToDate
+    /// Commits the upstream lacks.
+    case sends(Int)
+    /// Commits on the upstream the branch lacks, so a plain push is refused.
+    case behind(Int)
+
+    var title: String {
+        switch self {
+        case .detached: return "Nothing to push"
+        case .noRemote: return "No remote"
+        case .creates: return "New branch"
+        case .adopts: return "Existing branch"
+        case .upToDate: return "Up to date"
+        case let .sends(count): return count == 1 ? "1 commit" : "\(count) commits"
+        case let .behind(count): return "\(count) behind"
+        }
+    }
+
+    var symbol: String? {
+        switch self {
+        case .creates: return "plus"
+        case .adopts: return "link"
+        case .upToDate: return "checkmark"
+        case .sends: return "arrow.up"
+        case .behind: return "arrow.down"
+        case .detached, .noRemote: return nil
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .creates, .sends: return DS.Palette.accent
+        case .behind, .noRemote: return DS.Palette.warning
+        case .detached, .adopts, .upToDate: return DS.Palette.textSecondary
+        }
+    }
+}
+
+/// A round glyph at either end of the route card's line.
+private struct PushRouteGlyph: View {
+    static let size: CGFloat = 24
+
+    let symbol: String
+    let tint: Color
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(tint)
+            .frame(width: Self.size, height: Self.size)
+            .background(Circle().fill(tint.opacity(0.14)))
+            .accessibilityHidden(true)
+    }
+}
+
+/// The route card's status, as a tinted capsule.
+private struct PushStatusBadge: View {
+    let status: PushRouteStatus
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let symbol = status.symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 9, weight: .bold))
+            }
+            Text(status.title)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(status.tint)
+        .padding(.horizontal, 8)
+        .frame(height: 20)
+        .background(Capsule().fill(status.tint.opacity(0.14)))
+        .fixedSize()
+    }
 }
