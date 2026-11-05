@@ -45,7 +45,9 @@ steps with the screenshot harness below.
 ## Sheets
 
 `AviPopup` frames a sheet: `AviPopupHeader` (icon tile, title, subtitle, an
-optional accessory), the content, and `AviPopupFooter`. Sheets that size
+optional accessory), the content, and `AviPopupFooter`. A sheet whose content
+draws its own icons, such as Push, passes no `symbol` and its title stands
+alone. Sheets that size
 themselves, such as Compare or Interactive Rebase, use the header and footer
 directly. The footer has no bar of its own; a sheet whose content scrolls up
 to the buttons, such as the repository picker, uses
@@ -63,9 +65,26 @@ monospaced `aviLabel` belongs to the workspace's panel headers, not to sheets.
 | A label over a control you lay out yourself | `AviPopupLabel` |
 | On/off choices | `AviPopupOption` rows in an `AviPopupGroup`, split by `AviPopupGroupDivider` |
 | One of a few choices | `AviPopupChoices`, in place of radio buttons |
+| One value from a list, such as a remote or a branch | `AviPopupMenu`, a pill that opens the list as a menu |
+| Text to type | `AviPopupTextField`, with an optional control at its end; `AviPopupTextEditor` for a few lines |
 | A warning before the click | `AviPopupCallout` |
 | Small print under a control | `AviPopupNote` |
 | Small print in the footer | `AviPopupFooterNote` |
+
+Don't use a `.menu` picker or a system text field in a sheet. The app
+links against the macOS 14 SDK, so they draw in the old style, and a menu
+picker with `.fixedSize()` grows to its longest option: the Push sheet's
+**Into** list holds every branch on the remote, and one long name made the
+sheet's content wider than its window, cut off on both sides.
+`AviPopupMenu` hugs its value up to `maxWidth` and gives up the middle of a
+longer one. Switches stay the system's in sheets: Settings' compact
+`SettingsSwitchStyle` is focusable, so the first one in a sheet takes the
+focus ring as the sheet opens.
+
+Push shows its route in the first card: the branch, a line down to the
+remote, and a badge for what the push does there (**New branch**, the commits
+it sends, **Up to date**, or how far the remote is ahead, in orange, since a
+plain push is then refused). The badge's tooltip says it in full.
 
 Buttons are flat pills. They use `.aviProminent` for the action (red with a
 destructive role) and `.aviSecondary` for Cancel and the rest (red-tinted
@@ -93,8 +112,12 @@ A debug build renders the notices and the sheets, presented as real sheets,
 against demo repositories:
 
 ```sh
-swift run AviApp --render-screens /tmp/avi-screens --only notices,notice-release-notes,popup-push,popup-merge
+swift run AviApp --render-screens /tmp/avi-screens --only notices,notice-release-notes,popup-push,popup-push-pr,popup-merge
 ```
+
+`popup-push-pr` is Push at its tallest: a new branch with a pull request, on
+a repository with two remotes and a remote branch named longer than the
+sheet is wide.
 
 Panel names are in `ScreenshotHarness.swift`. The harness never starts the
 agent socket, so the Avi you use keeps working. Captures need Screen
