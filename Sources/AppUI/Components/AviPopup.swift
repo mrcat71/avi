@@ -1,12 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// The frame Avi's sheets share, after Rex: an icon tile with the title on
-/// top, the content in the middle, and the buttons at the bottom. Fields put
-/// their label above the control, and on/off choices are rows of switches in
-/// a flat group, instead of a right-aligned form with checkboxes.
+/// The frame Avi's sheets share, after Rex: the title on top, after an icon
+/// tile unless `symbol` is nil, the content in the middle, and the buttons
+/// at the bottom. Fields put their label above the control, and on/off
+/// choices are rows of switches in a flat group, instead of a right-aligned
+/// form with checkboxes.
 struct AviPopup<Content: View, Footer: View>: View {
-    let symbol: String
+    var symbol: String?
     var tint: Color = DS.Palette.accent
     let title: String
     var subtitle: String?
@@ -36,8 +37,9 @@ struct AviPopup<Content: View, Footer: View>: View {
 }
 
 /// A sheet's icon tile and title, with an optional accessory at the end.
+/// Without a symbol the title stands on its own.
 struct AviPopupHeader<Accessory: View>: View {
-    let symbol: String
+    var symbol: String?
     var tint: Color = DS.Palette.accent
     let title: String
     var subtitle: String?
@@ -45,7 +47,9 @@ struct AviPopupHeader<Accessory: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            AviPopupIcon(symbol: symbol, tint: tint)
+            if let symbol {
+                AviPopupIcon(symbol: symbol, tint: tint)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 15, weight: .semibold))
@@ -71,7 +75,7 @@ struct AviPopupHeader<Accessory: View>: View {
 }
 
 extension AviPopupHeader where Accessory == EmptyView {
-    init(symbol: String, tint: Color = DS.Palette.accent, title: String, subtitle: String? = nil) {
+    init(symbol: String?, tint: Color = DS.Palette.accent, title: String, subtitle: String? = nil) {
         self.init(symbol: symbol, tint: tint, title: title, subtitle: subtitle) {
             EmptyView()
         }
