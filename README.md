@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.10.2. The config schema, the UI, and the
+Alpha. The current release is v0.10.3. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -130,10 +130,12 @@ around provider authentication, OAuth, and multi-account flows.
   then scroll; drag them to reorder, across rows too. A tab's right-click menu
   and the command palette copy the repository's path, open it in a terminal
   (Settings > Git > Terminal, or Terminal), or show it in Finder.
-- Push sheet that states whether the push updates, adopts, or creates the remote
-  branch, for the current branch or any other, and makes that remote branch the
-  upstream. A new branch has no upstream until its first push, unless it is
-  named like the remote branch it starts from.
+- Push sheet that shows the route, the branch above the remote it goes to,
+  with a badge for what the push does there: a new branch, the commits it
+  sends, up to date, or how far the remote is ahead, so a refused push is no
+  surprise. It works for the current branch or any other, and makes the
+  remote branch the upstream. A new branch has no upstream until its first
+  push, unless it is named like the remote branch it starts from.
 - Tags go out with their commits: the Push sheet lists the tags on the commits
   it sends and pushes the ticked ones in the same atomic push as the branch, so
   the remote takes both or neither and no release tag lands before its commit.
