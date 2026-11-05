@@ -222,6 +222,10 @@ public enum ScreenshotHarness {
             Panel(name: "popup-push", size: sheetWindow, asSheet: true) { stores in
                 AnyView(PushSheet(store: stores[0], dismiss: {}))
             },
+            // A new branch with a pull request, the sheet at its tallest.
+            Panel(name: "popup-push-pr", size: sheetWindow, asSheet: true) { stores in
+                AnyView(PushSheet(store: stores[1], includesPullRequest: true, dismiss: {}))
+            },
             Panel(name: "popup-merge", size: sheetWindow, asSheet: true) { stores in
                 guard let branch = stores[0].refs.localBranches.first(where: { !$0.isCurrent }) else { return nil }
                 return AnyView(MergeBranchSheet(store: stores[0], branch: branch))
