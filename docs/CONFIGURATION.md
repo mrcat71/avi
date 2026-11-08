@@ -34,23 +34,28 @@ A complete example with every section is in
 | Section          | Purpose                                                                 |
 | ---------------- | ----------------------------------------------------------------------- |
 | `appearance`     | Theme (`system`, `light`, `dark`), row density, the diff's font (`diffFont`, any installed monospaced family; `SF Mono` is the system one) and text size (`fontSize`, 11 to 16; diffs use one point less), file-list mode (tree / flat), graph lane width, and `authorPictures`: show author pictures beside their names in History, from the GitHub or GitLab account that wrote each commit (asked with a token from Settings or your `gh` or `glab` sign-in), else looked up by address there and on Gravatar (default `true`; `false` shows the names alone and contacts no server). |
-| `git`            | Default author identity, fetch interval, auto-refresh, terminal/editor. `terminalApp` is the app **Open in Terminal** opens a repository or worktree folder in; empty uses Terminal. |
+| `git`            | `defaultAuthorName` and `defaultAuthorEmail`: who commits in repositories where Git has no `user.name` or `user.email`; a repository's own identity and `includeIf` ones always win. `signCommits`: sign every commit, as Git's `commit.gpgSign` does; `false` leaves it to Git. `fetchInterval`: minutes, `0` turns auto-fetch off. `autoRefresh`: refresh when files change; `false` refreshes after Avi's own commands and when you come back to Avi. `pruneOnFetch`: fetch with `--prune`, or `--no-prune` when `false`. `externalEditor`: the app or command **Open in Editor** uses; empty uses the first installed editor Avi knows. `terminalApp`: the app **Open in Terminal** uses; empty uses Terminal. |
 | `clone`          | Default clone directory, and whether a clone starts on HTTPS or SSH.    |
-| `ai`             | AI commit-message backend (command / openai), model (default `gpt-6.1-luna`), prompts, limits, timeout. |
+| `ai`             | AI commit-message backend (command / openai), model (default `gpt-6.1-luna`), prompts, limits, timeout. `conventionalCommits` fills `${style}` in the prompts; see [Prompts](#prompts). |
 | `agents`         | `enabled`: accept proposals from local agents through the `avi` command. See [`AGENT-INTEGRATION.md`](AGENT-INTEGRATION.md). |
 | `pullRequests`   | How pull request titles are made from branch names, and whether new requests start as drafts. See [Pull request titles](#pull-request-titles). |
-| `externalTools`  | Override paths to `git`, `gh`, `glab`, `codex`, `claude`, editors. `diffToolPath` is the tool **External Diff** opens; empty uses Git's `diff.tool`. Merge-tool selection is described below. |
-| `advanced`       | History limit, verbose logging.                                         |
+| `externalTools`  | `gitPath`, `ghPath`, `glabPath`, `codexPath`, `claudePath`: an executable here replaces the one Avi finds. Without one, Avi runs `/usr/bin/git`; `codexPath` and `claudePath` apply to AI command templates that start with `codex` or `claude`. A path that names no executable is ignored. `diffToolPath` is the tool **External Diff** opens; empty uses Git's `diff.tool`. Merge-tool selection is described below. |
+| `advanced`       | `historyLimit`: commits History loads at first, 50 to 5000; more load as you scroll. `verboseLogging`: log every Git command with its exit status and time to the system log (Console, subsystem `com.svinarenko.avi`, category `git`). Commands can hold file paths and commit messages. |
 | `integrations`   | Provider accounts (PAT + CLI). Tokens themselves are in the Keychain.   |
 
 The TOML decoder is intentionally tolerant: missing keys decode to their
 defaults, unknown keys are dropped silently. Old config files keep working
 across upgrades unless a key is renamed. A blank `ai.model` also decodes to the
-default model, since no backend accepts an empty one.
+default model, since no backend accepts an empty one. `externalTools.editorPath`
+and `externalTools.terminalPath` are no longer read; a value in them moves to
+`git.externalEditor` and `git.terminalApp` when those are empty.
+
+Settings shows the keys most people never change under **Advanced** at the
+end of each section. They are the same keys; only the window hides them.
 
 ## Merge tools
 
-**Settings > External Tools > Merge Tool** chooses the tool **Merge Tool** in
+**Settings > External Tools > Merge tool** chooses the tool **Merge Tool** in
 Changes opens for a conflicted file. `externalTools.mergeTool` is empty to use
 Git's `merge.tool`, a preset id such as `vscode`, `cursor`, or `goland` to use
 that app, or `custom` to run `externalTools.mergeToolCommand`.
@@ -95,13 +100,28 @@ draft = false        # start new requests as drafts
 With these rules `feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress`
 becomes `INFRA-12345 upgrade k8s-infra-ah-ams1 ingress`, and `fix-login-timeout`
 becomes `fix login timeout`. Write regular expressions in single-quoted TOML
-strings, which keep backslashes as they are. **Settings > Git > Pull
-Requests** edits the same keys and shows the title for a branch name you
-type; names learned from a repository apply only in the Push sheet.
+strings, which keep backslashes as they are. **Settings > Git > Advanced >
+Pull Request Titles** edits the same keys and shows the title for a branch
+name you type; names learned from a repository apply only in the Push sheet.
+`draft` and `capitalize` are under **Settings > Git > Pull Requests**.
 
 Avi creates the request with `gh` or `glab` when you are signed in to that
 host, else with the token from Settings > GitHub or GitLab, else it opens the
 filled-in form in your browser.
+
+## Prompts
+
+`promptTemplate` writes commit messages, `rewordPromptTemplate` rewrites one,
+`splitPromptTemplate` groups changes into commits, and
+`planRevisionPromptTemplate` changes planned commits as you ask. **Settings >
+AI Commit Messages > Advanced > Prompts** edits each one and lists the
+`${name}` placeholders it gets; an unknown placeholder stays as written.
+
+`${style}` asks for `type(scope): summary` subjects while `conventionalCommits`
+is on, and plain imperative ones while it is off. The built-in prompts use it;
+add it to your own to make the switch apply to them. A prompt that is still
+exactly a built-in one from an earlier Avi is read as today's built-in one, so
+an unedited config file follows the switch too.
 
 ## Update settings
 
@@ -114,6 +134,13 @@ script or dotfiles:
 ```sh
 defaults write com.svinarenko.avi SUEnableAutomaticChecks -bool false
 ```
+
+## Clone folders
+
+With `clone.rememberDestinationPerProvider` on, a clone from a host starts in
+the folder the last clone from that host went to, while it exists. Avi keeps
+those folders in its user defaults under `avi.clone.lastFolderByHost`, not in
+`config.toml`; a host it has no folder for starts in `clone.defaultDirectory`.
 
 ## Workspace restoration
 

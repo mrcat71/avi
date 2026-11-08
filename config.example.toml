@@ -18,20 +18,20 @@ graphLaneWidth = 16        # 12 | 16 | 20
 authorPictures = true      # ask GitHub/GitLab who wrote each commit, then Gravatar
 
 [git]
-defaultAuthorName = ""
-defaultAuthorEmail = ""
-signCommits = false
+defaultAuthorName = ""     # used only where Git has no user.name for the repository
+defaultAuthorEmail = ""    # used only where Git has no user.email for the repository
+signCommits = false        # true signs every commit, as commit.gpgSign does
 fetchInterval = 5          # minutes; 0 disables auto-fetch
-autoRefresh = true
-pruneOnFetch = true
-externalEditor = ""        # absolute path or empty
-terminalApp = ""           # absolute path or empty
+autoRefresh = true         # false refreshes after Avi's commands and when you return
+pruneOnFetch = true        # false fetches with --no-prune
+externalEditor = ""        # app or command for Open in Editor; empty picks an installed editor
+terminalApp = ""           # app for Open in Terminal; empty uses Terminal
 
 [clone]
 defaultDirectory = "~/Developer"
 openAfterClone = true
 preferredProtocol = "https"     # https | ssh; each clone can switch
-rememberDestinationPerProvider = true
+rememberDestinationPerProvider = true  # start a clone where the last one from its host went
 
 [ai]
 enabled = false
@@ -39,7 +39,7 @@ backend = "command"        # command | openai
 model = "gpt-6.1-luna"     # any model your backend accepts, e.g. gpt-6.1-sol
 temperature = 0.2
 maxTokens = 800
-conventionalCommits = true
+conventionalCommits = true # fills ${style} in the prompts
 subjectSoftLimit = 50
 subjectHardLimit = 72
 bodyWrap = 72
@@ -47,15 +47,16 @@ commandTemplate = "codex exec --skip-git-repo-check --model ${model} ${effort_kv
 openAIBaseURL = "https://api.openai.com/v1"
 timeoutSeconds = 120
 
+# An executable path replaces the tool Avi finds; empty or not executable is
+# ignored. git defaults to /usr/bin/git; codex and claude apply to AI command
+# templates that start with that name.
 [externalTools]
 gitPath = ""
 ghPath = ""
 glabPath = ""
 codexPath = ""
 claudePath = ""
-editorPath = ""
-terminalPath = ""
-diffToolPath = ""
+diffToolPath = ""          # External Diff runs it with the old and new file; empty uses diff.tool
 mergeToolPath = ""
 # Empty uses Git's merge.tool; a preset id (for example "vscode" or "goland")
 # selects that tool. "custom" runs mergeToolCommand as a shell command.
@@ -63,8 +64,8 @@ mergeTool = ""
 mergeToolCommand = ""
 
 [advanced]
-historyLimit = 200
-verboseLogging = false
+historyLimit = 200         # commits History loads at first, 50 to 5000
+verboseLogging = false     # log every Git command to the system log (Console)
 
 # Pull and merge request titles made from branch names. Every "-" and "_"
 # becomes a space except in ticket keys (INFRA-12345), hyphenated file and
