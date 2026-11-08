@@ -126,7 +126,7 @@ public extension CLIGitProvider {
         arguments += ["--", path]
         // Not through the command queue: the tool stays open until you close
         // it, and Avi's other Git commands must not wait for that.
-        let result = try await Self.launch(gitURL, arguments: arguments, in: repository, environment: nonInteractiveEnvironment())
+        let result = try await launchUnqueued(arguments, in: repository, environment: nonInteractiveEnvironment())
         if result.exitCode == 0 {
             return .resolved
         }
