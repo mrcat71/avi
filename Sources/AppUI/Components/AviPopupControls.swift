@@ -36,27 +36,7 @@ struct AviPopupMenu: View {
 
     var body: some View {
         Button(action: showMenu) {
-            HStack(spacing: 5) {
-                if let symbol {
-                    Image(systemName: symbol)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(DS.Palette.textSecondary)
-                }
-                Text(selection.isEmpty ? placeholder : selection)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: maxWidth, alignment: .leading)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(DS.Palette.textSecondary)
-            }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(DS.Palette.textPrimary)
-            .padding(.leading, symbol == nil ? 11 : 9)
-            .padding(.trailing, 9)
-            .frame(height: 24)
-            .background(Capsule().fill(Color.primary.opacity(isHovering && isEnabled ? 0.12 : 0.08)))
-            .contentShape(Capsule())
+            AviMenuPill(title: selection.isEmpty ? placeholder : selection, symbol: symbol, maxWidth: maxWidth, isHovering: isHovering)
         }
         .buttonStyle(.plain)
         // Its value's width, at most `maxWidth`, whatever the row offers.
@@ -92,6 +72,41 @@ struct AviPopupMenu: View {
     }
 }
 
+/// The pill a menu shows its value in: the value, given up in the middle
+/// past `maxWidth`, and a chevron.
+struct AviMenuPill: View {
+    let title: String
+    var symbol: String?
+    var maxWidth: CGFloat = 220
+    var isHovering = false
+
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(DS.Palette.textSecondary)
+            }
+            Text(title)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: maxWidth, alignment: .leading)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(DS.Palette.textSecondary)
+        }
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(DS.Palette.textPrimary)
+        .padding(.leading, symbol == nil ? 11 : 9)
+        .padding(.trailing, 9)
+        .frame(height: 24)
+        .background(Capsule().fill(Color.primary.opacity(isHovering && isEnabled ? 0.12 : 0.08)))
+        .contentShape(Capsule())
+    }
+}
+
 /// A menu item that runs its own closure.
 final class AviMenuItem: NSMenuItem {
     private let handler: () -> Void
@@ -118,7 +133,7 @@ final class AviMenuAnchor {
     weak var view: NSView?
 }
 
-private struct AviMenuAnchorView: NSViewRepresentable {
+struct AviMenuAnchorView: NSViewRepresentable {
     let anchor: AviMenuAnchor
 
     func makeNSView(context _: Context) -> NSView {
@@ -141,7 +156,7 @@ private struct AviMenuAnchorView: NSViewRepresentable {
 
 /// The well a sheet's text field or editor sits in: a shade off the card,
 /// a hairline around it, and the accent around it while you type.
-private struct AviFieldWell: ViewModifier {
+struct AviFieldWell: ViewModifier {
     let isFocused: Bool
 
     func body(content: Content) -> some View {

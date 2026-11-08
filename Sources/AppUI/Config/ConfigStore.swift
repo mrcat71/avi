@@ -42,6 +42,9 @@ public final class ConfigStore {
     private var watcher: ConfigWatcher?
     private var saveTask: Task<Void, Never>?
     private var ignoreNextWatcherEvent = false
+    /// Whether Git's part of the settings reaches every git command. The app
+    /// turns it on at launch; tests leave Git's defaults alone.
+    private var appliesGitOptions = false
 
     private init() {
         var loaded = AviConfig()
@@ -73,6 +76,7 @@ public final class ConfigStore {
         mutate(&copy)
         guard copy != config else { return }
         config = copy
+        syncGitOptions()
         scheduleSave()
     }
 
@@ -80,7 +84,20 @@ public final class ConfigStore {
     public func replace(with newConfig: AviConfig) {
         guard newConfig != config else { return }
         config = newConfig
+        syncGitOptions()
         saveImmediately()
+    }
+
+    /// Hands the Git settings (identity fallback, signing, pruning, the git
+    /// executable, command logging) to every git command from now on.
+    public func applyGitOptions() {
+        appliesGitOptions = true
+        syncGitOptions()
+    }
+
+    private func syncGitOptions() {
+        guard appliesGitOptions else { return }
+        GitCommandOptions.current = GitCommandOptions(settings: config)
     }
 
     public func reload() {
@@ -93,6 +110,7 @@ public final class ConfigStore {
             let updated = try ConfigStore.readFromDisk()
             if updated != config {
                 config = updated
+                syncGitOptions()
             }
             status = .loaded
         } catch {
@@ -101,8 +119,11 @@ public final class ConfigStore {
         }
     }
 
+    /// Restores every default and deletes the tokens and API key Avi keeps
+    /// in the Keychain.
     public func reset() {
         config = AviConfig()
+        syncGitOptions()
         saveImmediately()
         KeychainStore.deleteAll()
     }

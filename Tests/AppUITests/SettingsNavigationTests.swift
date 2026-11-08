@@ -9,7 +9,7 @@ struct SettingsSearchTests {
     }
 
     static let everySection: [SettingsSection] = [
-        .general, .appearance, .keyboard, .git, .clone, .externalTools, .github, .gitlab, .ai, .agents, .advanced
+        .general, .appearance, .keyboard, .git, .clone, .externalTools, .github, .gitlab, .ai, .agents
     ]
 
     static let cases: [Case] = [
@@ -23,12 +23,42 @@ struct SettingsSearchTests {
         Case(name: "every word has to match", query: "token self-hosted", expected: [.gitlab]),
         Case(name: "words can match different rows", query: "token github", expected: [.github]),
         Case(name: "keyboard finds its shortcuts' actions", query: "command palette", expected: [.keyboard]),
+        Case(name: "settings under Advanced are found too", query: "temperature", expected: [.ai]),
+        Case(name: "the config file is under General", query: "config.toml", expected: [.general]),
         Case(name: "nothing matches", query: "zzz", expected: [])
     ]
 
     @Test(arguments: cases)
     func matching(_ test: Case) {
         #expect(SettingsSection.matching(test.query) == test.expected, "\(test.name)")
+    }
+
+    struct RevealCase: Sendable {
+        let query: String
+        let section: SettingsSection
+        let reveals: Bool
+    }
+
+    @Test(arguments: [
+        RevealCase(query: "temperature", section: .ai, reveals: true),
+        RevealCase(query: "model", section: .ai, reveals: false),
+        RevealCase(query: "AI temperature", section: .ai, reveals: true),
+        RevealCase(query: "sign commits", section: .git, reveals: true),
+        RevealCase(query: "auto fetch", section: .git, reveals: false),
+        RevealCase(query: "git", section: .git, reveals: false),
+        RevealCase(query: "reset all", section: .general, reveals: true),
+        RevealCase(query: "", section: .ai, reveals: false),
+        RevealCase(query: "token", section: .github, reveals: false)
+    ])
+    func searchOpensAdvancedOnlyForWhatIsInside(_ test: RevealCase) {
+        #expect(test.section.revealsAdvanced(for: test.query) == test.reveals, "\(test.query)")
+    }
+
+    @Test
+    func everySectionWithAdvancedSettingsSaysWhatIsInside() {
+        for section in SettingsSection.allCases {
+            #expect(section.advancedKeywords.isEmpty == (section.advancedSummary == nil), "\(section)")
+        }
     }
 
     @Test

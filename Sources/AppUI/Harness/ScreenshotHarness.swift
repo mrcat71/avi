@@ -63,7 +63,10 @@ public enum ScreenshotHarness {
         }
         for section in SettingsSection.allCases where only.isEmpty || only.contains("settings-\(section.rawValue)") {
             log("panel settings-\(section.rawValue)")
-            try await captureSettings(section, into: output)
+            try await captureSettings(section, advanced: false, into: output)
+            if section.advancedSummary != nil {
+                try await captureSettings(section, advanced: true, into: output)
+            }
         }
         settingsWindow?.close()
         NSApp.appearance = nil
@@ -158,10 +161,15 @@ public enum ScreenshotHarness {
     /// Shows `section` in the Settings window itself, `settings-<section>`
     /// such as `settings-git`, so the capture has the window's own sidebar,
     /// search field, and toolbar.
-    private static func captureSettings(_ section: SettingsSection, into output: URL) async throws {
+    private static func captureSettings(_ section: SettingsSection, advanced: Bool, into output: URL) async throws {
         if section == .git {
             ConfigStore.shared.update { $0.pullRequests.keepHyphenated = ["k8s-*-*-ams1"] }
         }
+        // `-advanced` captures open the section's Advanced settings; the
+        // disclosure goes back to closed afterwards.
+        UserDefaults.standard.set(advanced, forKey: SettingsAdvanced.key(for: section))
+        defer { UserDefaults.standard.removeObject(forKey: SettingsAdvanced.key(for: section)) }
+        let name = "settings-\(section.rawValue)" + (advanced ? "-advanced" : "")
         SettingsNavigation.shared.requested = section
         if settingsWindow == nil {
             guard let openSettings else { throw HarnessFailure(message: "nothing can open the Settings window") }
@@ -172,11 +180,12 @@ public enum ScreenshotHarness {
             let windows = NSApp.windows.map { "\($0.identifier?.rawValue ?? "?") \"\($0.title)\"" }
             throw HarnessFailure(message: "the Settings window did not open; windows: \(windows.joined(separator: ", "))")
         }
-        window.setContentSize(CGSize(width: 820, height: 900))
+        // Open Advanced settings make a long page; the taller window shows it whole.
+        window.setContentSize(CGSize(width: 820, height: advanced ? 1700 : 900))
         for appearance in ["light", "dark"] {
             NSApp.appearance = NSAppearance(named: appearance == "light" ? .aqua : .darkAqua)
             try await Task.safeSleep(for: .milliseconds(1800))
-            try capture(window, to: output.appendingPathComponent("settings-\(section.rawValue)-\(appearance).png"))
+            try capture(window, to: output.appendingPathComponent("\(name)-\(appearance).png"))
         }
     }
 

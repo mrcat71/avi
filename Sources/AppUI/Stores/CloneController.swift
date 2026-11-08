@@ -48,12 +48,18 @@ public final class CloneController {
     public private(set) var finishedWarning: String?
 
     private var browsingAccount: CloneAccount?
+    private let destinations: CloneDestinations
     private var destinationEdited = false
     private var settingDestination = false
     private var loadTask: Task<Void, Never>?
     private var cloneTask: Task<Void, Never>?
 
-    public init() {
+    public convenience init() {
+        self.init(destinations: CloneDestinations())
+    }
+
+    init(destinations: CloneDestinations) {
+        self.destinations = destinations
         let config = ConfigStore.shared.config.clone
         openAfterClone = config.openAfterClone
         transport = config.preferredProtocol == "ssh" ? .ssh : .https
@@ -323,6 +329,7 @@ public final class CloneController {
             credential: credential,
             host: cloneURL?.host
         )
+        let host = cloneURL?.host
 
         state = .cloning
         progress = nil
@@ -340,6 +347,9 @@ public final class CloneController {
                     return
                 }
                 if outcome.success {
+                    if ConfigStore.shared.config.clone.rememberDestinationPerProvider {
+                        destinations.remember(outcome.destination.deletingLastPathComponent(), for: host)
+                    }
                     finishedWarning = outcome.warning
                     state = .finished(outcome.destination)
                 } else {
@@ -353,12 +363,41 @@ public final class CloneController {
         }
     }
 
+    /// The folder the last clone from this host went to, when Settings >
+    /// Clone remembers it, else the clone directory.
     private func defaultDestination() -> String {
-        let base = expand(path: ConfigStore.shared.config.clone.defaultDirectory)
+        let config = ConfigStore.shared.config.clone
+        let remembered = config.rememberDestinationPerProvider ? destinations.folder(for: cloneURL?.host) : nil
+        let base = remembered ?? expand(path: config.defaultDirectory)
         return URL(fileURLWithPath: base, isDirectory: true).appendingPathComponent(repositoryName).path
     }
 
     private func expand(path: String) -> String {
         (path as NSString).expandingTildeInPath
+    }
+}
+
+/// Where the last clone from each host went, for Settings > Clone >
+/// Remember destination. Kept in user defaults rather than config.toml: it
+/// is what you did, not a choice you made.
+struct CloneDestinations {
+    static let key = "avi.clone.lastFolderByHost"
+    var defaults: UserDefaults = .standard
+
+    /// The folder the last clone from `host` went to, while it exists.
+    func folder(for host: String?) -> String? {
+        guard let host = host?.lowercased(), !host.isEmpty,
+              let saved = (defaults.dictionary(forKey: Self.key) as? [String: String])?[host]
+        else { return nil }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: saved, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
+        return saved
+    }
+
+    func remember(_ folder: URL, for host: String?) {
+        guard let host = host?.lowercased(), !host.isEmpty else { return }
+        var all = defaults.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+        all[host] = folder.path
+        defaults.set(all, forKey: Self.key)
     }
 }

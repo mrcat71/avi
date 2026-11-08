@@ -1,10 +1,10 @@
 import GitKit
 import SwiftUI
 
-/// Settings > External Tools > Merge Tool: which app opens a conflicted file
+/// Settings > External Tools > Merge tool: which app opens a conflicted file
 /// from Changes. Avi resolves conflicts by itself too; this is for when you
 /// want a three-way merge in your own tool.
-struct MergeToolSettings: View {
+struct MergeToolRow: View {
     @Bindable var store: ConfigStore
 
     /// Where each preset found on this Mac is, by id, once looked up.
@@ -13,50 +13,47 @@ struct MergeToolSettings: View {
     @State private var gitMergeTool: String?
 
     var body: some View {
-        SettingsGroup("Merge Tool") {
-            SettingsFormRow("Open conflicts in", description: "For Merge Tool in Changes") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Picker("Merge tool", selection: choice) {
-                        Text(gitDefaultLabel).tag("")
-                        Divider()
-                        ForEach(choices) { preset in
-                            Text(isInstalled(preset) ? preset.name : "\(preset.name) (not found)").tag(preset.id)
-                        }
-                        Divider()
-                        Text("Custom Command").tag(MergeToolCatalog.customID)
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 320, alignment: .leading)
-
-                    detail
-                }
-            }
+        SettingsFormRow("Merge tool", description: "For Merge Tool on a conflicted file in Changes.") {
+            SettingsPopupMenu("Merge tool", selection: binding(\.mergeTool), items: items, fallbackTitle: store.config.externalTools.mergeTool)
+        } detail: {
+            detail
+                .padding(.top, 6)
         }
         .task {
             await load()
         }
     }
 
+    private var items: [SettingsPopupMenu<String>.Item] {
+        [.option("", gitDefaultLabel), .divider]
+            + choices.map { .option($0.id, isInstalled($0) ? $0.name : "\($0.name) (not found)") }
+            + [.divider, .option(MergeToolCatalog.customID, "Custom Command")]
+    }
+
     @ViewBuilder
     private var detail: some View {
         let selected = store.config.externalTools.mergeTool
         if selected == MergeToolCatalog.customID {
-            TextField(#"'/path/to/tool' "$LOCAL" "$REMOTE" "$BASE" "$MERGED""#, text: binding(\.mergeToolCommand))
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11, design: .monospaced))
-                .frame(maxWidth: 420)
-            note("A shell command. $LOCAL is Current's version, $REMOTE Incoming's, $BASE their common ancestor, and $MERGED the file to write. "
-                + "Avi waits for it to exit, and Git marks the file resolved if $MERGED changed.")
-        } else if let preset = MergeToolCatalog.preset(id: selected) {
-            if let path = paths?[preset.id] {
-                note("Found at \(path)")
-            } else if paths != nil {
-                note("Not found where Avi looks. Set its path below.")
+            VStack(alignment: .leading, spacing: 4) {
+                SettingsTextField(
+                    "Merge command",
+                    text: binding(\.mergeToolCommand),
+                    prompt: #"'/path/to/tool' "$LOCAL" "$REMOTE" "$BASE" "$MERGED""#,
+                    monospaced: true,
+                    maxWidth: 420
+                )
+                note("A shell command. $LOCAL is Current's version, $REMOTE Incoming's, $BASE their common ancestor, "
+                    + "and $MERGED the file to write. Avi waits for it to exit, and Git marks the file resolved if $MERGED changed.")
             }
-            TextField("Override path…", text: binding(\.mergeToolPath))
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11, design: .monospaced))
-                .frame(maxWidth: 420)
+        } else if let preset = MergeToolCatalog.preset(id: selected) {
+            VStack(alignment: .leading, spacing: 4) {
+                if let path = paths?[preset.id] {
+                    note("Found at \(path)")
+                } else if paths != nil {
+                    note("Not found where Avi looks. Set its path below.")
+                }
+                SettingsTextField("Merge tool path", text: binding(\.mergeToolPath), prompt: "Path to use instead", monospaced: true, maxWidth: 420)
+            }
         } else {
             note(gitMergeTool == nil
                 ? "Git's merge.tool is not set, so Git uses the first tool it finds, such as FileMerge."
@@ -88,10 +85,6 @@ struct MergeToolSettings: View {
         paths?[preset.id] != nil
     }
 
-    private var choice: Binding<String> {
-        binding(\.mergeTool)
-    }
-
     private func binding(_ key: WritableKeyPath<ExternalToolsConfig, String>) -> Binding<String> {
         Binding(
             get: { store.config.externalTools[keyPath: key] },
@@ -105,11 +98,11 @@ struct MergeToolSettings: View {
                 found[preset.id] = MergeToolCatalog.executable(of: preset)
             }
         }.value
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let git = GitCommandOptions.invocation(["config", "--global", "--get", "merge.tool"])
         let result = try? await ProcessRunner.run(
-            executable: URL(fileURLWithPath: "/usr/bin/env"),
-            arguments: ["git", "config", "--global", "--get", "merge.tool"],
-            workingDirectory: home
+            executable: git.executable,
+            arguments: git.arguments,
+            workingDirectory: FileManager.default.homeDirectoryForCurrentUser
         )
         let value = result.flatMap { $0.exitCode == 0 ? $0.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines) : nil }
         gitMergeTool = value?.isEmpty == false ? value : nil

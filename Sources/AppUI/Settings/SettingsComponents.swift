@@ -73,25 +73,41 @@ struct SettingsSwitchStyle: ToggleStyle {
 
 /// A card of rows under a bold title. Put a `SettingsDivider` between rows.
 /// A card about one thing, such as Avi itself, starts with a
-/// `SettingsHeroRow` and needs no title.
-struct SettingsGroup<Content: View>: View {
+/// `SettingsHeroRow` and needs no title. `accessory` sits at the end of the
+/// title, such as a Re-detect button; `footer` explains the card under it.
+struct SettingsGroup<Content: View, Accessory: View>: View {
     let title: String?
+    let footer: String?
     let content: Content
+    let accessory: Accessory
 
-    init(_ title: String? = nil, @ViewBuilder content: () -> Content) {
+    init(
+        _ title: String? = nil,
+        footer: String? = nil,
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder accessory: () -> Accessory
+    ) {
         self.title = title
+        self.footer = footer
         self.content = content()
+        self.accessory = accessory()
     }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Glass.Corner.card, style: .continuous)
         VStack(alignment: .leading, spacing: 8) {
-            if let title {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(DS.Palette.textPrimary)
-                    .padding(.horizontal, SettingsMetrics.inset)
-                    .accessibilityAddTraits(.isHeader)
+            if title != nil || Accessory.self != EmptyView.self {
+                HStack(alignment: .center, spacing: 8) {
+                    if let title {
+                        Text(title)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(DS.Palette.textPrimary)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    Spacer(minLength: 8)
+                    accessory
+                }
+                .padding(.horizontal, SettingsMetrics.inset)
             }
             VStack(alignment: .leading, spacing: 0) {
                 content
@@ -99,15 +115,107 @@ struct SettingsGroup<Content: View>: View {
             .padding(.horizontal, SettingsMetrics.inset)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(shape.fill(DS.Palette.groupFill))
+            if let footer {
+                Text(footer)
+                    .font(.system(size: 11))
+                    .foregroundStyle(DS.Palette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, SettingsMetrics.inset)
+            }
         }
         .toggleStyle(SettingsSwitchStyle())
         .padding(.bottom, 24)
     }
 }
 
+extension SettingsGroup where Accessory == EmptyView {
+    init(_ title: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title, footer: footer, content: content, accessory: { EmptyView() })
+    }
+}
+
+/// Which sections show their Advanced settings, remembered per section.
+enum SettingsAdvanced {
+    static func key(for section: SettingsSection) -> String {
+        "avi.settings.showAdvanced.\(section.rawValue)"
+    }
+
+    /// Opens `section`'s Advanced settings, as a search that finds a row in
+    /// them does.
+    static func reveal(_ section: SettingsSection, defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: key(for: section))
+    }
+}
+
+/// The settings most people never change, at the end of a section under a
+/// row that says what is inside: closed at first, remembered per section,
+/// and opened by a search that finds one of them.
+struct SettingsAdvancedSection<Content: View>: View {
+    let section: SettingsSection
+    let content: Content
+
+    @AppStorage private var isExpanded: Bool
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(_ section: SettingsSection, @ViewBuilder content: () -> Content) {
+        self.section = section
+        self.content = content()
+        _isExpanded = AppStorage(wrappedValue: false, SettingsAdvanced.key(for: section))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            disclosure
+                .padding(.bottom, 24)
+            if isExpanded {
+                content
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private var disclosure: some View {
+        let shape = RoundedRectangle(cornerRadius: Glass.Corner.card, style: .continuous)
+        return Button {
+            withAnimation(reduceMotion ? nil : Glass.Motion.snappy) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Advanced")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(DS.Palette.textPrimary)
+                    if let summary = section.advancedSummary {
+                        Text(summary)
+                            .font(.system(size: 11))
+                            .foregroundStyle(DS.Palette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DS.Palette.textSecondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            }
+            .padding(.horizontal, SettingsMetrics.inset)
+            .padding(.vertical, 10)
+            .background(shape.fill(Color.primary.opacity(isHovering ? 0.07 : 0.045)))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("Advanced settings")
+        .accessibilityValue(isExpanded ? "Shown" : "Hidden")
+        .accessibilityHint(section.advancedSummary ?? "")
+    }
+}
+
 /// A setting: what it is and does on the left, its control on the right.
 /// `.stacked` puts a wide control, such as a text editor, under the label.
-/// `detail` goes under the description, for a status the control acts on.
+/// `detail` goes under the row, for a status the control acts on.
 struct SettingsFormRow<Content: View, Detail: View>: View {
     enum Layout {
         case inline
@@ -134,8 +242,11 @@ struct SettingsFormRow<Content: View, Detail: View>: View {
         self.detail = detail()
     }
 
+    /// The control stays centered on the label and description; `detail`
+    /// takes the row's whole width under them, so a status or a path field
+    /// never pushes the control down.
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 0) {
             switch layout {
             case .inline:
                 HStack(alignment: .center, spacing: 16) {
@@ -150,6 +261,8 @@ struct SettingsFormRow<Content: View, Detail: View>: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            detail
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 10)
     }
@@ -168,7 +281,6 @@ struct SettingsFormRow<Content: View, Detail: View>: View {
                     .foregroundStyle(DS.Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            detail
         }
     }
 }
@@ -290,5 +402,191 @@ struct SettingsAppIcon: View {
         } else {
             SettingsIcon(symbol: SettingsSection.general.systemImage, tint: SettingsSection.general.tint, size: size)
         }
+    }
+}
+
+/// A choice among a few values, drawn as the flat pill the sheets use
+/// instead of a pop-up button. `items` can hold dividers and actions, such
+/// as Choose… for a value the list does not have; `fallbackTitle` names a
+/// selection that is not among the options.
+struct SettingsPopupMenu<Value: Hashable>: View {
+    enum Item {
+        case option(Value, String)
+        case divider
+        case action(String, () -> Void)
+    }
+
+    let label: String
+    @Binding var selection: Value
+    let items: [Item]
+    var fallbackTitle = ""
+    var maxWidth: CGFloat = 240
+
+    @State private var anchor = AviMenuAnchor()
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    init(
+        _ label: String,
+        selection: Binding<Value>,
+        items: [Item],
+        fallbackTitle: String = "",
+        maxWidth: CGFloat = 240
+    ) {
+        self.label = label
+        _selection = selection
+        self.items = items
+        self.fallbackTitle = fallbackTitle
+        self.maxWidth = maxWidth
+    }
+
+    var body: some View {
+        Button(action: showMenu) {
+            AviMenuPill(title: currentTitle, maxWidth: maxWidth, isHovering: isHovering)
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .background(AviMenuAnchorView(anchor: anchor))
+        .opacity(isEnabled ? 1 : 0.45)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(label)
+        .accessibilityValue(currentTitle)
+        .accessibilityHint("Opens a menu")
+    }
+
+    private var currentTitle: String {
+        Self.title(of: selection, in: items) ?? fallbackTitle
+    }
+
+    static func title(of value: Value, in items: [Item]) -> String? {
+        for case let .option(option, title) in items where option == value {
+            return title
+        }
+        return nil
+    }
+
+    /// The menu a click opens: the options with the chosen one ticked, then
+    /// any dividers and actions where `items` puts them.
+    static func menu(items: [Item], selection: Value, choose: @escaping (Value) -> Void) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for item in items {
+            switch item {
+            case let .option(value, title):
+                let menuItem = AviMenuItem(title: title) { choose(value) }
+                menuItem.state = value == selection ? .on : .off
+                menu.addItem(menuItem)
+            case .divider:
+                menu.addItem(.separator())
+            case let .action(title, perform):
+                menu.addItem(AviMenuItem(title: title, handler: perform))
+            }
+        }
+        return menu
+    }
+
+    private func showMenu() {
+        guard let view = anchor.view, !items.isEmpty else { return }
+        let menu = Self.menu(items: items, selection: selection) { selection = $0 }
+        menu.minimumWidth = view.bounds.width
+        let below = view.isFlipped ? view.bounds.height + 4 : -4
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: below), in: view)
+    }
+}
+
+/// A one-line text field in a settings row, drawn flat like the sheets'
+/// fields: a shade off the card, a hairline, the accent while you type.
+struct SettingsTextField: View {
+    let label: String
+    @Binding var text: String
+    var prompt: String?
+    var monospaced = false
+    var isSecure = false
+    var maxWidth: CGFloat = 320
+
+    @FocusState private var isFocused: Bool
+
+    init(
+        _ label: String,
+        text: Binding<String>,
+        prompt: String? = nil,
+        monospaced: Bool = false,
+        isSecure: Bool = false,
+        maxWidth: CGFloat = 320
+    ) {
+        self.label = label
+        _text = text
+        self.prompt = prompt
+        self.monospaced = monospaced
+        self.isSecure = isSecure
+        self.maxWidth = maxWidth
+    }
+
+    var body: some View {
+        Group {
+            if isSecure {
+                SecureField(label, text: $text, prompt: prompt.map { Text($0) })
+            } else {
+                TextField(label, text: $text, prompt: prompt.map { Text($0) })
+            }
+        }
+        .textFieldStyle(.plain)
+        .font(monospaced ? .system(size: 12, design: .monospaced) : .system(size: 13))
+        .focused($isFocused)
+        .padding(.horizontal, 8)
+        .frame(height: 26)
+        .frame(maxWidth: maxWidth)
+        .modifier(AviFieldWell(isFocused: isFocused))
+        .accessibilityLabel(label)
+    }
+}
+
+/// A few words of status in a row, such as Found or Not signed in, in the
+/// status's color with a symbol, so the color is never all it says.
+struct SettingsStatus: View {
+    enum Tone {
+        case success
+        case warning
+        case error
+        case neutral
+
+        var color: Color {
+            switch self {
+            case .success: return DS.Palette.success
+            case .warning: return DS.Palette.warning
+            case .error: return DS.Palette.danger
+            case .neutral: return DS.Palette.textSecondary
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .success: return "checkmark.circle.fill"
+            case .warning: return "exclamationmark.triangle.fill"
+            case .error: return "xmark.circle.fill"
+            case .neutral: return "circle.dashed"
+            }
+        }
+    }
+
+    let text: String
+    var tone: Tone = .neutral
+    var symbol: String?
+
+    init(_ text: String, tone: Tone = .neutral, symbol: String? = nil) {
+        self.text = text
+        self.tone = tone
+        self.symbol = symbol
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: symbol ?? tone.symbol)
+                .font(.system(size: 11))
+            Text(text)
+                .font(.system(size: 11, weight: .medium))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(tone.color)
     }
 }

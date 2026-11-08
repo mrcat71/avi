@@ -131,16 +131,16 @@ struct HistorySearchTests {
         let store = RepositoryStore(git: provider)
         await store.open(URL(fileURLWithPath: "/tmp/avi-history-window"))
         await store.refresh()
-        #expect(store.historyRows.count == RepositoryStore.historyPageSize)
+        #expect(store.historyRows.count == RepositoryStore.initialHistoryWindow)
         #expect(store.hasOlderHistory)
 
         await store.loadOlderHistory()
-        #expect(store.historyRows.count == RepositoryStore.historyPageSize + RepositoryStore.historyOlderStep)
+        #expect(store.historyRows.count == RepositoryStore.initialHistoryWindow + RepositoryStore.historyOlderStep)
         #expect(store.hasOlderHistory)
 
         // A refresh keeps the larger window.
         await store.refresh()
-        #expect(store.historyRows.count == RepositoryStore.historyPageSize + RepositoryStore.historyOlderStep)
+        #expect(store.historyRows.count == RepositoryStore.initialHistoryWindow + RepositoryStore.historyOlderStep)
 
         await store.loadOlderHistory()
         #expect(store.historyRows.count == commits.count)

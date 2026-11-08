@@ -99,7 +99,14 @@ struct RepositoryView: View {
             await autoFetchWhileShown()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { await store.autoFetchIfDue(interval: ConfigStore.shared.config.git.autoFetchInterval) }
+            Task {
+                // Without auto-refresh nothing watches the files, so coming
+                // back to Avi is when it catches up.
+                if !ConfigStore.shared.config.git.autoRefresh {
+                    await store.refresh()
+                }
+                await store.autoFetchIfDue(interval: ConfigStore.shared.config.git.autoFetchInterval)
+            }
         }
         .onChange(of: store.entries.isEmpty) { _, _ in
             applyInitialSelectionIfNeeded()

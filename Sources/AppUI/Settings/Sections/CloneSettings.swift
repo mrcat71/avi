@@ -6,57 +6,52 @@ struct CloneSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsGroup("Default location") {
-                SettingsFormRow(
-                    "Clone directory",
-                    description: "New clones land here unless you pick a different folder"
-                ) {
+            SettingsGroup("Clone") {
+                SettingsFormRow("Clone directory", description: "New clones go here unless you pick another folder.") {
                     HStack(spacing: 6) {
-                        TextField("~/Developer", text: bind(\.clone.defaultDirectory))
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12, design: .monospaced))
-                        Button("Choose…") { chooseDirectory() }
+                        SettingsTextField("Clone directory", text: bind(\.clone.defaultDirectory), prompt: "~/Developer", monospaced: true, maxWidth: 260)
+                        Button("Choose…", action: chooseDirectory)
                     }
-                }
-            }
-
-            SettingsGroup("Behavior") {
-                SettingsFormRow(
-                    "After clone",
-                    description: "Open the cloned repository automatically"
-                ) {
-                    Toggle("Open repository after clone", isOn: bind(\.clone.openAfterClone))
-                        .labelsHidden()
                 }
                 SettingsDivider()
                 SettingsFormRow(
                     "Protocol",
-                    description: "What a repository from GitHub or GitLab is cloned over; each clone can switch"
+                    description: "What a repository from GitHub or GitLab is cloned over. Each clone can switch."
                 ) {
-                    Picker("", selection: bind(\.clone.preferredProtocol)) {
+                    Picker("Protocol", selection: bind(\.clone.preferredProtocol)) {
                         Text("HTTPS").tag("https")
                         Text("SSH").tag("ssh")
                     }
                     .pickerStyle(.segmented)
-                    .frame(maxWidth: 200)
+                    .frame(maxWidth: 160)
                     .labelsHidden()
                 }
                 SettingsDivider()
-                SettingsFormRow(
-                    "Remember destination",
-                    description: "Reuse the last destination folder per provider"
-                ) {
-                    Toggle("Remember destination per provider", isOn: bind(\.clone.rememberDestinationPerProvider))
+                SettingsFormRow("Open after cloning", description: "Opens the new repository in a tab.") {
+                    Toggle("Open after cloning", isOn: bind(\.clone.openAfterClone))
                         .labelsHidden()
+                }
+            }
+
+            SettingsAdvancedSection(.clone) {
+                SettingsGroup("Destination") {
+                    SettingsFormRow(
+                        "Remember the folder per host",
+                        description: "A clone from a host you cloned from before goes to the same folder as the last one, "
+                            + "such as work repositories from your GitLab. Off always starts in the clone directory."
+                    ) {
+                        Toggle("Remember the folder per host", isOn: bind(\.clone.rememberDestinationPerProvider))
+                            .labelsHidden()
+                    }
                 }
             }
         }
     }
 
-    private func bind<T>(_ kp: WritableKeyPath<AviConfig, T>) -> Binding<T> {
+    private func bind<T>(_ keyPath: WritableKeyPath<AviConfig, T>) -> Binding<T> {
         Binding(
-            get: { store.config[keyPath: kp] },
-            set: { v in store.update { $0[keyPath: kp] = v } }
+            get: { store.config[keyPath: keyPath] },
+            set: { value in store.update { $0[keyPath: keyPath] = value } }
         )
     }
 

@@ -24,6 +24,9 @@ final class AviPopupMenuTests: XCTestCase {
 
     func testMenuTicksTheChosenOptionAndChoosesTheClickedOne() {
         MainActor.assumeIsolated {
+            // A menu item's action goes through the app, which may not exist
+            // yet when this test runs first.
+            _ = NSApplication.shared
             let chosen = Chosen()
             let menu = AviPopupMenu.menu(options: ["main", "release/2026-10"], selection: "main") { chosen.values.append($0) }
             XCTAssertEqual(menu.items.map(\.title), ["main", "release/2026-10"])

@@ -52,7 +52,7 @@ public final class RepositoryStore: Identifiable {
     public private(set) var isHistoryLoading = false
     /// Commits History asks Git for. Load Older Commits raises it for the rest
     /// of the session, and later refreshes keep it.
-    public private(set) var historyWindow = RepositoryStore.historyPageSize
+    public private(set) var historyWindow = RepositoryStore.initialHistoryWindow
     /// The limit the last history load ended up using, after it grew the
     /// window to reach the parents of side branches.
     private var historyLoadedLimit = 0
@@ -266,6 +266,7 @@ public final class RepositoryStore: Identifiable {
             remoteOutput = nil
             lastAutoFetchAttempt = nil
             autoFetchFailure = nil
+            historyWindow = Self.initialHistoryWindow
             clearHistorySelection()
             expandedFolders = []
             lastSeenFolderIds = []
@@ -896,8 +897,12 @@ public final class RepositoryStore: Identifiable {
         await refreshHistory()
     }
 
-    public static let historyPageSize = 200
     public static let historyOlderStep = 1000
+
+    /// Settings > Git > Advanced > Commits to load: what History loads at first.
+    static var initialHistoryWindow: Int {
+        ConfigStore.shared.config.advanced.clampedHistoryLimit
+    }
 
     public func refreshHistory() async {
         guard let root else { return }
@@ -1230,7 +1235,8 @@ public final class RepositoryStore: Identifiable {
                     model: config.model,
                     lowLimit: config.subjectSoftLimit,
                     highLimit: config.subjectHardLimit,
-                    guideLine: config.bodyWrap
+                    guideLine: config.bodyWrap,
+                    conventionalCommits: config.conventionalCommits
                 )
                 let prompt = PromptRenderer.render(template: config.promptTemplate, context: context)
                 let engine = AIEngineFactory.make(config: config)
@@ -1539,6 +1545,9 @@ public final class RepositoryStore: Identifiable {
     private func startWatching(_ url: URL, commonDir: URL? = nil) {
         let watcher = RepositoryWatcher(url: url, additionalPaths: [commonDir].compactMap(\.self)) { [weak self] in
             Task { @MainActor in
+                // Settings > Git > Auto-refresh off: Avi refreshes after its
+                // own commands and when you come back to it, not on every change.
+                guard ConfigStore.shared.config.git.autoRefresh else { return }
                 self?.scheduleAutoRefresh()
             }
         }
@@ -1613,6 +1622,7 @@ public final class RepositoryStore: Identifiable {
                     lowLimit: config.subjectSoftLimit,
                     highLimit: config.subjectHardLimit,
                     guideLine: config.bodyWrap,
+                    conventionalCommits: config.conventionalCommits,
                     existingMessage: existing,
                     commitDiff: diff
                 )
@@ -1871,7 +1881,8 @@ public final class RepositoryStore: Identifiable {
             model: config.model,
             lowLimit: config.subjectSoftLimit,
             highLimit: config.subjectHardLimit,
-            guideLine: config.bodyWrap
+            guideLine: config.bodyWrap,
+            conventionalCommits: config.conventionalCommits
         )
         let prompt = PromptRenderer.render(template: config.splitPromptTemplate, context: context)
         let engine = AIEngineFactory.make(config: config)
