@@ -414,6 +414,7 @@ private struct PickerRepoRow: View {
             Divider()
             Button("Reveal in Finder") { onReveal() }
             Button("Open in Terminal") { onOpenInTerminal() }
+            OpenInEditorButton(url: entry.url)
             Button("Copy Path") { onCopyPath() }
             Divider()
             Button("Remove from Recent", role: .destructive) { onRemove() }

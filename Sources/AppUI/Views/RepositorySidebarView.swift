@@ -1228,6 +1228,8 @@ private struct WorktreeRow: View {
                 FolderActions.openInTerminal(worktree.path)
             }
             .disabled(worktree.isPrunable)
+            OpenInEditorButton(url: worktree.path)
+                .disabled(worktree.isPrunable)
             Button("Reveal in Finder") {
                 NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: worktree.path.path)
             }
