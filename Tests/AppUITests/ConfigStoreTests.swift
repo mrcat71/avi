@@ -66,15 +66,16 @@ struct ConfigStoreTests {
     }
 
     @Test(arguments: [
-        (#"{}"#, "gpt-6-luna"),
-        (#"{"model": ""}"#, "gpt-6-luna"),
-        (#"{"model": "  "}"#, "gpt-6-luna"),
+        (#"{}"#, "gpt-6.1-luna"),
+        (#"{"model": ""}"#, "gpt-6.1-luna"),
+        (#"{"model": "  "}"#, "gpt-6.1-luna"),
+        (#"{"model": "gpt-6-luna"}"#, "gpt-6-luna"),
         (#"{"model": "gpt-5.5"}"#, "gpt-5.5")
     ])
     func aiModelDefaultsToLunaUntilOneIsChosen(json: String, expected: String) throws {
         let decoded = try JSONDecoder().decode(AIConfig.self, from: Data(json.utf8))
         #expect(decoded.model == expected)
-        #expect(AIConfig().model == "gpt-6-luna")
+        #expect(AIConfig().model == "gpt-6.1-luna")
     }
 
     @Test func agentsSectionRoundTripsThroughTOML() throws {

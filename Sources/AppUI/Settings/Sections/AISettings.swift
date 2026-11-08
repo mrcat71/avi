@@ -78,7 +78,7 @@ struct AISettingsView: View {
                 }
                 SettingsDivider()
                 SettingsFormRow("Model") {
-                    TextField("gpt-6-luna / gpt-6-sol / ...", text: bind(\.ai.model))
+                    TextField("gpt-6.1-luna / gpt-6.1-sol / ...", text: bind(\.ai.model))
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 280)
                 }

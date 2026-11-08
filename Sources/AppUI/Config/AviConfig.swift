@@ -352,8 +352,8 @@ public struct AIConfig: Codable, Equatable, Sendable {
         self.planRevisionPromptTemplate = planRevisionPromptTemplate
     }
 
-    /// OpenAI's efficient GPT-6 model: fast and cheap enough for commit messages.
-    public static let defaultModel = "gpt-6-luna"
+    /// Default model for AI-assisted commit messages.
+    public static let defaultModel = "gpt-6.1-luna"
 
     public static let defaultPromptTemplate = """
     Generate commit message for ${target}.

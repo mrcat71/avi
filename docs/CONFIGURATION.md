@@ -36,7 +36,7 @@ A complete example with every section is in
 | `appearance`     | Theme (`system`, `light`, `dark`), row density, the diff's font (`diffFont`, any installed monospaced family; `SF Mono` is the system one) and text size (`fontSize`, 11 to 16; diffs use one point less), file-list mode (tree / flat), graph lane width, and `authorPictures`: show author pictures beside their names in History, from the GitHub or GitLab account that wrote each commit (asked with a token from Settings or your `gh` or `glab` sign-in), else looked up by address there and on Gravatar (default `true`; `false` shows the names alone and contacts no server). |
 | `git`            | Default author identity, fetch interval, auto-refresh, terminal/editor. `terminalApp` is the app **Open in Terminal** opens a repository or worktree folder in; empty uses Terminal. |
 | `clone`          | Default clone directory, and whether a clone starts on HTTPS or SSH.    |
-| `ai`             | AI commit-message backend (command / openai), model (default `gpt-6-luna`), prompts, limits, timeout. |
+| `ai`             | AI commit-message backend (command / openai), model (default `gpt-6.1-luna`), prompts, limits, timeout. |
 | `agents`         | `enabled`: accept proposals from local agents through the `avi` command. See [`AGENT-INTEGRATION.md`](AGENT-INTEGRATION.md). |
 | `pullRequests`   | How pull request titles are made from branch names, and whether new requests start as drafts. See [Pull request titles](#pull-request-titles). |
 | `externalTools`  | Override paths to `git`, `gh`, `glab`, `codex`, `claude`, editors. `diffToolPath` is the tool **External Diff** opens; empty uses Git's `diff.tool`. Merge-tool selection is described below. |

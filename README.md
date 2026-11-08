@@ -160,7 +160,7 @@ around provider authentication, OAuth, and multi-account flows.
   `INFRA-12345 upgrade k8s-infra-ah-ams1 ingress`.
 - AI-assisted commit message generation, one click on **Generate** in the
   commit card, through a configurable command or the OpenAI API (default model
-  `gpt-6-luna`). AI work shows how long it has been running, and an IDE-style
+  `gpt-6.1-luna`). AI work shows how long it has been running, and an IDE-style
   debug drawer shows the underlying run.
 - Config file with live reload; secrets stored in the macOS Keychain.
 - Repository picker with search, lazy metadata hydration, and cloning from any
