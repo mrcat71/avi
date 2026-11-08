@@ -11,6 +11,8 @@ public struct PromptContext {
     public let lowLimit: Int
     public let highLimit: Int
     public let guideLine: Int
+    /// Settings > AI Commit Messages > Conventional Commits, as `${style}`.
+    public let conventionalCommits: Bool
     public let existingMessage: String
     public let commitDiff: String
     /// What you asked the AI to change about planned commits.
@@ -27,6 +29,7 @@ public struct PromptContext {
         lowLimit: Int,
         highLimit: Int,
         guideLine: Int,
+        conventionalCommits: Bool = true,
         existingMessage: String = "",
         commitDiff: String = "",
         instructions: String = "",
@@ -41,6 +44,7 @@ public struct PromptContext {
         self.lowLimit = lowLimit
         self.highLimit = highLimit
         self.guideLine = guideLine
+        self.conventionalCommits = conventionalCommits
         self.existingMessage = existingMessage
         self.commitDiff = commitDiff
         self.instructions = instructions
@@ -62,6 +66,7 @@ enum PromptRenderer {
             "lowLimit": "\(context.lowLimit)",
             "highLimit": "\(context.highLimit)",
             "guideLine": "\(context.guideLine)",
+            "style": style(conventional: context.conventionalCommits),
             "existing_message": context.existingMessage,
             "commit_diff": context.commitDiff,
             "instructions": context.instructions,
@@ -88,5 +93,12 @@ enum PromptRenderer {
         }
         output += rest
         return output
+    }
+
+    /// What `${style}` asks of the first line of each message.
+    static func style(conventional: Bool) -> String {
+        conventional
+            ? "Use Conventional Commits style: <type>(<scope>): <summary> on the first line."
+            : "Write the first line as a short imperative sentence, with no type or scope prefix."
     }
 }

@@ -134,17 +134,17 @@ enum MergeToolCatalog {
         if id == customID {
             let command = config.mergeToolCommand.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !command.isEmpty else {
-                throw Unavailable(message: "The custom merge tool has no command. Write one in Settings > External Tools > Merge Tool.")
+                throw Unavailable(message: "The custom merge tool has no command. Write one in Settings > External Tools > Merge tool.")
             }
             return MergeToolLaunch(name: "avi-custom", command: command, trustExitCode: false)
         }
         guard let preset = preset(id: id) else {
-            throw Unavailable(message: "Avi does not know the merge tool '\(id)'. Choose another in Settings > External Tools > Merge Tool.")
+            throw Unavailable(message: "Avi does not know the merge tool '\(id)'. Choose another in Settings > External Tools > Merge tool.")
         }
         let override = config.mergeToolPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let path = override.isEmpty ? find(preset) : (override as NSString).expandingTildeInPath else {
             throw Unavailable(message: "\(preset.name) is not installed where Avi looks for it. "
-                + "Set its path in Settings > External Tools > Merge Tool, or choose another tool.")
+                + "Set its path in Settings > External Tools > Merge tool, or choose another tool.")
         }
         switch preset.launch {
         case let .git(name):

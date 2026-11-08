@@ -386,6 +386,7 @@ public extension RepositoryStore {
                     lowLimit: config.subjectSoftLimit,
                     highLimit: config.subjectHardLimit,
                     guideLine: config.bodyWrap,
+                    conventionalCommits: config.conventionalCommits,
                     instructions: instructions.trimmingCharacters(in: .whitespacesAndNewlines),
                     plan: Self.planJSON(targets)
                 )
@@ -437,7 +438,8 @@ public extension RepositoryStore {
                     model: config.model,
                     lowLimit: config.subjectSoftLimit,
                     highLimit: config.subjectHardLimit,
-                    guideLine: config.bodyWrap
+                    guideLine: config.bodyWrap,
+                    conventionalCommits: config.conventionalCommits
                 )
                 guard let raw = try await askAI(PromptRenderer.render(template: config.promptTemplate, context: context), config: config) else { return }
                 let (subject, body) = splitGeneratedMessage(raw)

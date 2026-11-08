@@ -11,18 +11,26 @@ public struct AIValidationReport: Equatable, Sendable {
 /// Pre-flight checks for AI generation. Run from Settings ("Re-check") and
 /// from `RepositoryStore.generateCommitMessage` before launching a subprocess.
 public enum AICLIValidator {
+    /// Checks `config` with the codex and claude paths from Settings.
+    @MainActor
     public static func validate(_ config: AIConfig) async -> AIValidationReport {
+        await validate(config, executables: ConfigStore.shared.config.externalTools.aiExecutables)
+    }
+
+    /// `executables` are paths chosen in Settings, by the name a command
+    /// template starts with.
+    static func validate(_ config: AIConfig, executables: [String: String]) async -> AIValidationReport {
         switch config.backend {
         case "openai":
             return validateOpenAI(config)
         default:
-            return await validateCommand(config)
+            return await validateCommand(config, executables: executables)
         }
     }
 
     // MARK: - Command backend
 
-    private static func validateCommand(_ config: AIConfig) async -> AIValidationReport {
+    private static func validateCommand(_ config: AIConfig, executables: [String: String]) async -> AIValidationReport {
         var messages: [String] = []
         var resolvedPath: String?
         var detectedVersion: String?
@@ -57,6 +65,8 @@ public enum AICLIValidator {
             } else {
                 messages.append("Binary not found at \(first).")
             }
+        } else if let chosen = executables[first] {
+            resolvedPath = chosen
         } else if let found = resolveExecutable(first) {
             resolvedPath = found
         } else {

@@ -105,9 +105,10 @@ public enum CloneRunner {
         try FileManager.default.createDirectory(at: spec.destination.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         let command = gitCommand(for: spec)
+        let git = GitCommandOptions.invocation(command.arguments)
         var outcome = try await runProcess(
-            executable: "/usr/bin/env",
-            arguments: ["git"] + command.arguments,
+            executable: git.executable.path,
+            arguments: git.arguments,
             extraEnvironment: command.environment,
             destination: spec.destination,
             progress: progress
@@ -124,9 +125,10 @@ public enum CloneRunner {
     private static func keepHelper(_ executable: String, for host: String, in repository: URL) async -> String? {
         let key = "credential.https://\(host).helper"
         for value in ["", cliHelperCommand(executable)] {
+            let git = GitCommandOptions.invocation(["config", "--local", "--add", key, value])
             let result = try? await ProcessRunner.run(
-                executable: URL(fileURLWithPath: "/usr/bin/env"),
-                arguments: ["git", "config", "--local", "--add", key, value],
+                executable: git.executable,
+                arguments: git.arguments,
                 workingDirectory: repository,
                 environment: ProviderCLISupport.environment()
             )

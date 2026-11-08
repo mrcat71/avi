@@ -29,10 +29,11 @@ struct AgentsSettingsView: View {
                     Toggle("Allow agent proposals", isOn: bind(\.agents.enabled))
                         .labelsHidden()
                         .accessibilityLabel("Accept proposals from agents")
-                }
-                SettingsDivider()
-                SettingsFormRow("Socket") {
-                    socketStatus
+                } detail: {
+                    if case .listening = bridge.state {} else if store.config.agents.enabled {
+                        socketStatus
+                            .padding(.top, 6)
+                    }
                 }
             }
 
@@ -71,6 +72,17 @@ struct AgentsSettingsView: View {
                             SettingsDivider()
                         }
                         SettingsFormRow(repository.root?.lastPathComponent ?? "Repository", description: pendingSummary(repository)) {}
+                    }
+                }
+            }
+
+            SettingsAdvancedSection(.agents) {
+                SettingsGroup("Control Socket") {
+                    SettingsFormRow("Socket", description: "Where the avi command reaches Avi.") {
+                        EmptyView()
+                    } detail: {
+                        socketStatus
+                            .padding(.top, 6)
                     }
                 }
             }
@@ -115,6 +127,7 @@ struct AgentsSettingsView: View {
                 .foregroundStyle(color)
             Text(title)
                 .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(color == .secondary ? DS.Palette.textSecondary : color)
             if let detail {
                 Text(detail)
                     .font(.system(size: 11, design: .monospaced))
@@ -154,7 +167,7 @@ struct AgentsSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .font(.system(size: 11))
-            .padding(.top, 2)
+            .padding(.top, 6)
         }
     }
 

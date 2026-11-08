@@ -55,6 +55,21 @@ public struct AviConfig: Codable, Equatable, Sendable {
         clone = (try? c.decode(CloneConfig.self, forKey: .clone)) ?? defaults.clone
         agents = (try? c.decode(AgentsConfig.self, forKey: .agents)) ?? defaults.agents
         pullRequests = (try? c.decode(PullRequestsConfig.self, forKey: .pullRequests)) ?? defaults.pullRequests
+        // External Tools kept an editor and a terminal path of its own that
+        // nothing used; Settings > External Tools now edits Git's.
+        if let legacy = try? c.decode(LegacyExternalTools.self, forKey: .externalTools) {
+            if git.externalEditor.isEmpty, let path = legacy.editorPath, !path.isEmpty {
+                git.externalEditor = path
+            }
+            if git.terminalApp.isEmpty, let path = legacy.terminalPath, !path.isEmpty {
+                git.terminalApp = path
+            }
+        }
+    }
+
+    private struct LegacyExternalTools: Decodable {
+        var editorPath: String?
+        var terminalPath: String?
     }
 }
 
@@ -219,13 +234,20 @@ public struct AppearanceConfig: Codable, Equatable, Sendable {
 }
 
 public struct GitConfig: Codable, Equatable, Sendable {
+    /// The name and email for repositories where Git has none; a
+    /// repository's own identity, `includeIf` ones included, always wins.
     public var defaultAuthorName: String
     public var defaultAuthorEmail: String
+    /// Sign every commit, as Git's `commit.gpgSign` does. Off leaves it to Git.
     public var signCommits: Bool
     public var fetchInterval: Int // minutes; 0 = manual
+    /// Refresh when files change; off refreshes when you come back to Avi.
     public var autoRefresh: Bool
+    /// `--prune` on fetch when on, `--no-prune` when off.
     public var pruneOnFetch: Bool
+    /// The app or command Open in Editor uses; empty picks an installed one.
     public var externalEditor: String
+    /// The app Open in Terminal uses; empty uses Terminal.
     public var terminalApp: String
 
     public init(
@@ -246,6 +268,20 @@ public struct GitConfig: Codable, Equatable, Sendable {
         self.pruneOnFetch = pruneOnFetch
         self.externalEditor = externalEditor
         self.terminalApp = terminalApp
+    }
+
+    /// Key by key, so a file written before a key existed keeps the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = GitConfig()
+        defaultAuthorName = (try? c.decode(String.self, forKey: .defaultAuthorName)) ?? defaults.defaultAuthorName
+        defaultAuthorEmail = (try? c.decode(String.self, forKey: .defaultAuthorEmail)) ?? defaults.defaultAuthorEmail
+        signCommits = (try? c.decode(Bool.self, forKey: .signCommits)) ?? defaults.signCommits
+        fetchInterval = (try? c.decode(Int.self, forKey: .fetchInterval)) ?? defaults.fetchInterval
+        autoRefresh = (try? c.decode(Bool.self, forKey: .autoRefresh)) ?? defaults.autoRefresh
+        pruneOnFetch = (try? c.decode(Bool.self, forKey: .pruneOnFetch)) ?? defaults.pruneOnFetch
+        externalEditor = (try? c.decode(String.self, forKey: .externalEditor)) ?? defaults.externalEditor
+        terminalApp = (try? c.decode(String.self, forKey: .terminalApp)) ?? defaults.terminalApp
     }
 
     /// `fetchInterval` in seconds, or nil when auto-fetch is off.
@@ -362,12 +398,245 @@ public struct AIConfig: Codable, Equatable, Sendable {
     - The header must be less than ${lowLimit} (soft limit) and ${highLimit} (hard limit).
     - Hard wrap lines at ${guideLine} characters.
     - Don't use the 'generated' footer.
+    - ${style}
+    """
+
+    public static let defaultRewordPromptTemplate = """
+    Rewrite the following commit message. ${style} Keep any body after a
+    blank line. Preserve the intent but improve clarity and concision.
+    Subject must be at most ${highLimit} characters; wrap the body at
+    ${guideLine} characters.
+
+    Current message:
+    ${existing_message}
+
+    Diff of the commit:
+    ${commit_diff}
+
+    Respond with ONLY the new message, no commentary.
+    """
+
+    public static let defaultSplitPromptTemplate = """
+    Split the following changes into coherent commits grouped by feature
+    or topic (not by file). Each group must contain at least one file.
+    Every file in the diff must end up in exactly one group.
+
+    ${style} Subject must be at most ${highLimit} characters; wrap the
+    body at ${guideLine} characters.
+
+    Respond with ONLY a JSON object in a ```json fenced block:
+    ```json
+    {
+      "groups": [
+        { "files": ["path/to/file1", "path/to/file2"], "message": "<subject>\\n\\nOptional body." },
+        { "files": ["path/to/file3"], "message": "..." }
+      ]
+    }
+    ```
+
+    Diff:
+    ${target}
+    """
+
+    public static let defaultPlanRevisionPromptTemplate = """
+    Revise the planned commits below as the instructions say. Every listed
+    file must end up in exactly one commit, and no other files may appear.
+    Keep the commit order meaningful: each commit should build on the ones
+    before it.
+
+    Unless the instructions say otherwise: ${style} Subject must be at most
+    ${highLimit} characters; wrap the body at ${guideLine} characters.
+    Never add AI attribution trailers.
+
+    Instructions:
+    ${instructions}
+
+    Planned commits:
+    ${plan}
+
+    Respond with ONLY a JSON object in a ```json fenced block:
+    ```json
+    {
+      "groups": [
+        { "files": ["path/to/file1", "path/to/file2"], "message": "<subject>\\n\\nOptional body." }
+      ]
+    }
+    ```
+
+    Diff of these files:
+    ${target}
+    """
+
+    /// The built-in prompts from before `${style}`. A config file still
+    /// holding one never edited it, so it follows today's default and its
+    /// Conventional Commits switch.
+    static let previousDefaultPromptTemplates = [
+        PreviousPrompts.commit
+    ]
+    static let previousDefaultRewordPromptTemplates = [
+        PreviousPrompts.reword
+    ]
+    static let previousDefaultSplitPromptTemplates = [
+        PreviousPrompts.split
+    ]
+    static let previousDefaultPlanRevisionPromptTemplates = [
+        PreviousPrompts.planRevision
+    ]
+
+    /// `value` unless it is one of the `previous` built-in prompts, which
+    /// become `current`.
+    static func upgraded(_ value: String?, current: String, previous: [String]) -> String {
+        guard let value else { return current }
+        return previous.contains(value) ? current : value
+    }
+
+    /// Tolerant decoder: any field can be missing in an older config file.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = AIConfig()
+        enabled = (try? c.decode(Bool.self, forKey: .enabled)) ?? defaults.enabled
+        backend = (try? c.decode(String.self, forKey: .backend)) ?? defaults.backend
+        // A blank model was never usable, so it means "not chosen yet".
+        let decodedModel = (try? c.decode(String.self, forKey: .model)) ?? ""
+        model = decodedModel.trimmingCharacters(in: .whitespaces).isEmpty ? defaults.model : decodedModel
+        temperature = (try? c.decode(Double.self, forKey: .temperature)) ?? defaults.temperature
+        maxTokens = (try? c.decode(Int.self, forKey: .maxTokens)) ?? defaults.maxTokens
+        promptTemplate = Self.upgraded(
+            try? c.decode(String.self, forKey: .promptTemplate),
+            current: defaults.promptTemplate,
+            previous: Self.previousDefaultPromptTemplates
+        )
+        conventionalCommits = (try? c.decode(Bool.self, forKey: .conventionalCommits)) ?? defaults.conventionalCommits
+        subjectSoftLimit = (try? c.decode(Int.self, forKey: .subjectSoftLimit)) ?? defaults.subjectSoftLimit
+        subjectHardLimit = (try? c.decode(Int.self, forKey: .subjectHardLimit)) ?? defaults.subjectHardLimit
+        bodyWrap = (try? c.decode(Int.self, forKey: .bodyWrap)) ?? defaults.bodyWrap
+        commandTemplate = (try? c.decode(String.self, forKey: .commandTemplate)) ?? defaults.commandTemplate
+        openAIBaseURL = (try? c.decode(String.self, forKey: .openAIBaseURL)) ?? defaults.openAIBaseURL
+        openAIKeychainItem = (try? c.decode(String.self, forKey: .openAIKeychainItem)) ?? defaults.openAIKeychainItem
+        timeoutSeconds = (try? c.decode(Int.self, forKey: .timeoutSeconds)) ?? defaults.timeoutSeconds
+        reasoningEffort = (try? c.decode(String.self, forKey: .reasoningEffort)) ?? defaults.reasoningEffort
+        directInsert = (try? c.decode(Bool.self, forKey: .directInsert)) ?? defaults.directInsert
+        rewordPromptTemplate = Self.upgraded(
+            try? c.decode(String.self, forKey: .rewordPromptTemplate),
+            current: defaults.rewordPromptTemplate,
+            previous: Self.previousDefaultRewordPromptTemplates
+        )
+        splitPromptTemplate = Self.upgraded(
+            try? c.decode(String.self, forKey: .splitPromptTemplate),
+            current: defaults.splitPromptTemplate,
+            previous: Self.previousDefaultSplitPromptTemplates
+        )
+        planRevisionPromptTemplate = Self.upgraded(
+            try? c.decode(String.self, forKey: .planRevisionPromptTemplate),
+            current: defaults.planRevisionPromptTemplate,
+            previous: Self.previousDefaultPlanRevisionPromptTemplates
+        )
+    }
+}
+
+public struct ExternalToolsConfig: Codable, Equatable, Sendable {
+    public var gitPath: String
+    public var ghPath: String
+    public var glabPath: String
+    public var codexPath: String
+    public var claudePath: String
+    /// What External Diff runs with the old and new file appended; empty
+    /// uses Git's `diff.tool`.
+    public var diffToolPath: String
+    /// The chosen merge tool's executable, when it is not where Avi looks.
+    public var mergeToolPath: String
+    /// Which tool resolves conflicts: empty uses Git's `merge.tool`; else a
+    /// `MergeToolCatalog` id, or `custom` for `mergeToolCommand`.
+    public var mergeTool: String
+    /// The `custom` tool's shell command, with `$BASE`, `$LOCAL`, `$REMOTE`,
+    /// and `$MERGED`.
+    public var mergeToolCommand: String
+
+    public init(
+        gitPath: String = "",
+        ghPath: String = "",
+        glabPath: String = "",
+        codexPath: String = "",
+        claudePath: String = "",
+        diffToolPath: String = "",
+        mergeToolPath: String = "",
+        mergeTool: String = "",
+        mergeToolCommand: String = ""
+    ) {
+        self.gitPath = gitPath
+        self.ghPath = ghPath
+        self.glabPath = glabPath
+        self.codexPath = codexPath
+        self.claudePath = claudePath
+        self.diffToolPath = diffToolPath
+        self.mergeToolPath = mergeToolPath
+        self.mergeTool = mergeTool
+        self.mergeToolCommand = mergeToolCommand
+    }
+
+    /// Key by key, so a config written before a key existed keeps the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func string(_ key: CodingKeys) -> String {
+            (try? c.decode(String.self, forKey: key)) ?? ""
+        }
+        self.init(
+            gitPath: string(.gitPath),
+            ghPath: string(.ghPath),
+            glabPath: string(.glabPath),
+            codexPath: string(.codexPath),
+            claudePath: string(.claudePath),
+            diffToolPath: string(.diffToolPath),
+            mergeToolPath: string(.mergeToolPath),
+            mergeTool: string(.mergeTool),
+            mergeToolCommand: string(.mergeToolCommand)
+        )
+    }
+}
+
+public struct AdvancedConfig: Codable, Equatable, Sendable {
+    /// How many commits History loads at first; more load as you scroll.
+    public var historyLimit: Int
+    /// Log every Git command to the system log.
+    public var verboseLogging: Bool
+
+    public static let historyLimits = 50 ... 5000
+
+    public init(historyLimit: Int = 200, verboseLogging: Bool = false) {
+        self.historyLimit = historyLimit
+        self.verboseLogging = verboseLogging
+    }
+
+    /// Key by key, so a file written before a key existed keeps the rest.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = AdvancedConfig()
+        historyLimit = (try? c.decode(Int.self, forKey: .historyLimit)) ?? defaults.historyLimit
+        verboseLogging = (try? c.decode(Bool.self, forKey: .verboseLogging)) ?? defaults.verboseLogging
+    }
+
+    /// `historyLimit` within the range History supports.
+    public var clampedHistoryLimit: Int {
+        min(max(historyLimit, Self.historyLimits.lowerBound), Self.historyLimits.upperBound)
+    }
+}
+
+/// Avi's built-in prompts before they asked for `${style}`, kept verbatim so
+/// a config file that still holds one is recognized as never edited.
+private enum PreviousPrompts {
+    static let commit = """
+    Generate commit message for ${target}.
+    - Only respond with the commit message.
+    - Start directly with the subject line (no preamble).
+    - The header must be less than ${lowLimit} (soft limit) and ${highLimit} (hard limit).
+    - Hard wrap lines at ${guideLine} characters.
+    - Don't use the 'generated' footer.
 
     - Use Conventional Commits style:
       <type>(<scope>): <summary>
     """
 
-    public static let defaultRewordPromptTemplate = """
+    static let reword = """
     Rewrite the following commit message to follow Conventional Commits
     style (<type>(<scope>): <summary> on the first line; optional body
     after a blank line). Preserve the intent but improve clarity and
@@ -383,7 +652,7 @@ public struct AIConfig: Codable, Equatable, Sendable {
     Respond with ONLY the new message, no commentary.
     """
 
-    public static let defaultSplitPromptTemplate = """
+    static let split = """
     Split the following changes into coherent commits grouped by feature
     or topic (not by file). Each group must contain at least one file.
     Every file in the diff must end up in exactly one group.
@@ -405,7 +674,7 @@ public struct AIConfig: Codable, Equatable, Sendable {
     ${target}
     """
 
-    public static let defaultPlanRevisionPromptTemplate = """
+    static let planRevision = """
     Revise the planned commits below as the instructions say. Every listed
     file must end up in exactly one commit, and no other files may appear.
     Keep the commit order meaningful: each commit should build on the ones
@@ -433,107 +702,4 @@ public struct AIConfig: Codable, Equatable, Sendable {
     Diff of these files:
     ${target}
     """
-
-    /// Tolerant decoder: any field can be missing in an older config file.
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        let defaults = AIConfig()
-        enabled = (try? c.decode(Bool.self, forKey: .enabled)) ?? defaults.enabled
-        backend = (try? c.decode(String.self, forKey: .backend)) ?? defaults.backend
-        // A blank model was never usable, so it means "not chosen yet".
-        let decodedModel = (try? c.decode(String.self, forKey: .model)) ?? ""
-        model = decodedModel.trimmingCharacters(in: .whitespaces).isEmpty ? defaults.model : decodedModel
-        temperature = (try? c.decode(Double.self, forKey: .temperature)) ?? defaults.temperature
-        maxTokens = (try? c.decode(Int.self, forKey: .maxTokens)) ?? defaults.maxTokens
-        promptTemplate = (try? c.decode(String.self, forKey: .promptTemplate)) ?? defaults.promptTemplate
-        conventionalCommits = (try? c.decode(Bool.self, forKey: .conventionalCommits)) ?? defaults.conventionalCommits
-        subjectSoftLimit = (try? c.decode(Int.self, forKey: .subjectSoftLimit)) ?? defaults.subjectSoftLimit
-        subjectHardLimit = (try? c.decode(Int.self, forKey: .subjectHardLimit)) ?? defaults.subjectHardLimit
-        bodyWrap = (try? c.decode(Int.self, forKey: .bodyWrap)) ?? defaults.bodyWrap
-        commandTemplate = (try? c.decode(String.self, forKey: .commandTemplate)) ?? defaults.commandTemplate
-        openAIBaseURL = (try? c.decode(String.self, forKey: .openAIBaseURL)) ?? defaults.openAIBaseURL
-        openAIKeychainItem = (try? c.decode(String.self, forKey: .openAIKeychainItem)) ?? defaults.openAIKeychainItem
-        timeoutSeconds = (try? c.decode(Int.self, forKey: .timeoutSeconds)) ?? defaults.timeoutSeconds
-        reasoningEffort = (try? c.decode(String.self, forKey: .reasoningEffort)) ?? defaults.reasoningEffort
-        directInsert = (try? c.decode(Bool.self, forKey: .directInsert)) ?? defaults.directInsert
-        rewordPromptTemplate = (try? c.decode(String.self, forKey: .rewordPromptTemplate)) ?? defaults.rewordPromptTemplate
-        splitPromptTemplate = (try? c.decode(String.self, forKey: .splitPromptTemplate)) ?? defaults.splitPromptTemplate
-        planRevisionPromptTemplate = (try? c.decode(String.self, forKey: .planRevisionPromptTemplate)) ?? defaults.planRevisionPromptTemplate
-    }
-}
-
-public struct ExternalToolsConfig: Codable, Equatable, Sendable {
-    public var gitPath: String
-    public var ghPath: String
-    public var glabPath: String
-    public var codexPath: String
-    public var claudePath: String
-    public var editorPath: String
-    public var terminalPath: String
-    public var diffToolPath: String
-    /// The chosen merge tool's executable, when it is not where Avi looks.
-    public var mergeToolPath: String
-    /// Which tool resolves conflicts: empty uses Git's `merge.tool`; else a
-    /// `MergeToolCatalog` id, or `custom` for `mergeToolCommand`.
-    public var mergeTool: String
-    /// The `custom` tool's shell command, with `$BASE`, `$LOCAL`, `$REMOTE`,
-    /// and `$MERGED`.
-    public var mergeToolCommand: String
-
-    public init(
-        gitPath: String = "",
-        ghPath: String = "",
-        glabPath: String = "",
-        codexPath: String = "",
-        claudePath: String = "",
-        editorPath: String = "",
-        terminalPath: String = "",
-        diffToolPath: String = "",
-        mergeToolPath: String = "",
-        mergeTool: String = "",
-        mergeToolCommand: String = ""
-    ) {
-        self.gitPath = gitPath
-        self.ghPath = ghPath
-        self.glabPath = glabPath
-        self.codexPath = codexPath
-        self.claudePath = claudePath
-        self.editorPath = editorPath
-        self.terminalPath = terminalPath
-        self.diffToolPath = diffToolPath
-        self.mergeToolPath = mergeToolPath
-        self.mergeTool = mergeTool
-        self.mergeToolCommand = mergeToolCommand
-    }
-
-    /// Key by key, so a config written before a key existed keeps the rest.
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        func string(_ key: CodingKeys) -> String {
-            (try? c.decode(String.self, forKey: key)) ?? ""
-        }
-        self.init(
-            gitPath: string(.gitPath),
-            ghPath: string(.ghPath),
-            glabPath: string(.glabPath),
-            codexPath: string(.codexPath),
-            claudePath: string(.claudePath),
-            editorPath: string(.editorPath),
-            terminalPath: string(.terminalPath),
-            diffToolPath: string(.diffToolPath),
-            mergeToolPath: string(.mergeToolPath),
-            mergeTool: string(.mergeTool),
-            mergeToolCommand: string(.mergeToolCommand)
-        )
-    }
-}
-
-public struct AdvancedConfig: Codable, Equatable, Sendable {
-    public var historyLimit: Int
-    public var verboseLogging: Bool
-
-    public init(historyLimit: Int = 200, verboseLogging: Bool = false) {
-        self.historyLimit = historyLimit
-        self.verboseLogging = verboseLogging
-    }
 }

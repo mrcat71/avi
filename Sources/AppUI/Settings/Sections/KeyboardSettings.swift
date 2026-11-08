@@ -7,22 +7,19 @@ import KeyboardShortcuts
 struct KeyboardSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SettingsGroup("Shortcuts") {
+            SettingsGroup(
+                "Shortcuts",
+                footer: AviShortcuts.isAvailable ? "Click a shortcut and press new keys. The ⌫ on it clears yours and brings back the menu's own." : nil
+            ) {
                 if AviShortcuts.isAvailable {
                     shortcutList
                 } else {
-                    SettingsFormRow("Custom shortcuts") {
-                        Text("Customisable shortcuts require the KeyboardShortcuts library, which is only linked in full SwiftPM / Xcode builds. The default menu shortcuts in the menu bar still work.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading)
+                    SettingsFormRow(
+                        "Custom shortcuts",
+                        description: "This build has no shortcut recorder. The menus' own shortcuts still work."
+                    ) {
+                        EmptyView()
                     }
-                }
-            }
-
-            SettingsGroup("Tips") {
-                SettingsFormRow("Resetting", description: "Click the small ⌫ on a recorder to clear a shortcut and fall back to the menu default.") {
-                    EmptyView()
                 }
             }
         }

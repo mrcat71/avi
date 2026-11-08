@@ -61,8 +61,23 @@ enum AIEngineFactory {
         case "openai":
             return OpenAIAIEngine(config: config)
         default:
-            return CommandAIEngine(config: config)
+            return CommandAIEngine(config: config, executables: ConfigStore.shared.config.externalTools.aiExecutables)
         }
+    }
+}
+
+extension ExternalToolsConfig {
+    /// The codex and claude executables chosen in Settings > External Tools,
+    /// by name, for command templates that start with that name.
+    var aiExecutables: [String: String] {
+        var result: [String: String] = [:]
+        if let path = ToolPath.executable(codexPath) {
+            result["codex"] = path
+        }
+        if let path = ToolPath.executable(claudePath) {
+            result["claude"] = path
+        }
+        return result
     }
 }
 
@@ -71,10 +86,13 @@ enum AIEngineFactory {
 final class CommandAIEngine: AIEngine {
     let commandTemplate: String
     let timeoutSeconds: Int
+    /// Executables chosen in Settings, by the name a template starts with.
+    let executables: [String: String]
 
-    init(config: AIConfig) {
+    init(config: AIConfig, executables: [String: String] = [:]) {
         commandTemplate = config.commandTemplate
         timeoutSeconds = max(5, config.timeoutSeconds)
+        self.executables = executables
     }
 
     func generate(
@@ -111,6 +129,8 @@ final class CommandAIEngine: AIEngine {
         let resolved: String
         if firstToken.contains("/") {
             resolved = firstToken
+        } else if let chosen = executables[firstToken] {
+            resolved = chosen
         } else {
             guard let found = resolveExecutable(firstToken) else {
                 throw AIEngineError.binaryNotFound(firstToken)

@@ -302,7 +302,7 @@ public extension RepositoryStore {
                 try await git.launchDiffTool(path: file.path, staged: staged, toolPath: toolPath, in: root)
             } catch {
                 errorMessage = "Could not open the external diff tool: \(error.localizedDescription)\n\n"
-                    + "Choose a tool in Settings > External Tools > Diff Tool, or set Git's diff.tool."
+                    + "Choose a tool in Settings > External Tools > Diff tool, or set Git's diff.tool."
             }
         }
     }

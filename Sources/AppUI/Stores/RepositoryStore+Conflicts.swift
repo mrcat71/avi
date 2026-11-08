@@ -146,7 +146,7 @@ public extension RepositoryStore {
                 _ = try await git.launchMergeTool(path: file.path, tool: launch, in: root)
             } catch {
                 errorMessage = "Could not open the merge tool: \(error.localizedDescription)\n\n"
-                    + "Choose a tool in Settings > External Tools > Merge Tool, or set Git's merge.tool."
+                    + "Choose a tool in Settings > External Tools > Merge tool, or set Git's merge.tool."
             }
             guard self.root == root else { return }
             await refresh()

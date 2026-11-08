@@ -1,24 +1,24 @@
 import SwiftUI
 
 /// How pull request titles are made from branch names, with a branch to try
-/// the rules on. Lives in Settings > Git.
-struct PullRequestSettingsGroup: View {
+/// the rules on. Lives under Settings > Git > Advanced.
+struct PullRequestTitleSettings: View {
     @Bindable var store = ConfigStore.shared
     /// Edited as typed, so a trailing comma or an empty line can be typed;
     /// the config gets the entries only.
     @State private var prefixesText = ""
     @State private var keepText = ""
     @State private var sampleBranch = "feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress"
+    @FocusState private var isEditingKeep: Bool
 
     var body: some View {
-        SettingsGroup("Pull Requests") {
+        SettingsGroup("Pull Request Titles", footer: "Titles come from the branch name: folders are dropped and every - and _ becomes a space, except in ticket keys and the names below.") {
             SettingsFormRow(
                 "Ticket prefixes",
-                description: "Separated by commas, matched in any case and written in capitals: infra-123 becomes INFRA-123. Keys already in capitals need no entry."
+                description: "Separated by commas, matched in any case and written in capitals: infra-123 becomes "
+                    + "INFRA-123. Keys already in capitals need no entry."
             ) {
-                TextField("", text: $prefixesText, prompt: Text("INFRA, OPS"))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 320)
+                SettingsTextField("Ticket prefixes", text: $prefixesText, prompt: "INFRA, OPS")
                     .onChange(of: prefixesText) { _, text in
                         store.update { $0.pullRequests.ticketPrefixes = PullRequestSettingsText.entries(commaSeparated: text) }
                     }
@@ -31,16 +31,10 @@ struct PullRequestSettingsGroup: View {
                 TextEditor(text: $keepText)
                     .font(.system(size: 12, design: .monospaced))
                     .scrollContentBackground(.hidden)
+                    .focused($isEditingKeep)
                     .padding(4)
                     .frame(maxWidth: 320, minHeight: 64, maxHeight: 64)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(nsColor: .textBackgroundColor))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.primary.opacity(0.12), lineWidth: 1)
-                    )
+                    .modifier(AviFieldWell(isFocused: isEditingKeep))
                     .accessibilityLabel("Keep hyphens in")
                     .onChange(of: keepText) { _, text in
                         store.update { $0.pullRequests.keepHyphenated = PullRequestSettingsText.entries(lines: text) }
@@ -55,24 +49,12 @@ struct PullRequestSettingsGroup: View {
                     .labelsHidden()
             }
             SettingsDivider()
-            SettingsFormRow("Capitalize the first word") {
-                Toggle("Capitalize the first word", isOn: bind(\.pullRequests.capitalize))
-                    .labelsHidden()
-            }
-            SettingsDivider()
-            SettingsFormRow("Create as drafts") {
-                Toggle("Create as drafts", isOn: bind(\.pullRequests.draft))
-                    .labelsHidden()
-            }
-            SettingsDivider()
             SettingsFormRow(
                 "Try a branch",
                 description: "Names learned from a repository apply in the Push sheet, not here."
             ) {
                 VStack(alignment: .leading, spacing: 4) {
-                    TextField("", text: $sampleBranch, prompt: Text("Branch name"))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 320)
+                    SettingsTextField("Branch name", text: $sampleBranch, prompt: "Branch name")
                     Text(preview)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -80,6 +62,7 @@ struct PullRequestSettingsGroup: View {
                         .lineLimit(2)
                         .accessibilityLabel("Title: \(preview)")
                 }
+                .frame(maxWidth: 320, alignment: .leading)
             }
         }
         .onAppear {
@@ -94,15 +77,15 @@ struct PullRequestSettingsGroup: View {
         return PullRequestTitle.make(branch: branch, rules: PullRequestTitle.Rules(store.config.pullRequests))
     }
 
-    private func bind<T>(_ kp: WritableKeyPath<AviConfig, T>) -> Binding<T> {
+    private func bind<T>(_ keyPath: WritableKeyPath<AviConfig, T>) -> Binding<T> {
         Binding(
-            get: { store.config[keyPath: kp] },
-            set: { v in store.update { $0[keyPath: kp] = v } }
+            get: { store.config[keyPath: keyPath] },
+            set: { value in store.update { $0[keyPath: keyPath] = value } }
         )
     }
 }
 
-/// The lists the Pull Requests settings edit as text.
+/// The lists the Pull Request Titles settings edit as text.
 enum PullRequestSettingsText {
     /// "INFRA, ops," -> ["INFRA", "ops"].
     static func entries(commaSeparated text: String) -> [String] {

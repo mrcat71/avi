@@ -122,10 +122,11 @@ public final class RepositoryBook {
             "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/local/bin"
         ]
         do {
+            let git = GitCommandOptions.invocation(["status", "--porcelain=v1", "-uall"])
             let result = try await GitCommandQueue.shared.run(repository: url) {
                 try await ProcessRunner.run(
-                    executable: URL(fileURLWithPath: "/usr/bin/env"),
-                    arguments: ["git", "status", "--porcelain=v1", "-uall"],
+                    executable: git.executable,
+                    arguments: git.arguments,
                     workingDirectory: url,
                     environment: env
                 )

@@ -5,7 +5,6 @@ struct GitHubSettingsView: View {
     @State private var manager = AccountManager.shared
     @State private var showingDeviceFlow = false
     @State private var showingPATSheet = false
-    @State private var patValue: String = ""
     @State private var ghAuth: ProviderAuthState = .cliMissing
 
     var body: some View {
@@ -21,7 +20,7 @@ struct GitHubSettingsView: View {
                 } subtitle: {
                     VStack(alignment: .leading, spacing: 3) {
                         ProviderCLIStatusBadge(state: ghAuth)
-                        Text("Avi will reuse gh's authentication when cloning and listing repositories.")
+                        Text("Avi reuses gh's sign-in to clone, list repositories, and create pull requests.")
                     }
                 } trailing: {
                     Button("Refresh") {
@@ -30,43 +29,22 @@ struct GitHubSettingsView: View {
                 }
             }
 
-            SettingsGroup("Accounts") {
-                if githubAccounts.isEmpty {
-                    SettingsFormRow("No GitHub account", description: "Sign in to enable PR creation and 'Open on GitHub' actions.") {}
-                    SettingsDivider()
-                } else {
-                    ForEach(githubAccounts) { account in
-                        SettingsFormRow(account.username, description: account.statusDescription) {
-                            HStack(spacing: 8) {
-                                Text(account.status)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(statusColor(account.status))
-                                Button("Validate") {
-                                    Task { await manager.validate(accountID: account.id) }
-                                }
-                                Button("Sign Out", role: .destructive) {
-                                    manager.removeAccount(id: account.id)
-                                }
-                            }
-                            .fixedSize()
-                        }
-                        SettingsDivider()
-                    }
-                }
+            SettingsGroup("Accounts", footer: "A token from Settings is used where gh is not signed in.") {
+                ProviderAccountRows(
+                    accounts: store.config.integrations.accounts.filter { $0.kind == "github" },
+                    emptyTitle: "No GitHub account",
+                    emptyDescription: "Sign in to create pull requests and open repositories on GitHub."
+                )
+                SettingsDivider()
                 SettingsFormRow("Add account") {
                     HStack(spacing: 8) {
-                        Button("Sign in with browser") { showingDeviceFlow = true }
-                            .disabled(!isDeviceFlowConfigured)
-                        Button("Use Personal Access Token") {
-                            patValue = ""
-                            showingPATSheet = true
+                        // Browser sign-in needs an OAuth app's client ID in the build.
+                        if !GitHubDeviceFlowConfig.clientID.isEmpty {
+                            Button("Sign In with Browser…") { showingDeviceFlow = true }
                         }
+                        Button("Use a Token…") { showingPATSheet = true }
                     }
                     .fixedSize()
-                } detail: {
-                    if !isDeviceFlowConfigured {
-                        AviPopupNote("Browser sign-in is planned. Use a Personal Access Token for now.", tone: .warning)
-                    }
                 }
             }
         }
@@ -82,40 +60,12 @@ struct GitHubSettingsView: View {
         .sheet(isPresented: $showingPATSheet) {
             PATEntrySheet(
                 providerName: "GitHub",
-                instructions: "Create a token at github.com/settings/tokens with 'repo' scope, then paste it here.",
+                instructions: "Create a token at github.com/settings/tokens with the repo scope, then paste it here.",
                 instanceURLDefault: "",
                 requiresInstanceURL: false
             ) { token, _ in
-                Task {
-                    try? await manager.addGitHubPATAccount(token: token)
-                    showingPATSheet = false
-                }
+                try await manager.addGitHubPATAccount(token: token)
             }
         }
-    }
-
-    private var githubAccounts: [ProviderAccount] {
-        store.config.integrations.accounts.filter { $0.kind == "github" }
-    }
-
-    private var isDeviceFlowConfigured: Bool {
-        !GitHubDeviceFlowConfig.clientID.isEmpty
-    }
-
-    private func statusColor(_ s: String) -> Color {
-        switch s {
-        case "ok": return .green
-        case "invalid", "unreachable": return .red
-        default: return .secondary
-        }
-    }
-}
-
-private extension ProviderAccount {
-    var statusDescription: String {
-        if lastValidatedISO.isEmpty {
-            return "Never validated"
-        }
-        return "Last validated \(lastValidatedISO)"
     }
 }

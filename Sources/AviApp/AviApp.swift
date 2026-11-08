@@ -27,6 +27,11 @@ enum AviAppMain {
             ScreenshotHarness.configure(arguments: args)
         }
         #endif
+        // Before any repository opens: who commits where Git has no
+        // identity, signing, pruning, and which git runs come from Settings.
+        MainActor.assumeIsolated {
+            ConfigStore.shared.applyGitOptions()
+        }
         AviApp.main()
     }
 

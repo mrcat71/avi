@@ -12,7 +12,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case ai
     case agents
     case externalTools
-    case advanced
 
     var id: String {
         rawValue
@@ -25,8 +24,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         [.appearance, .keyboard],
         [.git, .clone, .externalTools],
         [.github, .gitlab],
-        [.ai, .agents],
-        [.advanced]
+        [.ai, .agents]
     ]
 
     var title: String {
@@ -41,7 +39,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .ai: return "AI Commit Messages"
         case .agents: return "Agents"
         case .externalTools: return "External Tools"
-        case .advanced: return "Advanced"
         }
     }
 
@@ -57,14 +54,13 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .ai: return "wand.and.stars"
         case .agents: return "terminal"
         case .externalTools: return "wrench.and.screwdriver"
-        case .advanced: return "slider.horizontal.3"
         }
     }
 
     /// The color of the section's icon tile.
     var tint: Color {
         switch self {
-        case .general, .keyboard, .externalTools, .advanced: return .gray
+        case .general, .keyboard, .externalTools: return .gray
         case .appearance: return .purple
         case .git: return .orange
         case .clone: return .blue
@@ -76,46 +72,85 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     }
 
     /// What Search Settings finds the section by besides its title: its
-    /// groups and rows. A new row's label belongs here too.
+    /// groups and rows outside Advanced. A new row's label belongs here, or
+    /// in `advancedKeywords` when it sits under Advanced.
     var keywords: [String] {
         switch self {
         case .general:
             return ["Avi", "Version", "Updates", "Check for Updates", "Check automatically", "Install automatically",
-                    "Startup", "Launch at login", "Config file", "Open Config", "Open Folder", "Reload", "Reset to defaults"]
+                    "Startup", "Launch at login"]
         case .appearance:
-            return ["Theme", "Light", "Dark", "Density", "Row density", "Compact", "Comfortable", "Diff font",
-                    "Diff text size", "Graph lane width", "Author pictures", "Gravatar", "File list", "Local Changes display",
-                    "Tree", "Flat list"]
+            return ["Theme", "Appearance", "Light", "Dark", "System", "Density", "Row density", "Compact", "Comfortable",
+                    "Changes and History", "Changed files", "File list", "Tree", "Flat list", "Diff text size", "Font size",
+                    "Author pictures", "Gravatar", "Avatars"]
         case .git:
-            return ["Author", "Name", "Email", "Sign commits", "GPG", "SSH signing", "Fetch", "Auto-fetch interval",
-                    "Prune on fetch", "Auto-refresh", "Pull requests", "Ticket prefixes", "Keep hyphens in",
-                    "Learn names from the repository", "Capitalize the first word", "Create as drafts", "Try a branch",
-                    "External apps", "Editor", "Terminal"]
+            return ["Fetch", "Auto-fetch", "Fetch automatically", "Pull requests", "Merge requests", "Create as drafts",
+                    "Drafts", "Capitalize the first word"]
         case .clone:
-            return ["Default location", "Clone directory", "Behavior", "After clone", "Protocol", "HTTPS", "SSH",
-                    "Remember destination"]
+            return ["Clone directory", "Default location", "Choose", "Protocol", "HTTPS", "SSH", "Open after cloning"]
         case .keyboard:
-            return ["Shortcuts", "Keyboard shortcuts", "Resetting"] + AviShortcuts.Action.allCases.map(\.label)
+            return ["Shortcuts", "Keyboard shortcuts", "Clear a shortcut"] + AviShortcuts.Action.allCases.map(\.label)
         case .github:
-            return ["gh", "Command-line tool", "Accounts", "Sign in", "Personal access token", "Token", "Validate",
-                    "Sign out", "Pull requests"]
+            return ["gh", "Command-line tool", "Accounts", "Sign in", "Personal access token", "Token", "Check",
+                    "Validate", "Sign out", "Pull requests"]
         case .gitlab:
             return ["glab", "Command-line tool", "Accounts", "Sign in", "Personal access token", "Token", "Self-hosted",
-                    "Validate", "Sign out", "Merge requests"]
+                    "Check", "Validate", "Sign out", "Merge requests"]
         case .ai:
-            return ["AI", "Validation", "Generation", "Enable AI commit messages", "Backend", "Custom command",
-                    "OpenAI-compatible API", "Model", "Temperature", "Max tokens", "Reasoning effort", "Insert directly",
-                    "Timeout", "Command template", "Base URL", "API key", "Keychain", "Style", "Conventional Commits",
-                    "Subject soft limit", "Subject hard limit", "Body wrap", "Prompt template", "codex", "claude"]
+            return ["AI", "Enable AI commit messages", "Backend", "Custom command", "OpenAI-compatible API", "Model",
+                    "API key", "Keychain", "Check setup", "Conventional Commits", "Insert directly", "Preview", "codex",
+                    "claude"]
         case .agents:
-            return ["Agent proposals", "Accept proposals", "Socket", "Install", "Install All", "Claude Code", "Codex",
+            return ["Agent proposals", "Accept proposals", "Install", "Install All", "Claude Code", "Codex",
                     "OpenCode", "avi command", "Skill", "How to Use", "Waiting for review"]
         case .externalTools:
-            return ["Auto-detected tools", "Re-detect", "git", "gh", "glab", "codex", "claude", "Editor", "Terminal",
-                    "Diff tool", "Override path", "Test", "Merge Tool", "Open conflicts in", "Custom Command"]
-        case .advanced:
-            return ["Import", "Export", "Config", "History", "History limit", "Verbose logging", "Reset",
-                    "Restore defaults", "Reset all settings"]
+            return ["Open in Editor", "Editor", "Terminal", "Open in Terminal", "Diff tool", "External Diff",
+                    "Merge tool", "Open conflicts in", "Custom Command"]
+        }
+    }
+
+    /// What Search Settings finds under the section's Advanced disclosure;
+    /// a search that only these match opens it.
+    var advancedKeywords: [String] {
+        switch self {
+        case .general:
+            return ["Config file", "config.toml", "Open Config", "Open Folder", "Reload", "Export", "Import",
+                    "Log Git commands", "Logging", "Verbose logging", "Console", "Reset all settings", "Restore defaults"]
+        case .appearance:
+            return ["Diff font", "Monospaced font", "Graph lane width", "Graph"]
+        case .git:
+            return ["Author", "Name", "Email", "Identity", "Sign commits", "GPG", "SSH signing", "Prune on fetch",
+                    "Auto-refresh", "Watch for changes", "History", "Commits to load", "History limit",
+                    "Pull request titles", "Ticket prefixes", "Keep hyphens in", "Learn names from the repository",
+                    "Try a branch"]
+        case .clone:
+            return ["Remember destination", "Remember the folder", "Per host"]
+        case .externalTools:
+            return ["Command-line tools", "Re-detect", "git", "gh", "glab", "codex", "claude", "Path", "Override path",
+                    "Test"]
+        case .ai:
+            return ["Reasoning effort", "Temperature", "Max tokens", "Timeout", "Command template", "Base URL",
+                    "Message limits", "Subject soft limit", "Subject hard limit", "Body wrap", "Prompts",
+                    "Prompt template", "Reword", "Split", "Revise plan"]
+        case .agents:
+            return ["Socket", "Control socket"]
+        case .keyboard, .github, .gitlab:
+            return []
+        }
+    }
+
+    /// What the Advanced disclosure holds, in a line under its title; nil
+    /// for a section without one.
+    var advancedSummary: String? {
+        switch self {
+        case .general: return "Config file, import and export, Git command log, reset"
+        case .appearance: return "Diff font and graph lane width"
+        case .git: return "Author fallback, signing, pruning, auto-refresh, history size, pull request titles"
+        case .clone: return "Remember the folder per host"
+        case .externalTools: return "Paths of git, gh, glab, codex, and claude"
+        case .ai: return "Reasoning effort, temperature, tokens, timeout, command, limits, prompts"
+        case .agents: return "Control socket"
+        case .keyboard, .github, .gitlab: return nil
         }
     }
 
@@ -123,12 +158,26 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     /// word of `query`; all of them for an empty query.
     static func matching(_ query: String) -> [SettingsSection] {
         let order = sidebarGroups.flatMap { $0 }
-        let words = searchable(query).split(separator: " ")
+        let words = searchWords(query)
         guard !words.isEmpty else { return order }
-        return order.filter { section in
-            let text = searchable(([section.title] + section.keywords).joined(separator: " "))
-            return words.allSatisfy { text.contains($0) }
-        }
+        return order.filter { $0.contains(words, in: [$0.title] + $0.keywords + $0.advancedKeywords) }
+    }
+
+    /// Whether `query` finds this section only by what its Advanced
+    /// disclosure holds, so showing the section should open it.
+    func revealsAdvanced(for query: String) -> Bool {
+        let words = Self.searchWords(query)
+        guard !words.isEmpty, !advancedKeywords.isEmpty else { return false }
+        return !contains(words, in: [title] + keywords) && contains(words, in: [title] + keywords + advancedKeywords)
+    }
+
+    private func contains(_ words: [Substring], in phrases: [String]) -> Bool {
+        let text = Self.searchable(phrases.joined(separator: " "))
+        return words.allSatisfy { text.contains($0) }
+    }
+
+    private static func searchWords(_ query: String) -> [Substring] {
+        searchable(query).split(separator: " ")
     }
 
     /// Case, accents and hyphens aside, so "auto fetch" finds Auto-fetch.
@@ -219,7 +268,7 @@ public struct SettingsRoot: View {
         .searchable(text: $query, placement: .sidebar, prompt: "Search Settings")
         .onSubmit(of: .search) {
             if let first = SettingsSection.matching(query).first {
-                history.visit(first)
+                visitFromSearch(first)
             }
         }
         .frame(minWidth: 820, minHeight: 560)
@@ -266,10 +315,19 @@ public struct SettingsRoot: View {
             get: { selection },
             set: { section in
                 if let section {
-                    history.visit(section)
+                    visitFromSearch(section)
                 }
             }
         )
+    }
+
+    /// Shows `section`, with its Advanced settings open when the search
+    /// found it only there.
+    private func visitFromSearch(_ section: SettingsSection) {
+        if isSearching, section.revealsAdvanced(for: query) {
+            SettingsAdvanced.reveal(section)
+        }
+        history.visit(section)
     }
 
     @ViewBuilder
@@ -296,24 +354,9 @@ public struct SettingsRoot: View {
                     SettingsIcon(symbol: section.systemImage, tint: section.tint)
                 }
                 Spacer(minLength: 4)
-                if shouldShowPlannedChip(section) {
-                    Text("Planned")
-                        .font(.system(size: 9, weight: .semibold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.orange.opacity(0.18)))
-                        .foregroundStyle(.orange)
-                }
             }
             .padding(.vertical, 2)
             .tag(section)
-        }
-    }
-
-    private func shouldShowPlannedChip(_ section: SettingsSection) -> Bool {
-        switch section {
-        case .github: return GitHubDeviceFlowConfig.clientID.isEmpty
-        default: return false
         }
     }
 
@@ -360,7 +403,6 @@ public struct SettingsRoot: View {
         case .ai: AISettingsView()
         case .agents: AgentsSettingsView()
         case .externalTools: ExternalToolsSettingsView()
-        case .advanced: AdvancedSettingsView()
         }
     }
 }
