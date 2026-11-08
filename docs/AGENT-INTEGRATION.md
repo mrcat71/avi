@@ -235,7 +235,7 @@ one JSON request on one line and reads one JSON line back:
 
 ```text
 {"v":1,"method":"propose","params":{"repo":"/abs/worktree","agent":"Codex","session":"t1","commits":[{"message":"...","files":["a.swift"]}]}}
-{"v":1,"ok":true,"result":{"app":{"version":"0.10.3"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
+{"v":1,"ok":true,"result":{"app":{"version":"0.10.4"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
 ```
 
 Methods are `status`, `open`, and `propose`. `propose` accepts optional
@@ -285,5 +285,6 @@ socket) and `blocked` (a sandbox or permissions refused the connection).
   too. Enable `network_access` as above, or approve running `avi` outside the
   sandbox.
 - **`not_running` although Avi is open**: the Avi version running predates
-  0.4.0, or **Accept proposals** is off. The Socket row in Settings > Agents
-  shows whether Avi is listening.
+  0.4.0, or **Accept proposals** is off. Settings > Agents shows under
+  **Accept proposals** when Avi is not listening, and the Socket row under
+  **Advanced** shows where it listens.

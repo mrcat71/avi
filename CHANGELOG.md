@@ -6,6 +6,37 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-11-08
+
+### Added
+- Each Settings section keeps the settings most people never change under **Advanced** at its end: AI's reasoning effort, temperature, token limit, timeout, command, message limits, and prompts; Git's author fallback, signing, pruning, auto-refresh, history size, and pull request title rules; General's config file, import and export, Git command log, and reset; External Tools' command-line tool paths. **Advanced** stays closed until you open it, remembers that per section, and opens by itself when a search finds a setting only there. The separate **Advanced** section is gone.
+- **Open in Editor** on repository tabs, worktrees, recent repositories, changed files, and in the command palette. It uses the editor from Settings > External Tools, or else the first installed of Visual Studio Code, Cursor, Zed, Windsurf, Sublime Text, Nova, BBEdit, and the JetBrains IDEs.
+- Settings > External Tools picks the editor and the terminal from the installed apps, Rex among the terminals, or any app with **Choose…**.
+- All four AI prompts, **Reword**, **Split into commits**, and **Revise a plan** as well as the commit message, can be edited and reset under Settings > AI Commit Messages > Advanced.
+
+### Changed
+- Settings that were saved but never used now work:
+  - **Name** and **Email** under Settings > Git > Advanced sign commits in repositories where Git has no identity. A repository's own identity and `includeIf` ones always win.
+  - **Sign commits** signs every commit Avi makes, as Git's `commit.gpgSign` does.
+  - **Prune on fetch** off fetches with `--no-prune`.
+  - **Auto-refresh** off stops refreshing on every file change; Avi refreshes after its own commands and when you come back to it.
+  - **Commits to load** sets how many commits History loads at first.
+  - **Log Git commands** writes every Git command with its exit status and time to the system log, subsystem `com.svinarenko.avi`.
+  - The `git`, `codex`, and `claude` paths under Settings > External Tools > Advanced are what Avi runs.
+  - **Remember the folder per host** starts a clone in the folder the last clone from that host went to.
+  - **Conventional Commits** off asks for plain subjects. The built-in prompts take the style from `${style}`, and a prompt kept unedited from an earlier Avi becomes the new built-in one.
+- Settings menus are flat pills and text fields flat wells, as in the sheets.
+- Settings > External Tools > Advanced shows the executable Avi runs for each tool, such as `/usr/bin/git`, instead of the first one on PATH.
+- A commit Git refuses for lack of a name and email says where to set one.
+- `externalTools.editorPath` and `externalTools.terminalPath`, which nothing read, are gone. A value in them moves to `git.externalEditor` and `git.terminalApp`.
+
+### Fixed
+- **Reset to defaults** in Settings > General deleted every GitHub and GitLab token and the API key without asking. **Reset All Settings…** under General > Advanced asks first.
+- A `[git]` or `[advanced]` table missing a key, as an older Avi wrote it, lost all its other settings to the defaults.
+- A token GitHub or GitLab refuses no longer becomes an account named "(validating)": the sign-in sheet stays open, says why, and keeps nothing in the Keychain. A self-hosted GitLab address that is not a URL no longer crashes Avi.
+- Importing and exporting settings and saving or deleting the API key report failures instead of dropping them, and the API key's status updates after you delete it.
+- **Sign in with browser** and the **Planned** badge on GitHub, which cannot work without an OAuth app's client ID, are hidden.
+
 ## [0.10.3] - 2026-11-04
 
 ### Changed
