@@ -17,6 +17,11 @@ extension GitError: LocalizedError {
                 return "That branch is checked out in another worktree (\(worktree)). "
                     + "Switch to that worktree, or check out a different branch here."
             }
+            if GitError.indicatesMissingIdentity(stderr) {
+                return "Git does not know your name and email, so it cannot commit. "
+                    + "Set them in Settings > Git > Advanced, which Avi uses where Git has none, "
+                    + "or run git config --global user.name and user.email."
+            }
             if GitError.indicatesLockContention(stderr) {
                 return "Git could not acquire a repository lock. Wait for other Git operations "
                     + "to finish, then retry. Do not remove a lock while another process may be using it.\n\n"
@@ -51,6 +56,15 @@ public extension GitError {
             : tail.prefix { !$0.isNewline }
         let path = String(unquoted)
         return path.isEmpty ? nil : path
+    }
+
+    /// True when git refused to write a commit because it has no name or
+    /// email to put in it.
+    static func indicatesMissingIdentity(_ stderr: String) -> Bool {
+        stderr.contains("Please tell me who you are")
+            || stderr.contains("Author identity unknown")
+            || stderr.contains("Committer identity unknown")
+            || stderr.contains("unable to auto-detect email address")
     }
 
     /// True when git refused `branch -d` because the branch still holds commits

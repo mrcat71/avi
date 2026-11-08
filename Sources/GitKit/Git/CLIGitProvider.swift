@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 extension Array {
     /// Split into consecutive chunks of at most `size` elements. Used to keep
@@ -13,12 +14,30 @@ extension Array {
 
 /// `GitProviding` implementation that shells out to the `git` CLI.
 public struct CLIGitProvider: GitProviding {
-    public let gitURL: URL
+    private let explicitGitURL: URL?
+    private let explicitOptions: GitCommandOptions?
     /// Only a private copy inside an existing queue slot may bypass re-enqueueing.
     var ownsCommandSlot = false
+    /// Set on every command's environment; tests hide the machine's global
+    /// Git config with it.
+    var environmentOverrides: [String: String] = [:]
 
-    public init(gitURL: URL = URL(fileURLWithPath: "/usr/bin/git")) {
-        self.gitURL = gitURL
+    /// Without `gitURL` or `options`, each command follows
+    /// `GitCommandOptions.current`, so a change in Settings reaches open
+    /// repositories at their next command.
+    public init(gitURL: URL? = nil, options: GitCommandOptions? = nil) {
+        explicitGitURL = gitURL
+        explicitOptions = options
+    }
+
+    /// The options the next command runs with.
+    var options: GitCommandOptions {
+        explicitOptions ?? GitCommandOptions.current
+    }
+
+    /// The git the next command runs.
+    public var gitURL: URL {
+        explicitGitURL ?? options.executable ?? GitCommandOptions.defaultExecutable
     }
 
     public func repositoryRoot(for url: URL) async throws -> URL {
@@ -309,11 +328,13 @@ public struct CLIGitProvider: GitProviding {
     }
 
     public func fetch(remote: String?, in repository: URL) async throws -> GitRemoteOperationResult {
+        // Explicit either way, so Settings decides over Git's fetch.prune.
+        let prune = options.pruneOnFetch ? "--prune" : "--no-prune"
         let arguments: [String]
         if let remote, !remote.isEmpty {
-            arguments = ["fetch", "--prune", "--progress", remote]
+            arguments = ["fetch", prune, "--progress", remote]
         } else {
-            arguments = ["fetch", "--all", "--prune", "--progress"]
+            arguments = ["fetch", "--all", prune, "--progress"]
         }
         let result = try await run(arguments, in: repository)
         return remoteResult(result)
@@ -1060,16 +1081,22 @@ public struct CLIGitProvider: GitProviding {
         in repository: URL,
         environment: [String: String]? = nil
     ) async throws -> ProcessResult {
+        let options = options
+        var prefix = options.configArguments
+        if options.hasFallbackIdentity, GitCommandOptions.needsIdentity(arguments) {
+            prefix += try await fallbackIdentityArguments(options, in: repository)
+        }
         let executable = gitURL
+        let fullArguments = prefix + arguments
         let env = environment ?? gitEnvironment()
         let operation: @Sendable () async throws -> ProcessResult = {
             // Compound commands can make partial progress before a lock failure.
             // Replaying fetch, pull, push, rebase, or stash is not safe by default.
             let retryableCommands: Set = ["status", "diff", "log", "show", "rev-parse", "rev-list", "ls-files", "add"]
-            let subcommand = arguments.first == "--literal-pathspecs" ? arguments.dropFirst().first : arguments.first
+            let subcommand = GitCommandOptions.commandWords(arguments).first
             let backoff = subcommand.map { retryableCommands.contains($0) } == true ? Self.lockRetryBackoff : []
             return try await Self.runWithLockRetry(backoff: backoff) {
-                try await Self.launch(executable, arguments: arguments, in: repository, environment: env)
+                try await Self.launch(executable, arguments: fullArguments, in: repository, environment: env, logged: options.logCommands)
             }
         }
         if ownsCommandSlot {
@@ -1077,6 +1104,27 @@ public struct CLIGitProvider: GitProviding {
             return try await operation()
         }
         return try await GitCommandQueue.shared.run(repository: repository, operation)
+    }
+
+    /// Runs git outside the command queue, for a tool that stays open until
+    /// you close it, with the same options as every other command.
+    func launchUnqueued(_ arguments: [String], in repository: URL, environment: [String: String]) async throws -> ProcessResult {
+        let options = options
+        return try await Self.launch(
+            gitURL,
+            arguments: options.configArguments + arguments,
+            in: repository,
+            environment: environment,
+            logged: options.logCommands
+        )
+    }
+
+    /// `-c` pairs for the fallback name and email where the repository's
+    /// Git config, global and `includeIf` ones included, has none.
+    private func fallbackIdentityArguments(_ options: GitCommandOptions, in repository: URL) async throws -> [String] {
+        // Exits 1 when neither key is set; that is an answer, not a failure.
+        let result = try await execute(["config", "--get-regexp", #"^user\.(name|email)$"#], in: repository)
+        return options.fallbackIdentityArguments(configured: result.exitCode == 0 ? result.stdoutString : "")
     }
 
     /// Runs one git process in `repository`. Process reports a working
@@ -1087,21 +1135,47 @@ public struct CLIGitProvider: GitProviding {
         _ executable: URL,
         arguments: [String],
         in repository: URL,
-        environment: [String: String]
+        environment: [String: String],
+        logged: Bool = false
     ) async throws -> ProcessResult {
+        let start = ContinuousClock.now
         do {
-            return try await ProcessRunner.run(
+            let result = try await ProcessRunner.run(
                 executable: executable,
                 arguments: arguments,
                 workingDirectory: repository,
                 environment: environment
             )
+            if logged {
+                logCommand(arguments, in: repository, result: result, after: ContinuousClock.now - start)
+            }
+            return result
         } catch {
+            if logged {
+                log.error("git \(arguments.joined(separator: " "), privacy: .public) did not run: \(error.localizedDescription, privacy: .public)")
+            }
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: repository.path, isDirectory: &isDirectory), isDirectory.boolValue else {
                 throw GitError.missingFolder(repository.path)
             }
             throw error
+        }
+    }
+
+    /// Settings > General > Log Git commands: every command, where it ran,
+    /// its exit status and time, and Git's first error line when it failed.
+    /// Public, so Console shows it; the setting says arguments can hold
+    /// paths and commit messages.
+    private static let log = Logger(subsystem: "com.svinarenko.avi", category: "git")
+
+    private static func logCommand(_ arguments: [String], in repository: URL, result: ProcessResult, after duration: Duration) {
+        let command = arguments.joined(separator: " ")
+        let milliseconds = Int(duration.components.seconds * 1000 + duration.components.attoseconds / 1_000_000_000_000_000)
+        if result.exitCode == 0 {
+            log.notice("git \(command, privacy: .public) in \(repository.path, privacy: .public): exit 0, \(milliseconds) ms")
+        } else {
+            let reason = result.stderrString.split(separator: "\n").first.map(String.init) ?? ""
+            log.error("git \(command, privacy: .public) in \(repository.path, privacy: .public): exit \(result.exitCode), \(milliseconds) ms: \(reason, privacy: .public)")
         }
     }
 
@@ -1146,6 +1220,7 @@ public struct CLIGitProvider: GitProviding {
         env["GIT_TERMINAL_PROMPT"] = "0"
         // Keep read-only commands like status from refreshing the index and triggering file watchers.
         env["GIT_OPTIONAL_LOCKS"] = "0"
+        env.merge(environmentOverrides) { _, override in override }
         return env
     }
 
