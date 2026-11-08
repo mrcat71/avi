@@ -36,7 +36,7 @@ rememberDestinationPerProvider = true
 [ai]
 enabled = false
 backend = "command"        # command | openai
-model = "gpt-6-luna"       # any model your backend accepts, e.g. gpt-6-sol
+model = "gpt-6.1-luna"     # any model your backend accepts, e.g. gpt-6.1-sol
 temperature = 0.2
 maxTokens = 800
 conventionalCommits = true
