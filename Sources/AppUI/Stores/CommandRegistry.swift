@@ -49,6 +49,11 @@ enum CommandRegistry {
             result.append(AppCommand(id: "repo.openInTerminal", title: "Open in Terminal", subtitle: root.path, group: "Repository", symbol: "terminal") {
                 FolderActions.openInTerminal(root)
             })
+            if let editor = FolderActions.editor {
+                result.append(AppCommand(id: "repo.openInEditor", title: "Open in \(editor.name)", subtitle: root.path, group: "Repository", symbol: "chevron.left.forwardslash.chevron.right") {
+                    FolderActions.openInEditor(root)
+                })
+            }
         }
 
         // Working copy

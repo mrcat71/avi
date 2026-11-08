@@ -194,6 +194,7 @@ struct RepositoryTabsBar: View {
             Button("Open in Terminal") {
                 FolderActions.openInTerminal(root)
             }
+            OpenInEditorButton(url: root)
             Button("Reveal in Finder") {
                 FolderActions.revealInFinder(root)
             }

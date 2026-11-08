@@ -719,6 +719,8 @@ struct ChangeRow: View {
         }
         .keyboardShortcut("o", modifiers: [.command, .option, .shift])
         .disabled(!onDisk)
+        OpenInEditorButton(url: store.absoluteURL(for: file))
+            .disabled(!onDisk)
         OpenWithMenu(store: store, file: file)
             .disabled(!onDisk)
         Button("External Diff") {
