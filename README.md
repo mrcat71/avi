@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.10.3. The config schema, the UI, and the
+Alpha. The current release is v0.10.4. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -31,10 +31,10 @@ around provider authentication, OAuth, and multi-account flows.
   right-click menu lists them too. Relaunching restores the open repositories,
   their tab order, and the selected tab and worktree. Closing a tab keeps it
   closed on relaunch.
-- Auto-fetch: once the last fetch is older than Settings > Git > Auto-fetch
-  interval (5 minutes by default), the open repository fetches when you come
-  back to Avi or switch to its tab, and again while Avi stays in front. A
-  failed automatic fetch shows in the status bar, not as an alert.
+- Auto-fetch: once the last fetch is older than Settings > Git > Fetch
+  automatically (every 5 minutes by default), the open repository fetches when
+  you come back to Avi or switch to its tab, and again while Avi stays in
+  front. A failed automatic fetch shows in the status bar, not as an alert.
 - Errors float as a notice under the toolbar instead of an alert that blocks
   the window: the notice names what failed, folds long Git output behind
   **Show Full Message**, and copies it with **Copy**.
@@ -115,7 +115,7 @@ around provider authentication, OAuth, and multi-account flows.
   merge's message is already in the commit field.
 - Resolve conflicts in Changes: take Current, Incoming, or both for each text
   conflict, choose a whole-file version, or open an external merge tool from
-  Settings > External Tools > Merge Tool. **Mark as Resolved** stages the
+  Settings > External Tools > Merge tool. **Mark as Resolved** stages the
   result and asks first if conflict markers remain; Stage All skips conflicts.
 - A pull with commits on both sides asks whether to rebase or merge when Git
   has no reconciliation setting. An existing Git setting keeps deciding.
@@ -128,8 +128,9 @@ around provider authentication, OAuth, and multi-account flows.
   of the repository.
 - Repository tabs keep one row while they fit and wrap onto up to three rows,
   then scroll; drag them to reorder, across rows too. A tab's right-click menu
-  and the command palette copy the repository's path, open it in a terminal
-  (Settings > Git > Terminal, or Terminal), or show it in Finder.
+  and the command palette copy the repository's path, open it in your editor
+  or terminal (Settings > External Tools), or show it in Finder. Changed files
+  open in the editor from their right-click menu too.
 - Push sheet that shows the route, the branch above the remote it goes to,
   with a badge for what the push does there: a new branch, the commits it
   sends, up to date, or how far the remote is ahead, so a refused push is no
@@ -155,14 +156,17 @@ around provider authentication, OAuth, and multi-account flows.
   creating one to avoid duplicates.
 - Pull request titles keep the hyphens that matter: ticket keys such as
   `INFRA-12345`, hyphenated file and folder names of the repository such as
-  `k8s-infra-ah-ams1`, and the names and patterns in Settings > Git > Pull
-  Requests. `feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress` becomes
+  `k8s-infra-ah-ams1`, and the names and patterns in Settings > Git >
+  Advanced. `feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress` becomes
   `INFRA-12345 upgrade k8s-infra-ah-ams1 ingress`.
 - AI-assisted commit message generation, one click on **Generate** in the
   commit card, through a configurable command or the OpenAI API (default model
   `gpt-6.1-luna`). AI work shows how long it has been running, and an IDE-style
   debug drawer shows the underlying run.
-- Config file with live reload; secrets stored in the macOS Keychain.
+- Settings show what most people change; each section keeps the rest, such
+  as AI temperature and prompts or Git signing, under **Advanced**, which a
+  search opens when it finds a setting there. Config file with live reload;
+  secrets stored in the macOS Keychain.
 - Repository picker with search, lazy metadata hydration, and cloning from any
   `gh` or `glab` account, or from a URL over HTTPS with the account you pick or
   over SSH with your keys. Dropping folders on the window opens them, each in
@@ -183,7 +187,8 @@ around provider authentication, OAuth, and multi-account flows.
   `swift-tools-version: 6.0`; CI builds with the default toolchain of the
   `macos-26` runners, Swift 6.3 as of 0.9.0.
 - Optional CLI tools used by some features: `git` (required), `gh`, `glab`,
-  `codex`, `claude`. Configure paths in **Settings → External Tools**.
+  `codex`, `claude`. Set other paths under **Settings > External Tools >
+  Advanced**.
 
 ## Build & Run
 
