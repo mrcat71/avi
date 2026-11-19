@@ -17,6 +17,14 @@ struct AISettingsView: View {
         ai.backend == "openai"
     }
 
+    private var usesAppleModel: Bool {
+        ai.usesAppleModel
+    }
+
+    private var usesCommand: Bool {
+        !usesAPI && !usesAppleModel
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsGroup {
@@ -33,21 +41,22 @@ struct AISettingsView: View {
             SettingsGroup("Setup") {
                 SettingsFormRow(
                     "Backend",
-                    description: usesAPI
-                        ? "Calls an OpenAI-compatible API with your key."
-                        : "Runs a command on your Mac, such as codex or claude, with the prompt."
+                    description: backendDescription
                 ) {
                     Picker("Backend", selection: bind(\.ai.backend)) {
                         Text("Command").tag("command")
                         Text("OpenAI-compatible API").tag("openai")
+                        Text("Apple On-Device").tag(AppleOnDeviceModel.backendID)
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    .frame(maxWidth: 280)
+                    .frame(maxWidth: 400)
                 }
-                SettingsDivider()
-                SettingsFormRow("Model", description: "Any model your backend accepts.") {
-                    SettingsTextField("Model", text: bind(\.ai.model), prompt: AIConfig.defaultModel, maxWidth: 240)
+                if !usesAppleModel {
+                    SettingsDivider()
+                    SettingsFormRow("Model", description: "Any model your backend accepts.") {
+                        SettingsTextField("Model", text: bind(\.ai.model), prompt: AIConfig.defaultModel, maxWidth: 240)
+                    }
                 }
                 if usesAPI {
                     SettingsDivider()
@@ -79,7 +88,7 @@ struct AISettingsView: View {
                 generation
                 if usesAPI {
                     api
-                } else {
+                } else if usesCommand {
                     command
                 }
                 limits
@@ -99,6 +108,17 @@ struct AISettingsView: View {
     }
 
     // MARK: Backend
+
+    private var backendDescription: String {
+        if usesAPI {
+            return "Calls an OpenAI-compatible API with your key."
+        }
+        if usesAppleModel {
+            return "Runs Apple's on-device model, so nothing leaves your Mac. Needs macOS 26 and Apple Intelligence. "
+                + "Its context is small, so each diff is cut to \(AppleOnDeviceModel.diffCharacterLimit) characters."
+        }
+        return "Runs a command on your Mac, such as codex or claude, with the prompt."
+    }
 
     private var apiKeyRow: some View {
         SettingsFormRow("API key", description: "Kept in your Keychain, never in the config file.") {
@@ -156,14 +176,20 @@ struct AISettingsView: View {
 
     private var generation: some View {
         SettingsGroup("Generation") {
-            SettingsFormRow(
-                "Reasoning effort",
-                description: usesAPI ? "Sent as reasoning_effort." : "Given to the command as ${effort} and ${effort_kv}."
-            ) {
-                SettingsPopupMenu("Reasoning effort", selection: bind(\.ai.reasoningEffort), items: Self.effortItems, fallbackTitle: ai.reasoningEffort)
+            if !usesAppleModel {
+                SettingsFormRow(
+                    "Reasoning effort",
+                    description: usesAPI
+                        ? "Sent as reasoning_effort. Model default leaves it out, for models that reject none."
+                        : "Given to the command as ${effort} and ${effort_kv}. Model default leaves them empty."
+                ) {
+                    SettingsPopupMenu("Reasoning effort", selection: bind(\.ai.reasoningEffort), items: Self.effortItems, fallbackTitle: ai.reasoningEffort)
+                }
             }
-            if usesAPI {
-                SettingsDivider()
+            if !usesCommand {
+                if usesAPI {
+                    SettingsDivider()
+                }
                 SettingsFormRow("Temperature", description: "Lower is steadier, higher more varied.") {
                     HStack(spacing: 8) {
                         Slider(value: bind(\.ai.temperature), in: 0 ... 1, step: 0.05)
@@ -175,7 +201,7 @@ struct AISettingsView: View {
                     }
                 }
                 SettingsDivider()
-                SettingsFormRow("Max tokens", description: "The longest answer the API may give.") {
+                SettingsFormRow("Max tokens", description: "The longest answer the model may give.") {
                     Stepper(value: bind(\.ai.maxTokens), in: 100 ... 4000, step: 100) {
                         Text("\(ai.maxTokens)")
                             .font(.system(size: 12).monospacedDigit())
@@ -292,8 +318,9 @@ struct AISettingsView: View {
     // MARK: Values
 
     static let effortItems: [SettingsPopupMenu<String>.Item] = [
-        .option("", "None"),
+        .option("", "Model default"),
         .divider,
+        .option("none", "None"),
         .option("minimal", "Minimal"),
         .option("low", "Low"),
         .option("medium", "Medium"),
@@ -312,8 +339,10 @@ struct AISettingsView: View {
             .replacingOccurrences(of: "${prompt_file}", with: "/tmp/avi-prompt.txt")
     }
 
+    /// None is the default, so a template without effort, such as claude's,
+    /// is not nagged about it.
     private var effortPickedButNotUsed: Bool {
-        guard !ai.reasoningEffort.isEmpty else { return false }
+        guard !ai.reasoningEffort.isEmpty, ai.reasoningEffort != "none" else { return false }
         return !ai.commandTemplate.contains("${effort}") && !ai.commandTemplate.contains("${effort_kv}")
     }
 

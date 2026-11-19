@@ -79,6 +79,17 @@ struct ConfigStoreTests {
         #expect(AIConfig().model == "gpt-6.1-luna")
     }
 
+    @Test(arguments: [
+        (#"{}"#, "none"),
+        (#"{"reasoningEffort": ""}"#, ""),
+        (#"{"reasoningEffort": "high"}"#, "high")
+    ])
+    func reasoningEffortDefaultsToNone(json: String, expected: String) throws {
+        let decoded = try JSONDecoder().decode(AIConfig.self, from: Data(json.utf8))
+        #expect(decoded.reasoningEffort == expected)
+        #expect(AIConfig().reasoningEffort == "none")
+    }
+
     @Test func agentsSectionRoundTripsThroughTOML() throws {
         var config = AviConfig()
         config.agents.enabled = false

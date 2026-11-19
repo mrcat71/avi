@@ -9,6 +9,8 @@ public enum AIEngineError: Error, CustomStringConvertible, LocalizedError {
     case subprocessFailed(AIRunResult)
     case timedOut(AIRunResult)
     case invalidResponse(String)
+    /// The model refused or failed, with its reason.
+    case generationFailed(String)
     case cancelled
 
     public var description: String {
@@ -31,6 +33,8 @@ public enum AIEngineError: Error, CustomStringConvertible, LocalizedError {
             return "AI generation timed out after \(r.durationMS / 1000)s."
         case .invalidResponse(let msg):
             return "AI response invalid: \(msg)"
+        case .generationFailed(let reason):
+            return reason
         case .cancelled:
             return "Generation cancelled."
         }
@@ -60,6 +64,8 @@ enum AIEngineFactory {
         switch config.backend {
         case "openai":
             return OpenAIAIEngine(config: config)
+        case AppleOnDeviceModel.backendID:
+            return AppleAIEngine(config: config)
         default:
             return CommandAIEngine(config: config, executables: ConfigStore.shared.config.externalTools.aiExecutables)
         }

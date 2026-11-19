@@ -1238,7 +1238,7 @@ public final class RepositoryStore: Identifiable {
                     guideLine: config.bodyWrap,
                     conventionalCommits: config.conventionalCommits
                 )
-                let prompt = PromptRenderer.render(template: config.promptTemplate, context: context)
+                let prompt = PromptRenderer.render(template: config.promptTemplate, context: context, diffLimit: config.promptDiffLimit)
                 let engine = AIEngineFactory.make(config: config)
                 let text = try await engine.generate(
                     prompt: prompt,
@@ -1255,7 +1255,7 @@ public final class RepositoryStore: Identifiable {
                     provider: config.backend,
                     resolvedExecutable: report.resolvedExecutable ?? "",
                     argv: [],
-                    model: config.model,
+                    model: config.displayModel,
                     exitCode: 0,
                     stdout: text,
                     stderr: "",
@@ -1400,6 +1400,7 @@ public final class RepositoryStore: Identifiable {
         case .missingAPIKey: return "Missing API key"
         case .noModelConfigured: return "No model"
         case .invalidResponse: return "Invalid response"
+        case .generationFailed: return "AI generation failed"
         case .cancelled: return "Cancelled"
         }
     }
@@ -1626,7 +1627,7 @@ public final class RepositoryStore: Identifiable {
                     existingMessage: existing,
                     commitDiff: diff
                 )
-                let prompt = PromptRenderer.render(template: config.rewordPromptTemplate, context: context)
+                let prompt = PromptRenderer.render(template: config.rewordPromptTemplate, context: context, diffLimit: config.promptDiffLimit)
                 let engine = AIEngineFactory.make(config: config)
                 let raw = try await engine.generate(
                     prompt: prompt,
@@ -1643,7 +1644,7 @@ public final class RepositoryStore: Identifiable {
                     provider: config.backend,
                     resolvedExecutable: report.resolvedExecutable ?? "",
                     argv: [],
-                    model: config.model,
+                    model: config.displayModel,
                     exitCode: 0,
                     stdout: raw,
                     stderr: "",
@@ -1884,7 +1885,7 @@ public final class RepositoryStore: Identifiable {
             guideLine: config.bodyWrap,
             conventionalCommits: config.conventionalCommits
         )
-        let prompt = PromptRenderer.render(template: config.splitPromptTemplate, context: context)
+        let prompt = PromptRenderer.render(template: config.splitPromptTemplate, context: context, diffLimit: config.promptDiffLimit)
         let engine = AIEngineFactory.make(config: config)
         let raw = try await engine.generate(
             prompt: prompt,
@@ -1897,7 +1898,7 @@ public final class RepositoryStore: Identifiable {
             provider: config.backend,
             resolvedExecutable: report.resolvedExecutable ?? "",
             argv: [],
-            model: config.model,
+            model: config.displayModel,
             exitCode: 0,
             stdout: raw,
             stderr: "",

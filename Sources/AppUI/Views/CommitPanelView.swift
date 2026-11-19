@@ -420,7 +420,7 @@ private struct AIPreviewCard: View {
                     .foregroundStyle(Color.accentColor)
                 Spacer()
                 if preview.proposedBy == nil {
-                    Text("via \(config.backend) · \(config.model)")
+                    Text("via \(config.backend) · \(config.displayModel)")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }

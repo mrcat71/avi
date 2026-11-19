@@ -23,6 +23,8 @@ public enum AICLIValidator {
         switch config.backend {
         case "openai":
             return validateOpenAI(config)
+        case AppleOnDeviceModel.backendID:
+            return validateApple()
         default:
             return await validateCommand(config, executables: executables)
         }
@@ -101,6 +103,16 @@ public enum AICLIValidator {
         return AIValidationReport(
             isValid: messages.isEmpty,
             messages: messages,
+            resolvedExecutable: nil,
+            detectedVersion: nil
+        )
+    }
+
+    private static func validateApple() -> AIValidationReport {
+        let reason = AppleOnDeviceModel.unavailableReason()
+        return AIValidationReport(
+            isValid: reason == nil,
+            messages: reason.map { [$0] } ?? [],
             resolvedExecutable: nil,
             detectedVersion: nil
         )

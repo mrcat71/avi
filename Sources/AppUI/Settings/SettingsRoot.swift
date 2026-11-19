@@ -99,7 +99,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .ai:
             return ["AI", "Enable AI commit messages", "Backend", "Custom command", "OpenAI-compatible API", "Model",
                     "API key", "Keychain", "Check setup", "Conventional Commits", "Insert directly", "Preview", "codex",
-                    "claude"]
+                    "claude", "Apple On-Device", "Apple Intelligence", "Foundation Models", "Local model"]
         case .agents:
             return ["Agent proposals", "Accept proposals", "Install", "Install All", "Claude Code", "Codex",
                     "OpenCode", "avi command", "Skill", "How to Use", "Waiting for review"]

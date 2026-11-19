@@ -55,10 +55,12 @@ public struct PromptContext {
 enum PromptRenderer {
     /// Substitute every `${name}` placeholder in `template` from `context`. Unknown
     /// placeholders are left literal so users can spot typos in their templates.
-    static func render(template: String, context: PromptContext) -> String {
+    /// `diffLimit` cuts each diff to that many characters, for models with a
+    /// small context window.
+    static func render(template: String, context: PromptContext, diffLimit: Int? = nil) -> String {
         let table: [String: String] = [
-            "target": context.target,
-            "staged_diff": context.stagedDiff,
+            "target": clip(context.target, to: diffLimit),
+            "staged_diff": clip(context.stagedDiff, to: diffLimit),
             "branch": context.branch,
             "files": context.files,
             "repo": context.repo,
@@ -68,7 +70,7 @@ enum PromptRenderer {
             "guideLine": "\(context.guideLine)",
             "style": style(conventional: context.conventionalCommits),
             "existing_message": context.existingMessage,
-            "commit_diff": context.commitDiff,
+            "commit_diff": clip(context.commitDiff, to: diffLimit),
             "instructions": context.instructions,
             "plan": context.plan
         ]
@@ -93,6 +95,12 @@ enum PromptRenderer {
         }
         output += rest
         return output
+    }
+
+    /// `diff` cut to `limit` characters, marked so the model knows it is partial.
+    static func clip(_ diff: String, to limit: Int?) -> String {
+        guard let limit, diff.count > limit else { return diff }
+        return String(diff.prefix(limit)) + "\n[diff truncated]\n"
     }
 
     /// What `${style}` asks of the first line of each message.

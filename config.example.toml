@@ -35,10 +35,11 @@ rememberDestinationPerProvider = true  # start a clone where the last one from i
 
 [ai]
 enabled = false
-backend = "command"        # command | openai
-model = "gpt-6.1-luna"     # any model your backend accepts, e.g. gpt-6.1-sol
+backend = "command"        # command | openai | apple (Apple's on-device model, macOS 26+)
+model = "gpt-6.1-luna"     # any model your backend accepts, e.g. gpt-6.1-sol; apple ignores it
 temperature = 0.2
 maxTokens = 800
+reasoningEffort = "none"   # none | minimal | low | medium | high; "" sends none of it, leaving the model's default
 conventionalCommits = true # fills ${style} in the prompts
 subjectSoftLimit = 50
 subjectHardLimit = 72

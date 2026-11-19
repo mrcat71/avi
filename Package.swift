@@ -29,7 +29,10 @@ let package = Package(
                 .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern"),
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            resources: [.process("Resources")]
+            resources: [.process("Resources")],
+            // FoundationModels exists only on macOS 26 and later, and Avi runs
+            // on 14, so it must load without the framework.
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-weak_framework", "-Xlinker", "FoundationModels"])]
         ),
         .executableTarget(name: "AviApp", dependencies: ["AppUI", "GitKit"]),
         .testTarget(name: "GitKitTests", dependencies: ["GitKit"]),

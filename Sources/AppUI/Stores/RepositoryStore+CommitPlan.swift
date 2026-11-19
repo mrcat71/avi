@@ -390,7 +390,7 @@ public extension RepositoryStore {
                     instructions: instructions.trimmingCharacters(in: .whitespacesAndNewlines),
                     plan: Self.planJSON(targets)
                 )
-                guard let raw = try await askAI(PromptRenderer.render(template: config.planRevisionPromptTemplate, context: context), config: config) else { return }
+                guard let raw = try await askAI(PromptRenderer.render(template: config.planRevisionPromptTemplate, context: context, diffLimit: config.promptDiffLimit), config: config) else { return }
                 let groups = try AISplitParser.parse(raw)
                 // Revise only what is still in the plan; you may have edited it meanwhile.
                 let still = targets.map(\.id).filter { commitPlan.draft(id: $0) != nil }
@@ -441,7 +441,7 @@ public extension RepositoryStore {
                     guideLine: config.bodyWrap,
                     conventionalCommits: config.conventionalCommits
                 )
-                guard let raw = try await askAI(PromptRenderer.render(template: config.promptTemplate, context: context), config: config) else { return }
+                guard let raw = try await askAI(PromptRenderer.render(template: config.promptTemplate, context: context, diffLimit: config.promptDiffLimit), config: config) else { return }
                 let (subject, body) = splitGeneratedMessage(raw)
                 guard !subject.isEmpty, commitPlan.draft(id: id) != nil else { return }
                 commitPlan.setMessage(CommitMessageParts.join(summary: subject, body: body), for: id)
@@ -475,7 +475,7 @@ extension RepositoryStore {
             provider: config.backend,
             resolvedExecutable: report.resolvedExecutable ?? "",
             argv: [],
-            model: config.model,
+            model: config.displayModel,
             exitCode: 0,
             stdout: raw,
             stderr: "",
@@ -506,8 +506,7 @@ extension RepositoryStore {
     static let aiDiffLimit = 150_000
 
     static func clipped(_ diff: String) -> String {
-        guard diff.count > aiDiffLimit else { return diff }
-        return String(diff.prefix(aiDiffLimit)) + "\n[diff truncated]\n"
+        PromptRenderer.clip(diff, to: aiDiffLimit)
     }
 
     static func planJSON(_ drafts: [CommitDraft]) -> String {

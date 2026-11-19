@@ -327,7 +327,7 @@ public struct ProviderAccount: Codable, Equatable, Identifiable, Sendable {
 
 public struct AIConfig: Codable, Equatable, Sendable {
     public var enabled: Bool
-    public var backend: String // command | openai
+    public var backend: String // command | openai | apple
     public var model: String
     public var temperature: Double
     public var maxTokens: Int
@@ -340,7 +340,7 @@ public struct AIConfig: Codable, Equatable, Sendable {
     public var openAIBaseURL: String
     public var openAIKeychainItem: String
     public var timeoutSeconds: Int
-    public var reasoningEffort: String // "" | "minimal" | "low" | "medium" | "high"
+    public var reasoningEffort: String // "none" | "minimal" | "low" | "medium" | "high", or "" for the model's own default
     public var directInsert: Bool // skip the preview card; replace commit fields directly
     public var rewordPromptTemplate: String
     public var splitPromptTemplate: String
@@ -361,7 +361,7 @@ public struct AIConfig: Codable, Equatable, Sendable {
         openAIBaseURL: String = "https://api.openai.com/v1",
         openAIKeychainItem: String = "avi.openai.apiKey",
         timeoutSeconds: Int = 120,
-        reasoningEffort: String = "",
+        reasoningEffort: String = "none",
         directInsert: Bool = true,
         rewordPromptTemplate: String = AIConfig.defaultRewordPromptTemplate,
         splitPromptTemplate: String = AIConfig.defaultSplitPromptTemplate,
@@ -386,6 +386,21 @@ public struct AIConfig: Codable, Equatable, Sendable {
         self.rewordPromptTemplate = rewordPromptTemplate
         self.splitPromptTemplate = splitPromptTemplate
         self.planRevisionPromptTemplate = planRevisionPromptTemplate
+    }
+
+    /// The backend is Apple's on-device model, which takes no model name.
+    public var usesAppleModel: Bool {
+        backend == AppleOnDeviceModel.backendID
+    }
+
+    /// The model as the UI and debug runs show it.
+    public var displayModel: String {
+        usesAppleModel ? AppleOnDeviceModel.displayName : model
+    }
+
+    /// How many characters of each diff a prompt carries, or nil for all.
+    public var promptDiffLimit: Int? {
+        usesAppleModel ? AppleOnDeviceModel.diffCharacterLimit : nil
     }
 
     /// Default model for AI-assisted commit messages.

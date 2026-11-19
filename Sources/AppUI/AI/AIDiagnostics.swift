@@ -3,7 +3,7 @@ import Foundation
 /// Carries the full execution trace of an AI generation attempt so the UI
 /// can render it as a debug disclosure when something goes wrong.
 public struct AIRunResult: Sendable, Equatable {
-    public let provider: String // "command" | "openai"
+    public let provider: String // "command" | "openai" | "apple"
     public let resolvedExecutable: String
     public let argv: [String]
     public let model: String

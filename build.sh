@@ -26,6 +26,13 @@ xcrun --sdk macosx swiftc \
   -Xlinker -install_name -Xlinker @rpath/libGitKit.dylib \
   $(find Sources/GitKit -name '*.swift' -type f)
 
+# Weak-link FoundationModels (macOS 26+) when the SDK has it, so the app
+# still launches on older macOS. Older SDKs build without it.
+APPUI_LINK_FLAGS=()
+if [[ -d "$(xcrun --sdk macosx --show-sdk-path)/System/Library/Frameworks/FoundationModels.framework" ]]; then
+  APPUI_LINK_FLAGS=(-Xlinker -weak_framework -Xlinker FoundationModels)
+fi
+
 echo "Building AppUI..."
 xcrun --sdk macosx swiftc \
   -target "$TARGET" \
@@ -37,6 +44,7 @@ xcrun --sdk macosx swiftc \
   -I "$OUT" \
   -L "$OUT" -lGitKit \
   -Xlinker -install_name -Xlinker @rpath/libAppUI.dylib \
+  ${APPUI_LINK_FLAGS[@]+"${APPUI_LINK_FLAGS[@]}"} \
   -Xlinker -rpath -Xlinker @loader_path \
   $(find Sources/AppUI -name '*.swift' -type f)
 
