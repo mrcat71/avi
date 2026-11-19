@@ -175,6 +175,7 @@ avi propose --file PLAN.json|- [--repo PATH] [--agent NAME] [--session ID]
 avi propose -m SUBJECT [-m BODY]... [--tag NAME [--tag-message TEXT]]
             [--agent NAME] [--session ID] [--take-over] [--] [FILE...]
 avi propose --tag NAME [--tag-message TEXT] [--at REVISION]
+avi tag NAME [-m MESSAGE] [--at REVISION] [--json]
 avi skill status | install | remove [--claude] [--codex] [--opencode] [--command] [--force]
 avi version
 ```
@@ -205,6 +206,10 @@ avi version
   existing commit: `{"version": 1, "tag": {"name": "v1.2.0", "at": "HEAD"}}`.
 - `--tag` and `--tag-message` give the `-m` commit its tag. Without `-m`,
   `--tag` proposes a tag for the commit `--at` names, `HEAD` by default.
+- `avi tag NAME [-m MESSAGE] [--at REVISION]` is `avi propose --tag NAME
+  [--tag-message MESSAGE] [--at REVISION]`, spelled like `git tag`. `-a` is
+  accepted and needs `-m`, as an annotated tag needs a message. It only
+  proposes: the tag waits in Avi until you create it.
 - `-m` joins its values with blank lines, like `git commit -m`. Files after it
   are relative to the current directory.
 - A `file_claimed` rejection normally means another session already owns the
@@ -235,7 +240,7 @@ one JSON request on one line and reads one JSON line back:
 
 ```text
 {"v":1,"method":"propose","params":{"repo":"/abs/worktree","agent":"Codex","session":"t1","commits":[{"message":"...","files":["a.swift"]}]}}
-{"v":1,"ok":true,"result":{"app":{"version":"0.10.4"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
+{"v":1,"ok":true,"result":{"app":{"version":"0.10.5"},"placement":"plan","commits":1,"staged":[],"notes":[],"repo":{...}}}
 ```
 
 Methods are `status`, `open`, and `propose`. `propose` accepts optional

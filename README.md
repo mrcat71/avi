@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.10.4. The config schema, the UI, and the
+Alpha. The current release is v0.10.5. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -160,8 +160,9 @@ around provider authentication, OAuth, and multi-account flows.
   Advanced. `feature/INFRA-12345-upgrade-k8s-infra-ah-ams1-ingress` becomes
   `INFRA-12345 upgrade k8s-infra-ah-ams1 ingress`.
 - AI-assisted commit message generation, one click on **Generate** in the
-  commit card, through a configurable command or the OpenAI API (default model
-  `gpt-6.1-luna`). AI work shows how long it has been running, and an IDE-style
+  commit card, through a configurable command, the OpenAI API (default model
+  `gpt-6.1-luna`), or Apple's on-device model on macOS 26 with Apple
+  Intelligence, which keeps the diff on your Mac. AI work shows how long it has been running, and an IDE-style
   debug drawer shows the underlying run.
 - Settings show what most people change; each section keeps the rest, such
   as AI temperature and prompts or Git signing, under **Advanced**, which a

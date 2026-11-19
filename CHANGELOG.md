@@ -6,6 +6,17 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-11-19
+
+### Added
+- AI commit messages can run on Apple's on-device model: pick **Apple On-Device** under Settings > AI Commit Messages, or set `ai.backend = "apple"`. It needs macOS 26 with Apple Intelligence turned on, sends nothing off your Mac, and needs no key or model name. **Check Setup** says when this Mac cannot run it, Apple Intelligence is off, or the model is still downloading. The model's context is small, so each diff it gets is cut to 6,000 characters, and changes too large for it say so.
+- `avi tag NAME [-m MESSAGE] [--at REVISION]`, spelled like `git tag`, proposes a tag for an existing commit, the same as `avi propose --tag`. It only proposes: the tag waits in Avi until you create it.
+
+### Changed
+- AI reasoning effort defaults to **None** and sends `none`, so generation skips reasoning unless you choose a level. The old **None**, which sent nothing and left the model's own default, is now called **Model default**; pick it for a model or server that rejects `none`. A config file that already has `reasoningEffort` keeps its value.
+- The `avi` skill also triggers on release work, such as a version bump or cutting a release, and tells agents to send release tags to Avi instead of running `git tag` or handing you `git tag` and `git push` commands. Settings > Agents offers to update installed copies.
+- The `avi` skill's `mktemp` command for plan files works on Linux too, where agents in sandboxes run.
+
 ## [0.10.4] - 2026-11-08
 
 ### Added
