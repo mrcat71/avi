@@ -37,8 +37,8 @@ enum AgentSkillContent {
     private static let frontMatter = #"""
     ---
     name: avi
-    description: Hand finished work in a git repository to Avi, the macOS git client, instead of committing or tagging. Avi stages the files and fills its commit message, or lays out several commits that the user approves with one click, and can put a release tag on a commit. Use when a coding task in a git repository is done and Avi has that repository open, or when the user asks to send changes, a commit, a commit plan, or a tag to Avi.
-    when_to_use: Trigger on "avi", "send to avi", "hand off to avi", "propose commits", "commit plan in avi", "fill the commit message in avi", "tag in avi", "propose a tag", and at the end of a coding task when `avi status --json` shows the repository open in Avi.
+    description: Hand finished work in a git repository to Avi, the macOS git client, instead of committing or tagging. Avi stages the files and fills its commit message, or lays out several commits that the user approves with one click, and creates release tags. Use when a coding task in a git repository is done and Avi has that repository open, when preparing a release or version bump there (the release commit and its tag go through Avi, not `git tag`), or when the user asks to send changes, a commit, a commit plan, or a tag to Avi.
+    when_to_use: Trigger on "avi", "send to avi", "hand off to avi", "propose commits", "commit plan in avi", "fill the commit message in avi", "tag in avi", "propose a tag", "release", "cut a release", "bump version", "tag a release", "git tag", and at the end of a coding task when `avi status --json` shows the repository open in Avi.
     allowed-tools: Bash(avi *)
     ---
     """#
@@ -82,7 +82,7 @@ enum AgentSkillContent {
     - Paths are relative to the repository root, exactly as `git status` prints
       them. List both sides of a rename.
 
-    Write the plan to a fresh file from `mktemp -t avi-plan` (in Claude Code, fill
+    Write the plan to a fresh file from `mktemp -t avi-plan.XXXXXX` (in Claude Code, fill
     it with the file tool), or pipe it on standard input with `--file -`. Never
     reuse a fixed name in a shared folder such as `/tmp`. Then send it:
 
@@ -101,7 +101,7 @@ enum AgentSkillContent {
     ```
 
     ```sh
-    mktemp -t avi-plan        # prints a fresh path; write the plan there
+    mktemp -t avi-plan.XXXXXX # prints a fresh path on macOS and Linux; write the plan there
     avi propose --file /path/printed/by/mktemp --json
     ```
 
@@ -120,9 +120,15 @@ enum AgentSkillContent {
 
     ## Tags
 
-    Propose a tag only when the user asks for one, or for a release in a
-    repository that tags its releases. Follow the names the repository already
-    uses (`git tag --list --sort=-v:refname`), and give a release tag a message:
+    In a repository open in Avi, tags go through Avi too. Never run `git tag`,
+    and never hand the user `git tag` or `git push origin <tag>` commands to
+    run: send the tag to Avi, which creates it once the user approves and
+    pushes it with its commit. Release instructions that show `git tag` mean
+    this when Avi has the repository open.
+
+    Propose a tag when the user asks for one, or for a release in a repository
+    that tags its releases. Follow the names the repository already uses
+    (`git tag --list --sort=-v:refname`), and give a release tag a message:
     that makes it annotated, while a tag without one is lightweight.
 
     Put the tag on the commit it marks, in that commit's entry in the plan. Avi
@@ -144,13 +150,23 @@ enum AgentSkillContent {
     avi propose -m "chore(release): prepare version 1.2.0" --tag v1.2.0 --tag-message "Release 1.2.0" -- CHANGELOG.md
     ```
 
-    For a commit that already exists, send the tag alone:
-    `avi propose --tag v1.2.0 [--tag-message TEXT] [--at REVISION]` (`--at`
-    defaults to `HEAD`). It waits in a banner until the user creates it, and the
-    banner offers to push it once the remote has the commit. Use this when the
-    repository's release process pushes the tag only after CI passes on the
-    pushed commit: propose the release commit without a tag, and send the tag
-    once the user says CI passed.
+    For a commit that already exists, send the tag alone, spelled like
+    `git tag`:
+
+    ```sh
+    avi tag v1.2.0 -m "Release 1.2.0" [--at REVISION]
+    ```
+
+    `--at` defaults to `HEAD`, resolved when Avi receives it, so send it only
+    after the commit exists. (`avi propose --tag v1.2.0 --tag-message TEXT
+    [--at REVISION]` is the same.) The tag waits in a banner until the user
+    creates it, and the banner offers to push it once the remote has the
+    commit.
+
+    When the release process pushes the tag only after CI passes on the pushed
+    commit, propose the release commit without a tag, and end your turn by
+    saying which tag you will send once CI passes and the exact `avi tag`
+    command. When the user says CI passed, run it.
 
     `result.tags` lists the tags Avi will create. When it is missing, this Avi
     predates tags: tell the user to tag the commit after making it.
@@ -197,8 +213,9 @@ enum AgentSkillContent {
 
     - Run `git commit`, `git add`, `git restore --staged`, or `git reset` to
       prepare a hand-off. Avi stages exactly what the plan names.
-    - Run `git tag`, or push a tag: propose it instead. Avi creates it once the
-      user approves and pushes it with its commit.
+    - Run `git tag`, push a tag, or give the user `git tag` or `git push`
+      commands for one: propose it instead. Avi creates it once the user
+      approves and pushes it with its commit.
     - Push, or ask Avi to commit for you.
     - Pass `--replace` without the user's OK.
     - Pass `--take-over` without explicit user approval for the affected files.

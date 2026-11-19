@@ -71,6 +71,8 @@ public enum AgentCLI {
         case tagInPlan
         case tagOptionWithoutTag(String)
         case atWithMessage
+        case tagNameMissing
+        case annotateWithoutMessage
 
         var errorDescription: String? {
             switch self {
@@ -82,6 +84,8 @@ public enum AgentCLI {
             case .tagInPlan: return "with `--file`, put the tag in the plan file"
             case .tagOptionWithoutTag(let option): return "`\(option)` needs `--tag NAME`"
             case .atWithMessage: return "`--at` tags a commit that already exists; leave out `-m`, or drop `--at` to tag the new commit"
+            case .tagNameMissing: return "`tag` needs a name, such as `avi tag v1.2.0 -m \"Release 1.2.0\"`"
+            case .annotateWithoutMessage: return "`-a` makes an annotated tag; give its message with `-m`"
             }
         }
     }
@@ -121,6 +125,8 @@ public enum AgentCLI {
             return invocation
         case "propose":
             return try parsePropose(&args)
+        case "tag":
+            return try parseTag(&args)
         case "skill":
             return try parseSkill(&args)
         default:
@@ -175,6 +181,34 @@ public enum AgentCLI {
         }
         invocation.command = .propose(propose)
         return invocation
+    }
+
+    /// `avi tag NAME [-m MESSAGE] [--at REVISION]`, the spelling agents reach
+    /// for after `git tag`. It is `avi propose --tag NAME`: a tag for a commit
+    /// that already exists, waiting in Avi until the user creates it.
+    private static func parseTag(_ args: inout ArraySlice<String>) throws -> Invocation {
+        var name: String?
+        var options: [String] = []
+        var annotate = false
+        var message: String?
+        while let arg = args.popFirst() {
+            switch arg {
+            case "-m", "--message", "--tag-message": message = try value(for: arg, from: &args)
+            case "-a", "--annotate": annotate = true
+            case "--at", "--repo", "--agent", "--session": try options += [arg, value(for: arg, from: &args)]
+            case "--json", "--focus": options.append(arg)
+            default:
+                guard !arg.hasPrefix("-") else { throw ParseError.unknownOption(arg) }
+                guard name == nil else { throw ParseError.unexpected(arg) }
+                name = arg
+            }
+        }
+        guard let name else { throw ParseError.tagNameMissing }
+        if annotate, message == nil {
+            throw ParseError.annotateWithoutMessage
+        }
+        var propose = (["--tag", name] + (message.map { ["--tag-message", $0] } ?? []) + options)[...]
+        return try parsePropose(&propose)
     }
 
     private static func parseSkill(_ args: inout ArraySlice<String>) throws -> Invocation {
@@ -271,6 +305,7 @@ public enum AgentCLI {
       avi propose -m SUBJECT [-m BODY]... [--tag NAME [--tag-message TEXT]]
                   [--agent NAME] [--session ID] [--take-over] [--] [FILE...]
       avi propose --tag NAME [--tag-message TEXT] [--at REVISION]
+      avi tag NAME [-m MESSAGE] [--at REVISION] [--json]
       avi skill status | install | remove [--claude] [--codex] [--opencode] [--command] [--force]
       avi version
 
@@ -282,7 +317,8 @@ public enum AgentCLI {
     One commit fills Avi's commit field and stages its files; several become
     planned commits in Avi's Changes view. A commit's tag is created on it once
     you commit; a tag with a message is annotated. `--tag` without `-m` proposes
-    a tag for a commit that already exists (`--at`, default HEAD). Nothing is
+    a tag for a commit that already exists (`--at`, default HEAD); `avi tag` is
+    the same. Nothing is
     committed, tagged, or pushed until you approve it in Avi, and Avi pushes a
     tag together with its commit.
 

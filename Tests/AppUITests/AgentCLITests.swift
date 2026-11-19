@@ -90,6 +90,33 @@ struct AgentCLITests {
         #expect(tag.at == "HEAD~1")
     }
 
+    @Test func tagCommandIsProposeTag() throws {
+        let tag = try AgentCLI.parse(["tag", "-a", "v1.0", "-m", "Release 1.0", "--at", "HEAD~1", "--json"])
+        let propose = try AgentCLI.parse(["propose", "--tag", "v1.0", "--tag-message", "Release 1.0", "--at", "HEAD~1", "--json"])
+        #expect(tag == propose)
+
+        guard case .propose(let light) = try AgentCLI.parse(["tag", "v1.0"]).command else {
+            Issue.record("expected propose")
+            return
+        }
+        #expect(light.tag == "v1.0")
+        #expect(light.tagMessage == nil)
+        #expect(light.at == nil)
+    }
+
+    @Test(arguments: [
+        (["tag"], AgentCLI.ParseError.tagNameMissing),
+        (["tag", "-a", "v1.0"], .annotateWithoutMessage),
+        (["tag", "v1.0", "v2.0"], .unexpected("v2.0")),
+        (["tag", "v1.0", "--force"], .unknownOption("--force")),
+        (["tag", "v1.0", "-m"], .missingValue("-m"))
+    ])
+    func tagCommandRejects(arguments: [String], expected: AgentCLI.ParseError) {
+        #expect(throws: expected) {
+            try AgentCLI.parse(arguments)
+        }
+    }
+
     @Test func planFilesTakeTagsAsTextOrObjects() throws {
         let json = #"""
         {"version": 1, "commits": [
