@@ -16,7 +16,7 @@ let package = Package(
         .package(url: "https://github.com/airbnb/lottie-spm", from: "4.6.1"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.1.0"),
         .package(url: "https://github.com/sindresorhus/LaunchAtLogin-Modern", from: "1.1.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0")
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.1")
     ],
     targets: [
         .target(name: "GitKit"),
