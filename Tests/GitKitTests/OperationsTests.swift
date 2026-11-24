@@ -70,6 +70,53 @@ struct OperationsTests {
         }
     }
 
+    @Test func unstagePathsSkipsPathsGitNoLongerKnows() async throws {
+        try await withTempRepo { repo in
+            try repo.write("a.txt", "v1\n")
+            try await repo.git("add", "a.txt")
+            try await repo.git("commit", "-q", "-m", "init")
+            try repo.write("a.txt", "v2\n")
+            try repo.write("gone.yaml", "new\n")
+            try await provider(repo).stage(paths: ["a.txt", "gone.yaml"], in: repo.url)
+            // Deleting the new file and staging the deletion leaves git with no
+            // record of the path, as when an agent re-proposes a removed file.
+            try FileManager.default.removeItem(at: repo.url.appendingPathComponent("gone.yaml"))
+            try await provider(repo).stage(paths: ["a.txt", "gone.yaml"], in: repo.url)
+
+            try await provider(repo).unstage(paths: ["a.txt", "gone.yaml"], in: repo.url)
+
+            let status = try await provider(repo).status(in: repo.url)
+            let entry = try #require(status.entries.first { $0.path == "a.txt" })
+            #expect(entry.index == .unmodified)
+            #expect(entry.worktree == .modified)
+            #expect(status.entries.map(\.path) == ["a.txt"])
+        }
+    }
+
+    @Test func unstagePathsKeepsPathsStagedForDeletionAndFolders() async throws {
+        try await withTempRepo { repo in
+            try repo.write("old.txt", "v1\n")
+            try await repo.git("add", "old.txt")
+            try await repo.git("commit", "-q", "-m", "init")
+            try await repo.git("rm", "-q", "--cached", "old.txt")
+            try repo.write("dir/new.txt", "new\n")
+            try await repo.git("add", "dir/new.txt")
+
+            try await provider(repo).unstage(paths: ["old.txt", "dir"], in: repo.url)
+
+            let staged = try await provider(repo).status(in: repo.url).entries.filter(\.isStaged)
+            #expect(staged.isEmpty)
+        }
+    }
+
+    @Test func unstagePathsWorksOnAnUnbornBranchWhenNothingIsKnown() async throws {
+        try await withTempRepo { repo in
+            // No commit and nothing staged: every path is unknown, so no git
+            // restore runs and nothing fails.
+            try await provider(repo).unstage(paths: ["missing.txt"], in: repo.url)
+        }
+    }
+
     @Test func discardingANewFolderLeavesNoEmptyFolder() async throws {
         try await withTempRepo { repo in
             try repo.write("kept.txt", "v1\n")

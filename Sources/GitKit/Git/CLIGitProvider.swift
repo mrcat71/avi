@@ -535,8 +535,30 @@ public struct CLIGitProvider: GitProviding {
 
     public func unstage(paths: [String], in repository: URL) async throws {
         guard !paths.isEmpty else { return }
-        for chunk in paths.chunked(into: 256) {
+        // `git restore --staged` rejects the whole call when one pathspec names
+        // nothing in the index or HEAD, for example a new file that was staged,
+        // deleted, and staged again, which drops it from the index. Such a path
+        // has nothing to unstage, so it is skipped instead of failing the rest.
+        let known = try await pathsKnownToIndexOrHead(paths, in: repository)
+        for chunk in known.chunked(into: 256) {
             try await run(["--literal-pathspecs", "restore", "--staged", "--"] + chunk, in: repository)
+        }
+    }
+
+    /// The pathspecs in `paths` that match an entry in the index or in HEAD.
+    /// A directory pathspec counts when any file below it does. On an unborn
+    /// branch only the index is consulted.
+    func pathsKnownToIndexOrHead(_ paths: [String], in repository: URL) async throws -> [String] {
+        let head = try await execute(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"], in: repository)
+        let withTree = head.exitCode == 0 ? ["--with-tree=HEAD"] : []
+        var entries = Set<String>()
+        for chunk in paths.chunked(into: 256) {
+            let result = try await run(["--literal-pathspecs", "ls-files", "-z", "--cached"] + withTree + ["--"] + chunk, in: repository)
+            entries.formUnion(result.stdoutString.split(separator: "\0").map(String.init))
+        }
+        return paths.filter { path in
+            let directory = path.hasSuffix("/") ? path : path + "/"
+            return entries.contains(path) || entries.contains { $0.hasPrefix(directory) }
         }
     }
 
