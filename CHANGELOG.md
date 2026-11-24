@@ -6,6 +6,9 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- The diff toolbar picks how changes are marked inside a replaced line: changed **words**, as before, changed **characters**, which shows a fixed typo or a changed digit instead of the whole word, or **lines only**, with no marks inside a line. Characters fall back to words on lines that differ too much letter by letter. The choice applies to every diff in Avi and is remembered.
+
 ## [0.10.6] - 2026-11-24
 
 ### Fixed

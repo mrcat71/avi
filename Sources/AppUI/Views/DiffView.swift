@@ -119,6 +119,7 @@ struct FileDiffView: View {
         DiffDisplay(
             wrapsLines: preferences.wrapLines,
             showsInvisibles: preferences.showInvisibles,
+            highlightGranularity: preferences.highlightGranularity,
             fontFamily: config.config.appearance.diffFont,
             fontSize: CGFloat(min(max(config.config.appearance.fontSize, 11), 16) - 1),
             path: title
@@ -176,8 +177,9 @@ struct FileDiffView: View {
 }
 
 /// The diff's options as a row of small toggles, as in Fork: whitespace,
-/// invisible characters, wrapping, lines of context, the whole file, and
-/// side by side. They apply to every diff in Avi.
+/// invisible characters, wrapping, how finely changes are marked inside a
+/// line, lines of context, the whole file, and side by side. They apply to
+/// every diff in Avi.
 struct DiffToolbar: View {
     @Bindable var preferences: DiffPreferences
     /// False where the diff cannot load again, so Git's options would not apply.
@@ -190,6 +192,7 @@ struct DiffToolbar: View {
             toggle("paragraphsign", "Show Invisible Characters", isOn: $preferences.showInvisibles)
             toggle("arrow.turn.down.left", preferences.sideBySide ? "Wrap Lines (not side by side)" : "Wrap Lines", isOn: $preferences.wrapLines)
                 .disabled(preferences.sideBySide)
+            granularityMenu
             button("text.badge.minus", "Fewer Lines of Context (\(preferences.contextLines))") {
                 preferences.showFewerLines()
             }
@@ -202,6 +205,36 @@ struct DiffToolbar: View {
                 .disabled(!reloads)
             toggle("rectangle.split.2x1", "Side by Side", isOn: $preferences.sideBySide)
         }
+    }
+
+    /// Words, characters, or whole lines; highlighted while not the default.
+    private var granularityMenu: some View {
+        let current = preferences.highlightGranularity
+        let isOn = current != .words
+        return Menu {
+            Picker("Highlight Changes", selection: $preferences.highlightGranularity) {
+                ForEach(DiffHighlightGranularity.allCases, id: \.self) { granularity in
+                    Label(granularity.title, systemImage: granularity.symbol).tag(granularity)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Image(systemName: current.symbol)
+                .font(.system(size: 11, weight: .medium))
+                .frame(width: 22, height: 20)
+                .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isOn ? Color.accentColor.opacity(0.15) : Color.clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(current.title)
+        .accessibilityLabel("Highlight Changes: \(current.title)")
     }
 
     private func toggle(_ symbol: String, _ title: String, isOn: Binding<Bool>) -> some View {

@@ -62,6 +62,20 @@ struct DiffToolbarTests {
         #expect(again.canShowMoreLines == false && again.canShowFewerLines == false)
     }
 
+    @Test func highlightGranularityPersistsAndDefaultsToWords() throws {
+        let name = "avi-diff-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        let first = DiffPreferences(defaults: defaults)
+        #expect(first.highlightGranularity == .words)
+        first.highlightGranularity = .characters
+        #expect(DiffPreferences(defaults: defaults).highlightGranularity == .characters)
+
+        defaults.set("syllables", forKey: "diff.highlightGranularity")
+        #expect(DiffPreferences(defaults: defaults).highlightGranularity == .words)
+    }
+
     /// TextKit alone leaves tabs and line ends blank; Avi draws marks for them.
     @Test func invisibleTabsAndLineEndsGetMarks() {
         func darkPixels(showing: Bool) -> Int {

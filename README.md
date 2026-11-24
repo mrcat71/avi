@@ -67,14 +67,16 @@ around provider authentication, OAuth, and multi-account flows.
   separate old / new line-number gutters. A toolbar ignores whitespace, shows
   invisible characters, wraps lines, sets the lines of context or shows the
   entire file, and switches to a side-by-side view. Changed words are
-  highlighted within their lines, and code is colored for Swift, Go, Python,
+  highlighted within their lines; the toolbar can switch that to changed
+  characters, for typos and one-digit edits, or turn it off so only whole
+  lines are colored. Code is colored for Swift, Go, Python,
   JavaScript and TypeScript, JSON, YAML, TOML, Terraform, shell, Dockerfiles,
   Markdown, Rust, C-family languages, Ruby, SQL, XML and HTML, CSS, and
   INI-style files. Settings > Appearance sets the diff's font and text size.
   Large diffs keep all text, line colors, selection, and Find available, but
-  word-level highlighting has a shared work budget. Syntax coloring is skipped
-  above 20,000 rows or 1,000,000 UTF-16 units; lines longer than 4,096 UTF-16
-  units skip syntax and word-level highlighting.
+  word- and character-level highlighting has a shared work budget. Syntax
+  coloring is skipped above 20,000 rows or 1,000,000 UTF-16 units; lines
+  longer than 4,096 UTF-16 units skip syntax and in-line highlighting.
 - Commit graph view with per-commit file diffs, scoped to the current branch or
   to all branches. Search finds commits by message, author, or the start of a
   SHA: matches are highlighted, the rest dims, and Return and Shift+Return step

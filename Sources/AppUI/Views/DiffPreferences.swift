@@ -37,6 +37,11 @@ final class DiffPreferences {
         didSet { save(sideBySide, Key.sideBySide) }
     }
 
+    /// How finely changes are marked inside replaced lines.
+    var highlightGranularity: DiffHighlightGranularity {
+        didSet { save(highlightGranularity.rawValue, Key.highlightGranularity) }
+    }
+
     private enum Key {
         static let ignoreWhitespace = "diff.ignoreWhitespace"
         static let showInvisibles = "diff.showInvisibles"
@@ -44,6 +49,7 @@ final class DiffPreferences {
         static let contextLines = "diff.contextLines"
         static let wholeFile = "diff.wholeFile"
         static let sideBySide = "diff.sideBySide"
+        static let highlightGranularity = "diff.highlightGranularity"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -56,6 +62,8 @@ final class DiffPreferences {
         contextLines = defaults.object(forKey: Key.contextLines) as? Int ?? DiffOptions.standard.contextLines
         wholeFile = defaults.bool(forKey: Key.wholeFile)
         sideBySide = defaults.bool(forKey: Key.sideBySide)
+        highlightGranularity = defaults.string(forKey: Key.highlightGranularity)
+            .flatMap(DiffHighlightGranularity.init(rawValue:)) ?? .words
     }
 
     /// What Git is asked for; a change means the diff has to load again.

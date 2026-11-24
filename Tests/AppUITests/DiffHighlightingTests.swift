@@ -103,6 +103,68 @@ struct WordDiffTests {
     }
 }
 
+struct CharacterDiffTests {
+    static let cases: [WordDiffTests.Case] = [
+        WordDiffTests.Case(name: "a letter removed", old: "colour", new: "color", expected: (["u"], [])),
+        WordDiffTests.Case(name: "a digit changed", old: "value1", new: "value2", expected: (["1"], ["2"])),
+        WordDiffTests.Case(name: "a digit added", old: "let timeout = 30", new: "let timeout = 300", expected: ([], ["0"])),
+        WordDiffTests.Case(name: "swapped letters", old: "retrun value", new: "return value", expected: (["ru"], ["ur"])),
+        WordDiffTests.Case(name: "part of a word", old: "fetchData()", new: "fetchItems()", expected: (["Data"], ["Items"])),
+        WordDiffTests.Case(name: "a renamed word does not scatter", old: "let count = items.count", new: "let total = items.count",
+                           expected: (["count"], ["total"])),
+        WordDiffTests.Case(name: "too different letter by letter falls back to words", old: "foo = 1", new: "barbaz = 2",
+                           expected: (["foo", "1"], ["barbaz", "2"])),
+        WordDiffTests.Case(name: "a rewritten line is not compared", old: "import Foundation", new: "struct Ledger { var rows: [Row] }", expected: nil)
+    ]
+
+    @Test(arguments: cases)
+    func changes(_ testCase: WordDiffTests.Case) throws {
+        let result = WordDiff.changes(old: testCase.old, new: testCase.new, granularity: .characters)
+        guard let expected = testCase.expected else {
+            #expect(result == nil)
+            return
+        }
+        let characters = try #require(result)
+        #expect(characters.old.map { (testCase.old as NSString).substring(with: $0) } == expected.old)
+        #expect(characters.new.map { (testCase.new as NSString).substring(with: $0) } == expected.new)
+    }
+
+    @Test func rangesCountUTF16() throws {
+        let old = "名前 = \"Zoë 👋\""
+        let new = "名前 = \"Zoë 🎉\""
+        let characters = try #require(WordDiff.changes(old: old, new: new, granularity: .characters))
+        #expect(characters.old.map { (old as NSString).substring(with: $0) } == ["👋"])
+        #expect(characters.new.map { (new as NSString).substring(with: $0) } == ["🎉"])
+    }
+
+    /// The shared start and end cost nothing, so long lines with a small
+    /// edit stay well inside the per-line limit.
+    @Test func onlyTheEditedMiddleCostsWork() throws {
+        let line = String(repeating: "a + ", count: 110)
+        var remaining = WordDiff.documentComparisonWork
+        let characters = try #require(WordDiff.changes(old: line + "x;", new: line + "y;", granularity: .characters, remainingWork: &remaining))
+        #expect(characters.old.map { ((line + "x;") as NSString).substring(with: $0) } == ["x"])
+        #expect(remaining == WordDiff.documentComparisonWork - 1)
+    }
+
+    @Test func linesMarkNothingInsideALine() {
+        #expect(WordDiff.changes(old: "value1", new: "value2", granularity: .lines) == nil)
+        let diff = FileDiff(hunks: [
+            DiffHunk(header: "@@ -1 +1 @@", oldStart: 1, oldCount: 1, newStart: 1, newCount: 1, lines: [
+                DiffLine(id: 0, kind: .deletion, text: "value1", oldLineNumber: 1, newLineNumber: nil),
+                DiffLine(id: 1, kind: .addition, text: "value2", oldLineNumber: nil, newLineNumber: 1)
+            ])
+        ], isBinary: false)
+        let document = DiffDocument(diff)
+        #expect(NativeDiffTextView.wordHighlights(document, granularity: .lines).isEmpty)
+        #expect(NativeDiffTextView.wordHighlights(document, granularity: .words).isEmpty)
+        #expect(NativeDiffTextView.wordHighlights(document, granularity: .characters).count == 2)
+        let sides = DiffDocument.sideBySide(diff)
+        let facing = NativeDiffTextView.sideBySideWordHighlights(old: sides.old, new: sides.new, granularity: .lines)
+        #expect(facing.old.isEmpty && facing.new.isEmpty)
+    }
+}
+
 struct SyntaxHighlighterTests {
     @Test func oversizedLinesSkipRegexHighlightingAndResetCommentState() throws {
         let highlighter = try #require(SyntaxHighlighter.forPath("a.swift"))

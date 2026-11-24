@@ -2,29 +2,75 @@ import AppKit
 import Foundation
 import GitKit
 
-/// The words a change touched. Removed lines are paired with the added
-/// lines that replace them, in order, and each pair's words are compared,
-/// so a renamed variable stands out from the rest of its line.
+/// How finely a replaced line's changes are marked inside it, picked from
+/// the diff toolbar.
+enum DiffHighlightGranularity: String, CaseIterable, Sendable {
+    /// Changed words, the default.
+    case words
+    /// Changed letters, digits and marks, for typos and one-character edits.
+    case characters
+    /// Only the line colors, nothing marked inside a line.
+    case lines
+
+    var title: String {
+        switch self {
+        case .words: return "Highlight Changed Words"
+        case .characters: return "Highlight Changed Characters"
+        case .lines: return "Highlight Changed Lines Only"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .words: return "textformat.abc"
+        case .characters: return "character"
+        case .lines: return "line.3.horizontal"
+        }
+    }
+}
+
+/// The words, or characters, a change touched. Removed lines are paired
+/// with the added lines that replace them, in order, and each pair is
+/// compared, so a renamed variable stands out from the rest of its line.
 enum WordDiff {
     static let maximumLineLength = 4096
     static let maximumComparisonWork = 160_000
     /// Shared by all line pairs, not renewed for every line in a large diff.
     static let documentComparisonWork = 1_000_000
+    /// Characters a line pair keeps in common between two changes for them
+    /// to stay apart; shorter runs are folded into the change around them,
+    /// so a rewritten word does not read as scattered matching letters.
+    static let minimumCharacterRun = 3
 
     /// Ranges, in UTF-16 offsets of each string, of the words only `old`
     /// has and of the words only `new` has. Nil when comparison exceeds its
     /// budget or the lines have too little in common to compare meaningfully.
-    static func changes(old: String, new: String) -> (old: [NSRange], new: [NSRange])? {
+    static func changes(old: String, new: String, granularity: DiffHighlightGranularity = .words) -> (old: [NSRange], new: [NSRange])? {
         var remainingWork = maximumComparisonWork
-        return changes(old: old, new: new, remainingWork: &remainingWork)
+        return changes(old: old, new: new, granularity: granularity, remainingWork: &remainingWork)
     }
 
-    static func changes(old: String, new: String, remainingWork: inout Int) -> (old: [NSRange], new: [NSRange])? {
-        guard !old.isEmpty, !new.isEmpty,
+    /// The changes at `granularity`. Characters fall back to words when the
+    /// lines differ too much letter by letter, and lines compare nothing.
+    static func changes(
+        old: String,
+        new: String,
+        granularity: DiffHighlightGranularity = .words,
+        remainingWork: inout Int
+    ) -> (old: [NSRange], new: [NSRange])? {
+        guard granularity != .lines, !old.isEmpty, !new.isEmpty,
               old.utf16.count <= maximumLineLength, new.utf16.count <= maximumLineLength else { return nil }
         if old == new {
             return ([], [])
         }
+        if granularity == .characters,
+           let characters = characterChanges(old: old, new: new, remainingWork: &remainingWork) {
+            return characters
+        }
+        return wordChanges(old: old, new: new, remainingWork: &remainingWork)
+    }
+
+    private static func wordChanges(old: String, new: String, remainingWork: inout Int) -> (old: [NSRange], new: [NSRange])? {
         guard remainingWork > 0 else { return nil }
         let a = tokens(old)
         let b = tokens(new)
@@ -32,21 +78,60 @@ enum WordDiff {
         guard !a.isEmpty, !b.isEmpty, work <= maximumComparisonWork, work <= remainingWork else { return nil }
         remainingWork -= work
 
-        // Longest common subsequence of tokens, by length table.
+        let pairs = commonSubsequence(a, b)
+        // Lines that share almost nothing are rewritten, not edited.
+        return ranges(a, b, kept: pairs, minimumShareDivisor: 4)
+    }
+
+    /// Character by character. The common start and end are matched first,
+    /// so only the edited middle of a line costs comparison work.
+    private static func characterChanges(old: String, new: String, remainingWork: inout Int) -> (old: [NSRange], new: [NSRange])? {
+        guard remainingWork > 0 else { return nil }
+        let a = characterTokens(old)
+        let b = characterTokens(new)
+        guard !a.isEmpty, !b.isEmpty else { return nil }
+
+        let shorter = min(a.count, b.count)
+        var prefix = 0
+        while prefix < shorter, a[prefix].text == b[prefix].text {
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < shorter - prefix, a[a.count - 1 - suffix].text == b[b.count - 1 - suffix].text {
+            suffix += 1
+        }
+
+        var pairs = (0 ..< prefix).map { (a: $0, b: $0) }
+        let middleA = Array(a[prefix ..< a.count - suffix])
+        let middleB = Array(b[prefix ..< b.count - suffix])
+        if !middleA.isEmpty, !middleB.isEmpty {
+            let work = middleA.count * middleB.count
+            guard work <= maximumComparisonWork, work <= remainingWork else { return nil }
+            remainingWork -= work
+            pairs += commonSubsequence(middleA, middleB).map { (a: $0.a + prefix, b: $0.b + prefix) }
+        }
+        pairs += (0 ..< suffix).map { (a: a.count - suffix + $0, b: b.count - suffix + $0) }
+
+        // Letter by letter, a line needs more in common than word by word,
+        // or the highlight turns into confetti.
+        return ranges(a, b, kept: withoutShortRuns(pairs, countA: a.count, countB: b.count), minimumShareDivisor: 2)
+    }
+
+    /// Longest common subsequence of tokens, by length table, as matched
+    /// index pairs in order.
+    private static func commonSubsequence(_ a: [Token], _ b: [Token]) -> [(a: Int, b: Int)] {
         var table = [[Int]](repeating: [Int](repeating: 0, count: b.count + 1), count: a.count + 1)
         for i in stride(from: a.count - 1, through: 0, by: -1) {
             for j in stride(from: b.count - 1, through: 0, by: -1) {
                 table[i][j] = a[i].text == b[j].text ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
             }
         }
-        var keptA = Set<Int>()
-        var keptB = Set<Int>()
+        var pairs: [(a: Int, b: Int)] = []
         var i = 0
         var j = 0
         while i < a.count, j < b.count {
             if a[i].text == b[j].text {
-                keptA.insert(i)
-                keptB.insert(j)
+                pairs.append((a: i, b: j))
                 i += 1
                 j += 1
             } else if table[i + 1][j] >= table[i][j + 1] {
@@ -55,13 +140,46 @@ enum WordDiff {
                 j += 1
             }
         }
+        return pairs
+    }
 
-        // Lines that share almost nothing are rewritten, not edited.
+    /// Drops runs of matched characters shorter than `minimumCharacterRun`
+    /// that have changes on both sides of them. Runs at the start or end of
+    /// the lines always stay.
+    private static func withoutShortRuns(_ pairs: [(a: Int, b: Int)], countA: Int, countB: Int) -> [(a: Int, b: Int)] {
+        var result: [(a: Int, b: Int)] = []
+        var start = 0
+        while start < pairs.count {
+            var end = start + 1
+            while end < pairs.count, pairs[end].a == pairs[end - 1].a + 1, pairs[end].b == pairs[end - 1].b + 1 {
+                end += 1
+            }
+            let first = pairs[start]
+            let last = pairs[end - 1]
+            let leading = first.a == 0 && first.b == 0
+            let trailing = last.a == countA - 1 && last.b == countB - 1
+            if leading || trailing || end - start >= minimumCharacterRun {
+                result += pairs[start ..< end]
+            }
+            start = end
+        }
+        return result
+    }
+
+    /// The changed ranges of both lines, or nil when fewer than one in
+    /// `minimumShareDivisor` of the longer line's non-space tokens are kept.
+    private static func ranges(
+        _ a: [Token],
+        _ b: [Token],
+        kept pairs: [(a: Int, b: Int)],
+        minimumShareDivisor: Int
+    ) -> (old: [NSRange], new: [NSRange])? {
+        let keptA = Set(pairs.map { $0.a })
+        let keptB = Set(pairs.map { $0.b })
         let meaningfulA = a.indices.filter { !a[$0].isSpace }
         let meaningfulB = b.indices.filter { !b[$0].isSpace }
         let common = meaningfulA.filter(keptA.contains).count
-        guard common * 4 >= max(meaningfulA.count, meaningfulB.count) else { return nil }
-
+        guard common * minimumShareDivisor >= max(meaningfulA.count, meaningfulB.count) else { return nil }
         return (merge(a, changed: a.indices.filter { !keptA.contains($0) }), merge(b, changed: b.indices.filter { !keptB.contains($0) }))
     }
 
@@ -90,6 +208,23 @@ enum WordDiff {
                     end = line.index(after: end)
                 }
             }
+            let text = line[index ..< end]
+            let length = text.utf16.count
+            result.append(Token(text: text, range: NSRange(location: offset, length: length)))
+            offset += length
+            index = end
+        }
+        return result
+    }
+
+    /// One token per character, as Swift counts them, so an emoji or an
+    /// accented letter is never split.
+    static func characterTokens(_ line: String) -> [Token] {
+        var result: [Token] = []
+        var index = line.startIndex
+        var offset = 0
+        while index < line.endIndex {
+            let end = line.index(after: index)
             let text = line[index ..< end]
             let length = text.utf16.count
             result.append(Token(text: text, range: NSRange(location: offset, length: length)))
