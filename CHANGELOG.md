@@ -6,6 +6,11 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.6] - 2026-11-24
+
+### Fixed
+- An agent proposal that listed a new file which was then deleted can be replaced and discarded again. Proposing the deleted file once more took it out of Git's index, and the next `avi propose` or **Discard** then failed on `git restore --staged`, leaving the old proposal and its staged files in the commit field. Unstaging now skips paths Git no longer knows and unstages the rest.
+
 ## [0.10.5] - 2026-11-19
 
 ### Added
