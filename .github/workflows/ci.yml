@@ -43,15 +43,16 @@ jobs:
 
   lint:
     name: lint
-    runs-on: macos-26
-    timeout-minutes: 30
+    # SwiftFormat needs no Apple SDK, so the official Linux image runs it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Install SwiftFormat
-        run: brew install --quiet swiftformat
       - name: SwiftFormat lint
-        run: swiftformat --lint .
+        uses: docker://ghcr.io/nicklockwood/swiftformat:0.64.7@sha256:f97a0b775ce99b893277eb95f37d31e85710b00d8c41d11b603848f9df4a71a4
+        with:
+          args: --lint .
 
   bundle-smoke:
     name: bundle smoke

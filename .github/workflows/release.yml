@@ -23,27 +23,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: build + publish
-    runs-on: macos-26
-    timeout-minutes: 30
-    permissions:
-      contents: write
+  # Only the build needs macOS. The checks before it and the publishing after
+  # it run on Linux, so a bad tag fails without a macOS runner and the job
+  # that runs build scripts and holds the signing key cannot write releases.
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-
-      - name: Cache SwiftPM
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6 # renovate will pin this to a SHA on first run
-        with:
-          path: |
-            .build
-            ~/Library/Caches/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', 'Package.swift') }}
-          restore-keys: |
-            spm-${{ runner.os }}-
 
       - name: Resolve version
         id: ver
@@ -75,6 +66,29 @@ jobs:
             exit 1
           fi
 
+  build:
+    name: build
+    needs: preflight
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Cache SwiftPM
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6 # renovate will pin this to a SHA on first run
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', 'Package.swift') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
       - name: Test
         # Unbuffered, XCTest's "started" lines reach the log as they happen,
         # so a hang names its test (see ci.yml).
@@ -86,7 +100,7 @@ jobs:
         run: bash scripts/build-release.sh
 
       - name: Package .app bundle, zip, and disk image
-        run: scripts/package-app.sh "${{ steps.ver.outputs.version }}"
+        run: scripts/package-app.sh "$VERSION"
 
       - name: Self-test packaged app
         # Runs the AI preflight in the binary that ships. A miscompiled async
@@ -101,35 +115,57 @@ jobs:
         # the update.
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
-        run: scripts/make-appcast.sh "${{ steps.ver.outputs.version }}"
+        run: scripts/make-appcast.sh "$VERSION"
 
       - name: Generate checksums
         run: |
           shasum -a 256 \
-            "avi-${{ steps.ver.outputs.version }}-macos-arm64.dmg" \
-            "avi-${{ steps.ver.outputs.version }}-macos-arm64.zip" > SHA256SUMS
+            "avi-$VERSION-macos-arm64.dmg" \
+            "avi-$VERSION-macos-arm64.zip" > SHA256SUMS
+
+      - name: Upload artifacts
+        # The publish job releases these files. A dry run keeps them for
+        # download; a tag run only needs them until publishing is done.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7 # renovate will pin this to a SHA on first run
+        with:
+          name: avi-${{ env.VERSION }}-macos-arm64
+          path: |
+            avi-${{ env.VERSION }}-macos-arm64.dmg
+            avi-${{ env.VERSION }}-macos-arm64.zip
+            appcast.xml
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'workflow_dispatch' && 14 || 1 }}
+
+  publish:
+    name: publish
+    needs: [preflight, build]
+    if: startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: avi-${{ env.VERSION }}-macos-arm64
+
+      - name: Verify checksums
+        run: sha256sum -c SHA256SUMS
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.ver.outputs.version }}" \
-            --title "v${{ steps.ver.outputs.version }}" \
+          gh release create "v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "v$VERSION" \
             --generate-notes \
-            "avi-${{ steps.ver.outputs.version }}-macos-arm64.dmg" \
-            "avi-${{ steps.ver.outputs.version }}-macos-arm64.zip" \
+            "avi-$VERSION-macos-arm64.dmg" \
+            "avi-$VERSION-macos-arm64.zip" \
             appcast.xml \
             SHA256SUMS
-
-      - name: Upload dispatch artifacts
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7 # renovate will pin this to a SHA on first run
-        with:
-          name: avi-${{ steps.ver.outputs.version }}-macos-arm64
-          path: |
-            avi-${{ steps.ver.outputs.version }}-macos-arm64.dmg
-            avi-${{ steps.ver.outputs.version }}-macos-arm64.zip
-            appcast.xml
-            SHA256SUMS
-          retention-days: 14

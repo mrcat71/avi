@@ -12,6 +12,14 @@ The normal publishing path is `.github/workflows/release.yml`: pushing a
 also run `gh release create` manually. A tag push can publish even while the
 separate branch CI workflow is failing, so complete the checks below first.
 
+The workflow runs three jobs. `preflight` on Linux checks the tag against
+`GitKit.version` and rejects a version that already has a release. `build` on
+macOS tests, builds, packages, signs the appcast, and uploads the files as a
+workflow artifact. `publish` on Linux, the only job that can write to the
+repository, downloads them, verifies `SHA256SUMS`, and creates the release.
+A tag run keeps the artifact for one day, so a failed `publish` can be re-run
+on its own within that day; a dry run keeps it for 14 days.
+
 ## One-time setup: the update signing key
 
 Installed copies of Avi accept an update only when it is signed with the
