@@ -25,6 +25,11 @@ public enum DraftSource: Hashable, Sendable {
         }
     }
 
+    public var isAgent: Bool {
+        if case .agent = self { return true }
+        return false
+    }
+
     /// Heading for a group of drafts, e.g. "Claude Code - Add agent bridge".
     public var groupTitle: String {
         if case .agent(let name, _, let title) = self, let title, !title.isEmpty {

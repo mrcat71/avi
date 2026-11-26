@@ -144,8 +144,22 @@ public final class RepositoryStore: Identifiable {
     public var selectedDraftID: UUID?
     /// Commits made so far while a plan is being applied; nil when idle.
     public internal(set) var planProgress: PlanProgress?
-    /// Set when an agent sends something you have not looked at yet.
-    public var hasUnseenProposal = false
+    /// True when an agent sent something you have not looked at yet and it
+    /// still waits for you. Committing, discarding, or accepting it ends the
+    /// signal even if you never opened Changes.
+    public var hasUnseenProposal: Bool {
+        get { proposalUnseen && hasPendingAgentProposal }
+        set { proposalUnseen = newValue }
+    }
+    private var proposalUnseen = false
+    /// Whether anything an agent sent is still waiting here: its commit in the
+    /// field or preview card, its planned commits, or its tags.
+    var hasPendingAgentProposal: Bool {
+        fieldProposal != nil
+            || aiPendingPreview?.proposedBy != nil
+            || !tagProposals.isEmpty
+            || commitPlan.drafts.contains { $0.source.isAgent }
+    }
     /// The single agent proposal currently staged into the commit field.
     public internal(set) var fieldProposal: FieldProposal?
     /// Tags Commit 1 creates once it is made: from an agent's proposal in the

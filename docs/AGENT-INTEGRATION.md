@@ -69,8 +69,10 @@ Several agent sessions can work at once:
 - Requests for one repository (keyed by its worktree path) run one after
   another; different repositories and worktrees run in parallel.
 - Avi never switches tabs on its own. A tray icon marks tabs with proposals you
-  have not seen, and the Dock badge counts them. `--focus` selects the tab and
-  brings Avi forward.
+  have not seen, and the Dock badge counts them. The mark goes away when you
+  open Changes, or once nothing from an agent is left to review there: its
+  commits made or discarded and its tags created or dismissed. `--focus`
+  selects the tab and brings Avi forward.
 
 ## One commit or several
 

@@ -184,6 +184,16 @@ struct TagProposalTests {
         #expect(git.createdTags == ["v1.0@abc1234def"])
         #expect(store.tagProposals.isEmpty)
         #expect(store.publishableTags == ["v1.0"])
+        #expect(!store.hasUnseenProposal)
+    }
+
+    @Test func dismissingTheOnlyTagProposalEndsTheSignal() async throws {
+        let (store, git) = await store()
+        git.resolvableCommits = ["HEAD": "abc1234def"]
+        _ = try await store.receiveTagProposal(NewTag(name: "v1.0"), at: "HEAD", source: .agent(name: "Codex", session: "t", title: nil))
+        #expect(store.hasUnseenProposal)
+        store.dismissTagProposal(store.tagProposals[0].id)
+        #expect(!store.hasUnseenProposal)
     }
 
     @Test func aSessionsNewTagProposalReplacesItsOldOne() async throws {

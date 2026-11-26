@@ -243,6 +243,33 @@ struct AgentProposalTests {
         #expect(store.hasUnseenProposal)
     }
 
+    @Test func committingTheProposalEndsTheSignalUnseen() async throws {
+        let (store, _) = await store([modified("a.swift")])
+        store.workspaceSelection = .allCommits
+        _ = try await store.receiveProposal(proposal([("feat: a", ["a.swift"])]), revealPlan: false)
+        #expect(store.hasUnseenProposal)
+        #expect(await store.commit())
+        // Nothing waits any more, so the tab and Dock stop announcing it.
+        #expect(!store.hasUnseenProposal)
+        _ = try await store.receiveProposal(proposal([("feat: b", ["a.swift"])]), revealPlan: false)
+        #expect(store.hasUnseenProposal)
+    }
+
+    @Test func discardingThePlanEndsTheSignal() async throws {
+        let (store, _) = await store([modified("a.swift"), modified("b.swift")])
+        _ = try await store.receiveProposal(proposal([("one", ["a.swift"]), ("two", ["b.swift"])]), revealPlan: false)
+        #expect(store.hasUnseenProposal)
+        store.discardPlan()
+        #expect(!store.hasUnseenProposal)
+    }
+
+    @Test func yourOwnDraftsAreNotAProposal() async throws {
+        let (store, _) = await store([modified("a.swift")])
+        store.hasUnseenProposal = true
+        store.commitPlan = CommitPlan(drafts: [CommitDraft(message: "mine", files: ["a.swift"], source: .manual)])
+        #expect(!store.hasUnseenProposal)
+    }
+
     @Test func aProposalWaitsInChangesWhenYouComeBack() async throws {
         let (store, _) = await store([modified("a.swift")])
         store.workspaceSelection = .allCommits
