@@ -6,8 +6,11 @@ All notable changes to Avi are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.7] - 2026-11-27
+
 ### Added
 - The diff toolbar picks how changes are marked inside a replaced line: changed **words**, as before, changed **characters**, which shows a fixed typo or a changed digit instead of the whole word, or **lines only**, with no marks inside a line. Characters fall back to words on lines that differ too much letter by letter. The choice applies to every diff in Avi and is remembered.
+- A strip along the diff's scroll bar marks where the whole file changes: green where lines are added, red where they are removed. It maps the file the same way the scroll bar does, so changes outside the visible part are easy to find, and in a side-by-side diff each side marks its own. Even a one-line change in a long file gets a visible mark.
 
 ### Fixed
 - A tab's tray icon and the Dock badge no longer keep announcing an agent proposal you already dealt with. They cleared only when you opened Changes, so a proposal you committed and pushed without going back there stayed marked as new. The mark now also clears once nothing from an agent is waiting: its commits made or discarded and its tags created or dismissed.

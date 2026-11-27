@@ -18,7 +18,7 @@ commit message generator alongside lightweight GitHub and GitLab integration.
 
 ## Status
 
-Alpha. The current release is v0.10.6. The config schema, the UI, and the
+Alpha. The current release is v0.10.7. The config schema, the UI, and the
 internal APIs still change between releases. Expect rough edges, especially
 around provider authentication, OAuth, and multi-account flows.
 
@@ -69,7 +69,8 @@ around provider authentication, OAuth, and multi-account flows.
   entire file, and switches to a side-by-side view. Changed words are
   highlighted within their lines; the toolbar can switch that to changed
   characters, for typos and one-digit edits, or turn it off so only whole
-  lines are colored. Code is colored for Swift, Go, Python,
+  lines are colored. A strip along the scroll bar marks where the whole
+  file adds lines in green and removes them in red. Code is colored for Swift, Go, Python,
   JavaScript and TypeScript, JSON, YAML, TOML, Terraform, shell, Dockerfiles,
   Markdown, Rust, C-family languages, Ruby, SQL, XML and HTML, CSS, and
   INI-style files. Settings > Appearance sets the diff's font and text size.
