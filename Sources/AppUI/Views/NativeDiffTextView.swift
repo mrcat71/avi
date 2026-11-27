@@ -83,6 +83,7 @@ struct NativeDiffTextView: NSViewRepresentable {
         scroll.verticalRulerView = DiffLineRuler(scrollView: scroll, textView: text)
         scroll.hasVerticalRuler = true
         scroll.rulersVisible = true
+        scroll.installChangeOverview(for: text)
         scroll.observeForLineActions()
         return scroll
     }
@@ -363,13 +364,45 @@ final class SideBySideDiffContainer: NSSplitView {
 final class DiffScrollView: NSScrollView {
     private var needsDocumentPositionReset = false
     /// The document on show, to tell which lines a selection picks.
-    var document: DiffDocument?
+    var document: DiffDocument? {
+        didSet { changeOverview?.document = document }
+    }
+
     var lineActions: DiffLineActions? {
         didSet { updateLineActionBar() }
     }
 
     private var actionBar: NSHostingView<DiffLineActionBar>?
+    private(set) var changeOverview: DiffChangeOverview?
     private var keepsPosition = false
+
+    /// Puts the strip of change marks along the right edge, above the text
+    /// and below the scrollers, so the scroller's knob slides over it.
+    func installChangeOverview(for text: NSTextView) {
+        guard changeOverview == nil else { return }
+        let overview = DiffChangeOverview(textView: text)
+        addSubview(overview, positioned: .above, relativeTo: contentView)
+        changeOverview = overview
+        overview.document = document
+        layoutChangeOverview()
+    }
+
+    /// The right edge of the visible text, as tall as the scroller's track:
+    /// under an overlay scroller, or just left of a legacy one.
+    private func layoutChangeOverview() {
+        guard let changeOverview else { return }
+        let insets = contentView.contentInsets
+        var area = contentView.bounds
+        area.size.height = max(0, area.height - insets.top - insets.bottom)
+        area.origin.y += contentView.isFlipped ? insets.top : insets.bottom
+        let width = min(DiffChangeOverview.width, max(0, area.width - insets.right))
+        area.origin.x = area.maxX - insets.right - width
+        area.size.width = width
+        let frame = convert(area, from: contentView)
+        guard changeOverview.frame != frame else { return }
+        changeOverview.frame = frame
+        changeOverview.needsDisplay = true
+    }
 
     /// Whether the next document should keep the scroll position, once.
     func takeKeepsPosition() -> Bool {
@@ -447,6 +480,7 @@ final class DiffScrollView: NSScrollView {
 
     override func tile() {
         super.tile()
+        layoutChangeOverview()
         updateLineActionBar()
         // SwiftUI may install the document before assigning the panel a size.
         // Scrolling to a glyph at that point leaves its prefix under the ruler.
